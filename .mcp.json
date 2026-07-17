@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dayoptimizer": {
+      "command": "uv",
+      "args": ["--directory", "${CLAUDE_PLUGIN_ROOT}", "run", "python", "-m", "dayoptimizer.mcp_server"]
+    }
+  }
+}

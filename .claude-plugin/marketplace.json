@@ -1,0 +1,11 @@
+{
+  "name": "dayoptimizer",
+  "owner": { "name": "DayOptimizer contributors" },
+  "plugins": [
+    {
+      "name": "dayoptimizer",
+      "source": "./",
+      "description": "Deterministic day planner for Apple Calendar with optional Garmin health data"
+    }
+  ]
+}

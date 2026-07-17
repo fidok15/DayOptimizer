@@ -1,0 +1,7 @@
+{
+  "name": "dayoptimizer",
+  "version": "0.1.0",
+  "description": "Deterministic day planner for Apple Calendar with optional Garmin health data",
+  "author": { "name": "DayOptimizer contributors" },
+  "mcpServers": "./.mcp.json"
+}

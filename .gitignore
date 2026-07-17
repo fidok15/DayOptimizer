@@ -1,0 +1,25 @@
+# Private user data — never in the repo
+config.local.yaml
+.env
+CLAUDE.md
+
+# Environment
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local data
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
+
+# Claude Code / plugin runtime artifacts (local only)
+.claude/
+.claude-flow/
+
+# Agent working artifacts and logs (never published)
+.superpowers/
+*.log

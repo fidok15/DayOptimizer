@@ -1,0 +1,40 @@
+# Per-category movability. movable: true = the planner reschedules on its own,
+# movable: false = changes require explicit user approval. Users extend/override
+# these in ~/.dayoptimizer/config.local.yaml (created by onboarding).
+categories:
+  Important:   {movable: false, priority: 10}
+  Meeting:     {movable: false, priority: 9}
+  Work:        {movable: false, priority: 9}
+  Sleep:       {movable: true,  priority: 7}
+  Food:        {movable: true,  priority: 6}
+  Transport:   {movable: true,  priority: 6}
+  Gym:         {movable: true,  priority: 5}
+  Learn:       {movable: true,  priority: 4}
+  "Free time": {movable: true,  priority: 2}
+
+day_rules:
+  gym_per_week: 3               # 0 disables workout scheduling
+  gym_duration_minutes: 75
+  min_free_minutes: 60
+  deep_work_minutes: 90
+  deep_work_blocks_per_day: 2
+  buffer_minutes: 15            # breathing room between planned blocks
+  wind_down_minutes: 45         # screen-free time before the sleep window
+  sleep_target_hours: 8.0
+  morning_buffer_minutes: 90
+  day_start: "06:00"           # planning window — blocks are only placed inside it
+  day_end: "23:00"
+  work_days: [mon, tue, wed, thu, fri]
+  meal_windows:
+    - {name: "Breakfast", start: "07:00", end: "10:00", duration_minutes: 30}
+    - {name: "Lunch",     start: "12:30", end: "15:30", duration_minutes: 45}
+    - {name: "Dinner",    start: "18:30", end: "21:00", duration_minutes: 30}
+
+# Fixed commute times in minutes; key = substring of an event's location
+transport_routes: {}
+
+holiday_calendars: ["Public Holidays", "Holidays"]
+
+llm:
+  backend: anthropic
+  model: claude-opus-4-8

@@ -1,0 +1,12 @@
+#!/bin/bash
+# Run the DayOptimizer CLI through the TCC app bundle (required for calendar
+# access). Usage: dayoptimizer-app plan [--date YYYY-MM-DD] [--week [N]]
+set -euo pipefail
+HOME_DIR="$HOME/.dayoptimizer"
+[ -x "$HOME_DIR/DayOptimizer.app/Contents/MacOS/dayopt" ] || { echo "Bundle missing or incomplete — run scripts/setup-bundle.sh first."; exit 1; }
+printf '%s\n' "$@" > "$HOME_DIR/cli_args"
+# Remove the previous log so a silent launch failure fails loudly at `cat`
+# (set -e) instead of replaying the old run's output as if it were current.
+rm -f "$HOME_DIR/cli.log"
+open -W -a "$HOME_DIR/DayOptimizer.app" --args "$HOME_DIR/cli_runner.py"
+cat "$HOME_DIR/cli.log"
