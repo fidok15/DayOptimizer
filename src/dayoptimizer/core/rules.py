@@ -77,6 +77,8 @@ def load_config_data(path: str | Path, user_path: str | Path | None = None) -> d
                 data[section].update(val)
             else:
                 data[section] = val
+    # a user may drop a default category by mapping it to null
+    data["categories"] = {k: v for k, v in data.get("categories", {}).items() if v is not None}
     return data
 
 def _day_window(d: dict) -> tuple[time, time]:

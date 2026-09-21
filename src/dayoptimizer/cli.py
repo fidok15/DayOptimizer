@@ -269,6 +269,10 @@ def cmd_stats(args, rules, config):
     for tip in suggest_adjustments(stats, rules):
         console.print(f"- {tip}")
 
+def cmd_web(args, rules, config):
+    from dayoptimizer.web import serve
+    serve(port=args.port, open_browser=not args.no_open)
+
 def main():
     paths.ensure_private_dir()
     load_dotenv()
@@ -294,9 +298,12 @@ def main():
     p_garmin = sub.add_parser("garmin", help="Garmin Connect account")
     garmin_sub = p_garmin.add_subparsers(dest="garmin_command", required=True)
     garmin_sub.add_parser("login", help="log in and store OAuth tokens (password is not persisted)")
+    p_web = sub.add_parser("web", help="open the week planner in the browser (localhost)")
+    p_web.add_argument("--port", type=int, default=8765)
+    p_web.add_argument("--no-open", action="store_true", help="do not open a browser tab")
     args = parser.parse_args()
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin}[args.command](args, rules, config)
+     "agent": cmd_agent, "garmin": cmd_garmin, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":
     main()
