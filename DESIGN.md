@@ -16,28 +16,25 @@ It is an app, not a landing page. Layout stays predictable where people work
 
 ## The scene (background)
 
-A city skyline at the user's local time, drawn on a `<canvas>` and fixed behind
-the UI.
-
-This is a hand-built illustration on purpose. A photo cannot show every hour of
-the day, and the whole point of the scene is that it changes with the clock.
+A real photo of a city skyline (river, park, towers) that follows the user's local
+time. It sits fixed behind the UI.
 
 | Layer | Behaviour |
 |---|---|
-| Sky | Vertical gradient blended between 10 keyframes (00:00, 05:00, 06:15, 07:30, 10:00, 13:00, 17:00, 19:00, 20:30, 22:00). Re-evaluated every 30 s. |
-| Sun / moon | Sun follows an arc from 06:00 to 20:00, moon from 20:00 to 06:00. Soft radial glow. |
-| Stars | Visible when the scene is dark. They twinkle, and a shooting star crosses the sky every 20-40 s. |
-| Clouds | Soft, slowly drifting shapes. Dimmer at night. |
-| Skyline | Three layers of buildings (far, mid, near), generated from a fixed seed so the city looks the same on every visit. Far layers fade into the horizon haze. |
-| Windows | Each window has its own threshold, so more lights come on as it gets darker. Lights switch on and off slowly, like people moving between rooms. |
-| Life | Flocks of birds fly across the sky during the day. At night a plane with blinking lights crosses instead. |
-| Parallax | The layers shift a few pixels with the pointer, so the city has depth. |
+| Photos | Four Unsplash shots, bundled as WebP in `web/src/assets/scene/` (credits in `CREDITS.md`): day, golden hour, sunset (Frankfurt) and night. Each photo holds its part of the day (night until 05:00, dawn and sunset 05:30-06:30 and 19:15-20:30, golden 07:00-09:00 and 17:30-18:45, day 09:30-17:00). The crossfades between them last 30 min, because different shots ghost if they are blended for longer. Opacity is re-evaluated every 30 s. |
+| Drift | A slow Ken Burns zoom and pan (70 s, alternating), done in CSS. |
+| Parallax | The photo stack shifts up to 14 px with the pointer. |
+| Life | A canvas over the photos: flocks of birds with flapping wings during the day. At night, a plane with blinking lights and an occasional shooting star near the top edge. There are no static stars, because the night photo's towers reach the top of the frame. |
+| Legibility | A dark gradient at the top and bottom keeps the headline and footer readable over any photo. |
+
+The scene uses photos because a hand-drawn skyline looked small and artificial.
+Realism was the goal, and it matches the reference the user picked.
 
 `?hour=21.5` in the URL overrides the clock. It is used for QA screenshots and
 to preview other times of day.
 
-Reduced motion (`prefers-reduced-motion: reduce`): the scene is drawn once and
-redrawn every 30 s. No birds, planes, parallax, twinkle or cloud drift.
+Reduced motion (`prefers-reduced-motion: reduce`): the photos still change with
+the hour. There is no Ken Burns, no parallax and no canvas animation.
 
 ## Layout
 
