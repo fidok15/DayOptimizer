@@ -66,7 +66,7 @@ redrawn every 30 s. No birds, planes, parallax, twinkle or cloud drift.
 
 | Token | Value | Use |
 |---|---|---|
-| `--glass` | `rgb(12 16 30 / .58)` | Panels (smoke glass) |
+| `--glass` | `rgb(12 16 30 / .72)` | Panels (smoke glass) |
 | `--glass-strong` | `rgb(12 16 30 / .82)` | Popovers, reduced-transparency fallback |
 | `--line` | `rgb(255 255 255 / .10)` | 1 px borders, hour lines |
 | `--ink` | `#f3f1ec` | Primary text |

@@ -95,6 +95,19 @@ approve it. Garmin is optional — if you have a watch, `/dayoptimizer:init`
 tells you to run `uv run dayoptimizer garmin login` in a separate terminal (it never
 asks for your Garmin password itself).
 
+### Web planner
+
+Prefer clicking to chatting? `uv run dayoptimizer web` opens a local planner at
+`http://127.0.0.1:8765/`: add, recolour or remove categories, mark them Fixed or
+Flexible, and draw your typical week on a day or week calendar. Changes autosave
+to `~/.dayoptimizer/config.local.yaml` (categories plus a `typical_week` section).
+The server only listens on localhost. `--port N` changes the port, `--no-open`
+skips opening a browser tab. The UI's design is documented in [DESIGN.md](DESIGN.md).
+
+Developing the UI: `cd web && npm install && npm run dev` (Vite proxies `/api` to
+a running `dayoptimizer web --no-open`); `npm run build` writes the bundle into
+`src/dayoptimizer/web_static/`, which is what the Python server serves.
+
 ## Commands (Claude Code plugin)
 
 | Command | What it does |
@@ -126,6 +139,7 @@ directory" before running any of these.
 | `uv run dayoptimizer garmin login` | Logs into Garmin Connect once and stores OAuth tokens (password is never persisted) |
 | `uv run dayoptimizer stats` | 14-day Garmin trends and suggested rule adjustments |
 | `uv run dayoptimizer apply --ids 3,4` | Applies pending fixed-event changes by id, after you've reviewed them |
+| `uv run dayoptimizer web [--port N] [--no-open]` | Opens the local week planner in the browser (see [Web planner](#web-planner)) |
 | `uv run dayoptimizer chat` | Terminal chat loop — a CLI alternative to the Claude Code plugin, not a local/offline one (see note below) |
 
 Because EventKit needs the TCC bundle (see below), `plan`, `apply`, `check`,
