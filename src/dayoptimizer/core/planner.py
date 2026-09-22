@@ -80,6 +80,7 @@ def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
     return rules.is_movable(calendar) or _is_planner_managed(title, rules)
 
 def resolve_conflicts(events, rules, day_start, day_end):
+    midnight = datetime.combine(day_start.date(), time(0)).astimezone()
     changes: list[PlannedChange] = []
     change_index: dict[str, int] = {}  # event_id -> index in `changes`; later bumps overwrite, not stack
     ordered = sorted(events, key=lambda e: e.start)
@@ -148,12 +149,12 @@ def resolve_conflicts(events, rules, day_start, day_end):
                 stay = conflict if mover is ev else ev
             duration = mover.end - mover.start
             others = [p for p in placed if p is not mover] + ([ev] if mover is not ev else [])
-            slots = free_slots(others, day_start, day_end)
-            new_start = _find_slot(slots, duration, not_before=stay.end)
-            moved_earlier = False
-            if new_start is None:
-                new_start = _find_slot(slots, duration, not_before=day_start)
-                moved_earlier = new_start is not None and new_start < mover.start
+            # the user's notes bind a moved block as much as a placed one
+            others += _blocked_events(rules, day_start.date(), midnight, mover.calendar)
+            # nearest free time either side: dinner 19:30 shoved to 22:30 when
+            # 18:00 is free is no plan anyone would draw
+            new_start = _nearest_start(others, mover.start, duration, day_start, day_end)
+            moved_earlier = new_start is not None and new_start < mover.start
             if new_start is None:
                 if requires_approval:
                     record(PlannedChange(
@@ -173,7 +174,7 @@ def resolve_conflicts(events, rules, day_start, day_end):
             else:
                 reason = f"collides with '{stay.title}' ({stay.calendar})"
                 if moved_earlier:
-                    reason += "; no room after the conflict — moved earlier"
+                    reason += " — moved earlier"
             record(PlannedChange(
                 kind="move", category=mover.calendar, title=mover.title,
                 reason=reason, event_id=mover.id, new_start=moved.start, new_end=moved.end,
