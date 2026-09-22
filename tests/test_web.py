@@ -187,3 +187,17 @@ def test_category_calendars_report(monkeypatch):
     assert web.create_category_calendars() == {"created": ["Choir", "Read"], "error": "Gym: nope"}
     monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "NO_ACCESS\n")
     assert "blocked" in web.create_category_calendars()["error"]
+
+
+def test_notes_roundtrip_and_validation(server):
+    hdr = {"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{server}"}
+    state = _request(server, "GET")[1]
+    assert state["notes"] == ""
+    payload = {"categories": state["categories"], "typical_week": {}, "notes": "  no food before 11  "}
+    assert _request(server, "PUT", payload, hdr)[1]["notes"] == "no food before 11"
+    assert yaml.safe_load(paths.user_config_path().read_text())["notes"] == "no food before 11"
+    assert _request(server, "PUT", {**payload, "notes": "x" * 2001}, hdr)[0] == 422
+    assert _request(server, "PUT", {**payload, "notes": 5}, hdr)[0] == 422
+    # clearing the notes drops the key instead of storing an empty string
+    assert _request(server, "PUT", {**payload, "notes": "   "}, hdr)[1]["notes"] == ""
+    assert "notes" not in yaml.safe_load(paths.user_config_path().read_text())

@@ -27,5 +27,11 @@ def test_saved_routine_is_private_and_reaches_the_llm_prompt():
     assert "Push day" in request_prompt("gym tomorrow", "2026-09-22", "Tuesday 09:00", ["Gym"])
 
 
+def test_notes_reach_the_brief():
+    text = render_routine(CATS, {"mon": WORK}, "  no hard training two days in a row  ")
+    assert text.rstrip().endswith("## What matters to me\nno hard training two days in a row")
+    assert "What matters" not in render_routine(CATS, {"mon": WORK}, "   ")
+
+
 def test_prompt_without_routine():
     assert "routine" not in request_prompt("x", "2026-09-22", "Tuesday 09:00", ["Gym"])

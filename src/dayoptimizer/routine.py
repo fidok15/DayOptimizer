@@ -16,7 +16,7 @@ def _day_label(days: list[str]) -> str:
     return ", ".join(NAMES[d] for d in days)
 
 
-def render_routine(categories: dict, week: dict) -> str:
+def render_routine(categories: dict, week: dict, notes: str = "") -> str:
     """Compact, LLM-friendly description of the routine. Days with the same
     blocks are merged so a regular work week costs one section, not five."""
     lines = ["# My typical week", "",
@@ -37,6 +37,8 @@ def render_routine(categories: dict, week: dict) -> str:
             lines.append("(nothing drawn)")
         for start, end, cat, title in key:
             lines.append(f"{start}-{end} {cat}" + (f": {title}" if title and title != cat else ""))
+    if notes and notes.strip():
+        lines += ["", "## What matters to me", notes.strip()]
     return "\n".join(lines) + "\n"
 
 

@@ -3,7 +3,7 @@ import { CalendarCheck, CheckCircle, CircleNotch, FloppyDisk, Terminal, WarningC
 import { ApiError, saveRoutine, type RoutineSaved } from "../lib/api";
 import { WEEKDAYS, type Categories, type Week } from "../lib/types";
 
-export default function SaveRoutine({ categories, week }: { categories: Categories; week: Week }) {
+export default function SaveRoutine({ categories, week, notes }: { categories: Categories; week: Week; notes: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RoutineSaved | null>(null);
@@ -15,7 +15,7 @@ export default function SaveRoutine({ categories, week }: { categories: Categori
     setError("");
     setResult(null);
     dialog.current?.showModal();
-    saveRoutine(categories, week)
+    saveRoutine(categories, week, notes)
       .then(setResult)
       .catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't save. Try again."))
       .finally(() => setBusy(false));

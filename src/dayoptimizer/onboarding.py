@@ -89,6 +89,7 @@ class UserConfig(BaseModel):
     transport_routes: dict[str, Annotated[int, Field(ge=0, le=600)]] = {}
     holiday_calendars: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = Field(
         default=None, max_length=10)
+    notes: str | None = Field(default=None, max_length=2000)
     typical_week: dict[Weekday, Annotated[list[TemplateBlock], Field(max_length=48)]] | None = None
 
     @field_validator("holiday_calendars")
@@ -111,7 +112,7 @@ def validate_config(yaml_text: str) -> UserConfig:
     if not isinstance(data, dict):
         raise ConfigError("Config must be a YAML mapping (top-level keys: "
                           "categories, day_rules, transport_routes, "
-                          "holiday_calendars, typical_week).")
+                          "holiday_calendars, typical_week, notes).")
     problems: list[str] = []
     categories = data.get("categories")
     non_string_names: list[object] = []
