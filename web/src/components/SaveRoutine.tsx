@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { CalendarCheck, CheckCircle, CircleNotch, FloppyDisk, Terminal, WarningCircle, X } from "@phosphor-icons/react";
+import { CalendarCheck, CheckCircle, CircleNotch, FloppyDisk, Gavel, NotePencil, Terminal,
+         WarningCircle, X } from "@phosphor-icons/react";
 import { ApiError, saveRoutine, type RoutineSaved } from "../lib/api";
 import { WEEKDAYS, type Categories, type Week } from "../lib/types";
 
@@ -88,6 +89,49 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
                     ? `Added to your Calendar app: ${result.calendars.created.join(", ")}.`
                     : "Every category already has its calendar in the Calendar app."}
                 </p>
+              )}
+              {result.notes.error ? (
+                <p role="alert" className="flex gap-2 rounded-[12px] border border-[#f4b860]/30 bg-[#f4b860]/10 p-2.5 text-sm leading-snug">
+                  <WarningCircle size={18} weight="bold" className="shrink-0 text-accent" aria-hidden />
+                  {result.notes.error}
+                </p>
+              ) : (
+                result.notes.rules.length > 0 && (
+                  <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-white/[0.03] p-3">
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <Gavel size={18} weight="bold" className="shrink-0 text-accent" aria-hidden />
+                      Rules I'll follow on my own
+                    </p>
+                    <ul className="flex flex-col gap-1 text-sm text-ink">
+                      {result.notes.rules.map((r) => (
+                        <li key={r} className="flex gap-2">
+                          <CheckCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-[#4fb286]" aria-hidden />
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs leading-snug text-ink-dim">
+                      Edit or remove these any time under <code className="font-mono">note_rules</code> in
+                      ~/.dayoptimizer/config.local.yaml.
+                    </p>
+                  </div>
+                )
+              )}
+              {result.notes.not_compiled.length > 0 && (
+                <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-white/[0.03] p-3">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <NotePencil size={18} weight="bold" className="shrink-0 text-ink-dim" aria-hidden />
+                    Kept as a note, not a rule
+                  </p>
+                  <ul className="flex flex-col gap-1 text-sm text-ink-dim">
+                    {result.notes.not_compiled.map((n) => (
+                      <li key={n}>"{n}"</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs leading-snug text-ink-dim">
+                    The planner can't enforce these, but your assistant reads them when you ask it for something.
+                  </p>
+                </div>
               )}
               <pre className="scroll-thin max-h-72 overflow-auto rounded-[12px] border border-line bg-black/30 p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
                 {result.text}

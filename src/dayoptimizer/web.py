@@ -6,7 +6,7 @@ API
   PUT /api/state  <- {categories, typical_week, notes}  (validated, then saved)
   POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
                     source calendar; the user maps calendars onto categories, nothing is saved)
-  POST /api/routine <- {categories, typical_week} -> {path, text, calendars}  (save, write the LLM
+  POST /api/routine <- {categories, typical_week, notes} -> {path, text, calendars, notes}  (save, write the LLM
                     brief, create a Calendar-app calendar per category)
   GET  /api/garmin          -> {connected}
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
@@ -171,7 +171,84 @@ def save_routine_brief(payload: object) -> dict:
     from dayoptimizer.routine import render_routine, save_routine
     state = write_state(payload)
     text = render_routine(state["categories"], state["typical_week"], state["notes"])
-    return {"path": save_routine(text), "text": text, "calendars": create_category_calendars()}
+    return {"path": save_routine(text), "text": text, "calendars": create_category_calendars(),
+            "notes": compile_notes(state["notes"], list(state["categories"]))}
+
+
+def _clean_rule(row: dict, categories: list[str]) -> dict | None:
+    """Guard the model's output: a category must be one the user really has
+    (models like to invent 'everything'), and keep_free needs a window, which
+    they sometimes send as `time`. None means the rule is unusable."""
+    row = {k: (v.replace("/no_think", "").strip() if isinstance(v, str) else v)
+           for k, v in row.items() if v is not None}
+    # a no-op limit is the model padding the schema, not something the user said
+    if (row.get("type"), row.get("time")) in (("not_before", "00:00"), ("not_after", "24:00")):
+        return None
+    # a time rule must come from a sentence that actually names a time: without
+    # digits the model invented it (e.g. "it's family time" -> all Sunday free)
+    if row.get("type") in ("not_before", "not_after", "keep_free") and not any(
+            c.isdigit() for c in str(row.get("source", ""))):
+        return None
+    category = row.get("category")
+    if category:
+        match = next((c for c in categories if c.lower() == str(category).lower()), None)
+        if match is None:
+            return None
+        row["category"] = match
+    if row.get("type") == "keep_free" and "start" not in row and "time" in row:
+        row["start"] = row.pop("time")
+    return row
+
+
+def split_notes(notes: str, limit: int = 20) -> list[str]:
+    """One sentence per line or per '.', '!', ';' — the compiler asks about each
+    separately, which a small local model gets right far more often than a whole
+    note at once, and it keeps every rule tied to the words it came from."""
+    import re
+    parts = [p.strip(" -•\t") for p in re.split(r"[\n.;!,]+", notes)]
+    return [p for p in parts if len(p) > 2][:limit]
+
+
+def compile_notes(notes: str, categories: list[str]) -> dict:
+    """Turn the free-text notes into rules the planner enforces on its own.
+    Done once, here, so planning needs no LLM. Never fails the save."""
+    from dayoptimizer.core.constraints import describe, parse_rules
+    from dayoptimizer.llm.backend import LLMUnavailable, make_backend
+    local = _local()
+    local.pop("note_rules", None)
+    if not notes.strip():
+        save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+        return {"rules": [], "not_compiled": [], "error": None}
+    try:
+        backend = make_backend(load_config_data(DEFAULT_CONFIG)["llm"])
+    except LLMUnavailable as exc:
+        return {"rules": [], "not_compiled": [], "error":
+                f"Your notes are saved, but turning them into rules needs a language model. {exc}"}
+    rows: list[dict] = []
+    unclear: list[str] = []
+    for sentence in split_notes(notes):
+        try:
+            compiled = backend.compile_notes(sentence, categories)
+        except Exception:
+            unclear.append(sentence)
+            continue
+        # the sentence we asked about is the source, whatever the model echoes back
+        mine = [_clean_rule({**row, "source": sentence}, categories) for row in compiled.rows()]
+        mine = [row for row in mine if row is not None and parse_rules([row])]
+        if mine:
+            rows += mine
+        else:
+            unclear.append(sentence)
+    # keep only rules the planner really enforces, so the config can't hold a dud
+    # rules dropped by dedupe (a second limit of the same kind) are reported too
+    kept = parse_rules(rows)
+    accepted = [row for row in rows if any(r.type == row["type"] and r.source == row["source"] for r in kept)]
+    dropped = [row["source"] for row in rows if row not in accepted]
+    if accepted:
+        local["note_rules"] = accepted
+    save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+    return {"rules": [describe(r) for r in parse_rules(accepted)],
+            "not_compiled": unclear + dropped, "error": None}
 
 
 def create_category_calendars() -> dict:

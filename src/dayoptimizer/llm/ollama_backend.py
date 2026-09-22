@@ -5,8 +5,9 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import (_REQUEST_SYSTEM, _SUMMARY_SYSTEM, DayRequest, LLMUnavailable,
-                                      format_changes, request_prompt)
+from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
+                                      DayRequest, LLMUnavailable, compile_prompt, format_changes,
+                                      request_prompt)
 
 
 def _host() -> str:
@@ -57,6 +58,10 @@ class OllamaBackend:
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories),
                          DayRequest.model_json_schema())
         return DayRequest.model_validate_json(raw)
+
+    def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
+        raw = self._chat(_NOTES_SYSTEM, compile_prompt(notes, categories), CompiledNotes.model_json_schema())
+        return CompiledNotes.model_validate_json(raw)
 
     def summarize_changes(self, changes: list[PlannedChange]) -> str:
         rendered = format_changes(changes)

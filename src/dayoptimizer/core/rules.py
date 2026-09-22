@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import time
 from pathlib import Path
 import yaml
+from dayoptimizer.core.constraints import parse_rules
 
 @dataclass
 class CategoryRule:
@@ -49,6 +50,7 @@ class Rules:
     gym_duration_minutes: int = 75
     day_start: time = time(6, 0)
     day_end: time = time(23, 0)
+    note_rules: list = field(default_factory=list)  # compiled from the user's notes
     respect_recovery: bool = True
     recovery_lighter_hours: int = 24
     recovery_skip_hours: int = 48
@@ -162,6 +164,7 @@ def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
         gym_duration_minutes=d.get("gym_duration_minutes", 75),
         day_start=day_start,
         day_end=day_end,
+        note_rules=parse_rules(data.get("note_rules")),
         respect_recovery=d.get("respect_recovery", True),
         recovery_lighter_hours=d.get("recovery_lighter_hours", 24),
         recovery_skip_hours=d.get("recovery_skip_hours", 48),
