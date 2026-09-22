@@ -65,9 +65,6 @@ def test_ask_adds_events_then_replans(monkeypatch, capsys):
             created.append((category, title, f"{start:%H:%M}", f"{end:%H:%M}"))
 
     class LLM:
-        def __init__(self, model):
-            pass
-
         def parse_request(self, text, today, now, categories):
             assert set(categories) == {"Meeting", "Gym"}
             return DayRequest(date="2026-09-22", events=[
@@ -78,9 +75,8 @@ def test_ask_adds_events_then_replans(monkeypatch, capsys):
             return "summary"
 
     cli.paths.ensure_private_dir()
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     monkeypatch.setattr(cli, "CalendarClient", Cal)
-    monkeypatch.setattr(cli, "AnthropicBackend", LLM)
+    monkeypatch.setattr(cli, "make_backend", lambda cfg: LLM())
     monkeypatch.setattr(cli, "_run_plan", lambda day, *a: planned.append(day) or ([], [], []))
     rules = type("R", (), {"categories": {"Meeting": None, "Gym": None}})()
     cli.cmd_ask(type("A", (), {"text": "spotkanie o 14, potem siłownia"})(), rules, {"llm": {"model": "m"}})
@@ -90,7 +86,9 @@ def test_ask_adds_events_then_replans(monkeypatch, capsys):
     assert "no 'Gym' calendar" in out and "summary" in out
 
 
-def test_ask_without_api_key_explains(monkeypatch, capsys):
+def test_ask_without_any_llm_explains(monkeypatch, capsys):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    cli.cmd_ask(type("A", (), {"text": "x"})(), None, None)
-    assert "ANTHROPIC_API_KEY" in capsys.readouterr().out
+    monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_running", lambda: False)
+    cli.cmd_ask(type("A", (), {"text": "x"})(), None, {"llm": {"backend": "auto"}})
+    out = capsys.readouterr().out
+    assert "ollama pull" in out and "ANTHROPIC_API_KEY" in out

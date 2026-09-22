@@ -40,5 +40,8 @@ transport_routes: {}
 holiday_calendars: ["Public Holidays", "Holidays"]
 
 llm:
-  backend: anthropic
-  model: claude-opus-4-8
+  # auto = local Ollama when it's running (free, private), else the Anthropic API
+  # when ANTHROPIC_API_KEY is set. Force one with: ollama | anthropic
+  backend: auto
+  ollama_model: qwen3:8b
+  model: claude-opus-4-8          # Anthropic model

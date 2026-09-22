@@ -13,8 +13,7 @@ from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import load_config_data, load_rules
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.anthropic_backend import AnthropicBackend
-from dayoptimizer.llm.backend import format_changes
+from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend
 
 console = Console()
 
@@ -222,21 +221,22 @@ def events_to_create(req, categories) -> tuple[list[tuple[str, str, datetime, da
 def cmd_ask(args, rules, config):
     """`dayoptimizer "meeting at 14 for an hour, then gym"`: add what the user
     said to the calendar, then replan the day(s) around it."""
-    import os
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        console.print("Requests in plain words need an LLM. Add ANTHROPIC_API_KEY=... to the .env file "
-                      "in the DayOptimizer folder. Without it, `dayoptimizer` still optimizes today.",
-                      markup=False, style="yellow")
+    try:
+        backend = make_backend(config["llm"])
+    except LLMUnavailable as exc:
+        console.print(f"{exc}\nWithout one, `dayoptimizer` still optimizes today.", markup=False, style="yellow")
         return
     calendar = CalendarClient()
     if not calendar.request_access():
         console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
         return
-    backend = AnthropicBackend(model=config["llm"]["model"])
     now = datetime.now()
     try:
         req = backend.parse_request(args.text, today=now.date().isoformat(), now=f"{now:%A %H:%M}",
                                     categories=list(rules.categories))
+    except LLMUnavailable as exc:
+        console.print(str(exc), markup=False, style="yellow")
+        return
     except Exception as exc:
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
