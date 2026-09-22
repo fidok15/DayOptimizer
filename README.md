@@ -151,7 +151,10 @@ asks for your Garmin password itself).
 builds each day from it: every block goes into the calendar at its usual time.
 If something already sits there, a Flexible block moves to the nearest free
 time and a Fixed one is only flagged, so your own events always win. Days you
-leave empty stay empty. Without a drawn week, generic rules from
+leave empty stay empty. Each category gets its own calendar in the Calendar app
+(in its colour) when you press **Save my routine**, and the planner creates any
+that are still missing when it first writes to them. Deleting a category never
+deletes its calendar. Without a drawn week, generic rules from
 `config.default.yaml` fill the day (meal windows, workouts, focus blocks).
 
 `dayoptimizer setup` (run automatically on first use) opens a local planner at

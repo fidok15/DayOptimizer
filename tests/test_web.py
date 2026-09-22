@@ -173,3 +173,17 @@ def test_http_save_routine_writes_state_and_brief(server):
     status, body = _request(server, "POST", payload, {"Content-Type": "application/json"}, "/api/routine")
     assert status == 200 and body["path"].endswith("routine.md") and "## Mon" in body["text"]
     assert read_state()["typical_week"] == {"mon": [BLOCK]}
+
+
+def test_category_calendars_report(monkeypatch):
+    import os
+    from dayoptimizer import mcp_server, web
+    assert "install.sh" in web.create_category_calendars()["error"]  # no bundle yet
+    exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("")
+    os.chmod(exe, 0o755)
+    monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "FAILED Gym: nope\nCREATED Choir\tRead\n")
+    assert web.create_category_calendars() == {"created": ["Choir", "Read"], "error": "Gym: nope"}
+    monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "NO_ACCESS\n")
+    assert "blocked" in web.create_category_calendars()["error"]

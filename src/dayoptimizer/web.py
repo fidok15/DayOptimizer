@@ -6,7 +6,8 @@ API
   PUT /api/state  <- {categories, typical_week}  (validated, then saved)
   POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
                     source calendar; the user maps calendars onto categories, nothing is saved)
-  POST /api/routine <- {categories, typical_week} -> {path, text}  (save + write the LLM brief)
+  POST /api/routine <- {categories, typical_week} -> {path, text, calendars}  (save, write the LLM
+                    brief, create a Calendar-app calendar per category)
   GET  /api/garmin          -> {connected}
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
   POST /api/garmin/mfa      <- {code}            -> {status: connected}
@@ -161,7 +162,27 @@ def save_routine_brief(payload: object) -> dict:
     from dayoptimizer.routine import render_routine, save_routine
     state = write_state(payload)
     text = render_routine(state["categories"], state["typical_week"])
-    return {"path": save_routine(text), "text": text}
+    return {"path": save_routine(text), "text": text, "calendars": create_category_calendars()}
+
+
+def create_category_calendars() -> dict:
+    """Make sure every category has a calendar in the Calendar app (through the
+    TCC bundle). Never fails the save: problems come back as a message."""
+    from dayoptimizer.mcp_server import _bundle_run
+    bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
+    if not os.access(bundle, os.X_OK):
+        return {"created": [], "error": "Calendar access isn't set up yet, so your categories aren't "
+                                        "in the Calendar app. Run scripts/install.sh once."}
+    out = _bundle_run(["calendars"])
+    if "NO_ACCESS" in out:
+        return {"created": [], "error": "macOS blocked calendar access. Allow DayOptimizer in System "
+                                        "Settings, Privacy & Security, Calendars."}
+    lines = out.splitlines()
+    created = next((l[len("CREATED "):].split("\t") for l in lines if l.startswith("CREATED")), None)
+    failed = [l[len("FAILED "):] for l in lines if l.startswith("FAILED ")]
+    if created is None:
+        return {"created": [], "error": "Couldn't add your categories to the Calendar app."}
+    return {"created": [c for c in created if c], "error": "; ".join(failed) or None}
 
 
 MFA_TTL = 300  # seconds a started Garmin login waits for its MFA code

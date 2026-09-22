@@ -69,13 +69,46 @@ class CalendarClient:
         if not ok:
             raise RuntimeError(f"Save failed: {err}")
 
+    def _find_calendar(self, name: str):
+        for cal in self._store.calendarsForEntityType_(self._EventKit.EKEntityTypeEvent):
+            if normalize_calendar(str(cal.title())) == name:
+                return cal
+        return None
+
+    def ensure_calendar(self, name: str, color: str | None = None) -> bool:
+        """Create a calendar called `name` unless one exists (emoji-prefixed
+        names count). Returns True when it was created. Tries the account new
+        events go to first, then other CalDAV accounts (iCloud), then On My
+        Mac: some accounts (e.g. Google) don't allow creating calendars."""
+        if self._find_calendar(name) is not None:
+            return False
+        EK = self._EventKit
+        cal = EK.EKCalendar.calendarForEntityType_eventStore_(EK.EKEntityTypeEvent, self._store)
+        cal.setTitle_(name)
+        if color:
+            from AppKit import NSColor
+            r, g, b = (int(color[i:i + 2], 16) / 255 for i in (1, 3, 5))
+            cal.setColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1.0))
+        default = self._store.defaultCalendarForNewEvents()
+        sources = [default.source()] if default is not None else []
+        sources += [s for s in self._store.sources() if s.sourceType() == EK.EKSourceTypeCalDAV]
+        sources += [s for s in self._store.sources() if s.sourceType() == EK.EKSourceTypeLocal]
+        errors = []
+        for source in sources:
+            cal.setSource_(source)
+            ok, err = self._store.saveCalendar_commit_error_(cal, True, None)
+            if ok:
+                return True
+            errors.append(str(err))
+        raise KeyError(f"Calendar '{name}' not found and couldn't be created ({'; '.join(errors) or 'no account'})")
+
     def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime) -> str:
         EventKit = self._EventKit
-        target = None
-        for cal in self._store.calendarsForEntityType_(EventKit.EKEntityTypeEvent):
-            if normalize_calendar(str(cal.title())) == calendar_name:
-                target = cal
-                break
+        target = self._find_calendar(calendar_name)
+        if target is None:
+            # a category the user set up without a calendar yet: make one
+            self.ensure_calendar(calendar_name)
+            target = self._find_calendar(calendar_name)
         if target is None:
             raise KeyError(f"Calendar '{calendar_name}' not found")
         ev = EventKit.EKEvent.eventWithEventStore_(self._store)

@@ -63,6 +63,13 @@ export const garminLogin = (email: string, password: string) =>
 export const garminMfa = (code: string) => post<{ status: "connected" }>("/api/garmin/mfa", { code });
 export const garminDisconnect = () => post<{ status: "disconnected" }>("/api/garmin/disconnect", {});
 
-/** Save the week and write the routine brief the LLM reads. Returns that brief. */
+export interface RoutineSaved {
+  path: string;
+  text: string;
+  calendars: { created: string[]; error: string | null };
+}
+
+/** Save the week, write the routine brief the LLM reads, and create a Calendar-app
+ * calendar for every category that lacks one. */
 export const saveRoutine = (categories: Categories, week: Week) =>
-  post<{ path: string; text: string }>("/api/routine", { categories, typical_week: toServerWeek(week) });
+  post<RoutineSaved>("/api/routine", { categories, typical_week: toServerWeek(week) });

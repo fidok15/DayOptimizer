@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
-import { CheckCircle, CircleNotch, FloppyDisk, Terminal, WarningCircle, X } from "@phosphor-icons/react";
-import { ApiError, saveRoutine } from "../lib/api";
+import { CalendarCheck, CheckCircle, CircleNotch, FloppyDisk, Terminal, WarningCircle, X } from "@phosphor-icons/react";
+import { ApiError, saveRoutine, type RoutineSaved } from "../lib/api";
 import { WEEKDAYS, type Categories, type Week } from "../lib/types";
 
 export default function SaveRoutine({ categories, week }: { categories: Categories; week: Week }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ path: string; text: string } | null>(null);
+  const [result, setResult] = useState<RoutineSaved | null>(null);
   const [error, setError] = useState("");
   const empty = WEEKDAYS.every((d) => week[d].length === 0);
 
@@ -58,7 +58,7 @@ export default function SaveRoutine({ categories, week }: { categories: Categori
           {busy && (
             <p className="flex items-center gap-2 text-sm text-ink-dim">
               <CircleNotch size={18} weight="bold" className="animate-spin text-accent motion-reduce:animate-none" aria-hidden />
-              Writing it down...
+              Writing it down and setting up your calendars...
             </p>
           )}
           {error && (
@@ -76,6 +76,19 @@ export default function SaveRoutine({ categories, week }: { categories: Categori
                   at <code className="font-mono text-[13px] text-ink-dim">{result.path}</code>:
                 </span>
               </p>
+              {result.calendars.error ? (
+                <p role="alert" className="flex gap-2 rounded-[12px] border border-[#f4b860]/30 bg-[#f4b860]/10 p-2.5 text-sm leading-snug">
+                  <WarningCircle size={18} weight="bold" className="shrink-0 text-accent" aria-hidden />
+                  {result.calendars.error}
+                </p>
+              ) : (
+                <p className="flex items-start gap-2 text-sm leading-snug">
+                  <CalendarCheck size={20} weight="bold" className="shrink-0 text-[#4fb286]" aria-hidden />
+                  {result.calendars.created.length
+                    ? `Added to your Calendar app: ${result.calendars.created.join(", ")}.`
+                    : "Every category already has its calendar in the Calendar app."}
+                </p>
+              )}
               <pre className="scroll-thin max-h-72 overflow-auto rounded-[12px] border border-line bg-black/30 p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
                 {result.text}
               </pre>

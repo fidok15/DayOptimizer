@@ -360,13 +360,29 @@ def cmd_sync(args, rules, config):
     Storage(paths.db_path()).sync_events(events, start, end)
     print(f"SYNCED {len(events)}")
 
+def cmd_calendars(args, rules, config):
+    """Create a calendar in the Calendar app for every category that lacks one.
+    Prints CREATED <names> / FAILED <name>: <why> lines for the caller."""
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        print("NO_ACCESS")
+        return
+    created = []
+    for name, cat in config["categories"].items():
+        try:
+            if calendar.ensure_calendar(name, (cat or {}).get("color")):
+                created.append(name)
+        except KeyError as exc:
+            print(f"FAILED {name}: {exc}")
+    print("CREATED " + "\t".join(created))
+
 def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
     serve(port=args.port, open_browser=not args.no_open)
 
 # Commands that read or write the calendar. macOS only lets the DayOptimizer app
 # bundle do that (TCC), so from a terminal they are re-run inside the bundle.
-CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add"}
+CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "calendars"}
 
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
@@ -422,6 +438,7 @@ def main(argv: list[str] | None = None):
     p_garmin = sub.add_parser("garmin", help="Garmin Connect account")
     garmin_sub = p_garmin.add_subparsers(dest="garmin_command", required=True)
     garmin_sub.add_parser("login", help="log in and store OAuth tokens (password is not persisted)")
+    sub.add_parser("calendars", help="create a calendar in the Calendar app for each category")
     p_sync = sub.add_parser("sync", help="copy calendar events into the local cache")
     p_sync.add_argument("--from", dest="start", required=True, help="first day (YYYY-MM-DD)")
     p_sync.add_argument("--days", type=int, default=7)
@@ -445,7 +462,7 @@ def main(argv: list[str] | None = None):
         console.print(_calendar_run(argv), markup=False)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "ask": cmd_ask, "add": cmd_add,
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add,
      "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":
