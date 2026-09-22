@@ -22,13 +22,13 @@ def test_roundtrip_stores_only_delta_and_keeps_other_keys():
     paths.ensure_private_dir()
     paths.user_config_path().write_text("day_rules:\n  gym_per_week: 2\n")
     cats = read_state()["categories"]
-    cats["Choir"] = {"movable": False, "priority": 7, "color": "#4f9d8a"}
+    cats["Choir"] = {"movable": False, "priority": 7, "color": "#4f9d8a", "emoji": "🎵"}
     del cats["Gym"]
     state = write_state(_state_payload(categories=cats, typical_week={"mon": [BLOCK], "tue": []}))
 
     local = yaml.safe_load(paths.user_config_path().read_text())
     assert local["day_rules"] == {"gym_per_week": 2}
-    assert local["categories"] == {"Gym": None, "Choir": {"movable": False, "priority": 7, "color": "#4f9d8a"}}
+    assert local["categories"] == {"Gym": None, "Choir": {"movable": False, "priority": 7, "color": "#4f9d8a", "emoji": "🎵"}}
     assert local["typical_week"] == {"mon": [BLOCK]}
     assert "Gym" not in state["categories"] and "Choir" in state["categories"]
     rules = load_rules(DEFAULT_CONFIG)

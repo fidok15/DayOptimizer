@@ -140,6 +140,7 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
                 }`}
               >
                 <span className="size-2.5 rounded-full" style={{ background: categoryColor(name, cat.color) }} />
+                {cat.emoji && <span aria-hidden>{cat.emoji}</span>}
                 {name}
               </button>
             );

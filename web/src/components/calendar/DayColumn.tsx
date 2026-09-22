@@ -58,6 +58,7 @@ function DayColumn({ day, tint, canCreate, blocks, categories, draft, draftColor
           block={b}
           day={day}
           color={categoryColor(b.category, categories[b.category]?.color)}
+          emoji={categories[b.category]?.emoji}
           lane={lanes.get(b.id) ?? { lane: 0, lanes: 1 }}
           fresh={b.id === freshId}
           dragging={b.id === draggingId}

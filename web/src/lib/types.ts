@@ -8,6 +8,7 @@ export interface Category {
   movable: boolean; // true = Flexible (planner moves it), false = Fixed
   priority: number; // 0-10
   color?: string; // #rrggbb
+  emoji?: string; // optional icon shown next to the name
 }
 export type Categories = Record<string, Category>;
 

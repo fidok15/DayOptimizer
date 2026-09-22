@@ -1,14 +1,12 @@
+// Headlines are about what DayOptimizer does with this page. No trailing periods: they read as slogans.
 const LINES = [
-  "Protect your peak hours. Spend them on what matters.",
-  "A planned day is a lighter day.",
-  "Deep work first. Everything else fits around it.",
-  "Rest is part of the plan, not a break from it.",
-  "Small blocks done daily beat big plans done never.",
-  "Give every hour a job, including the easy ones.",
-  "Energy is the budget. Spend it where it counts.",
-  "Decide once in the morning, not fifty times a day.",
-  "Sleep well tonight and tomorrow plans itself.",
-];
+  "Show us your rhythm, we'll shape your week",
+  "Your routine in, a smarter week out",
+  "Sketch your usual week once, get a fresh plan every Monday",
+  "Your habits set the rules, your calendar sets the scene",
+  "The week you want, fitted around the week you have",
+  "Teach it your days, let it optimize the rest",
+]
 
 /** One line per calendar day, stable for the whole day. */
 export const lineOfTheDay = (d = new Date()): string => {

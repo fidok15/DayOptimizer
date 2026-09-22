@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowsOutLineVertical, Lock, Minus, Plus, Trash } from "@phosphor-icons/react";
+import { ArrowsOutLineVertical, Lock, Minus, Plus, Smiley, Trash } from "@phosphor-icons/react";
 import { categoryColor, freshColor, SWATCHES } from "../lib/colors";
 import { durationLabel, toMin } from "../lib/time";
 import { WEEKDAYS, type Categories, type Category, type Week } from "../lib/types";
@@ -26,7 +26,8 @@ function MovableToggle({ movable, onToggle, name }: { movable: boolean; onToggle
   );
 }
 
-function Swatch({ name, color, onPick }: { name: string; color: string; onPick: (c: string) => void }) {
+/** Popover open state that closes on outside click or Escape. */
+function usePopover() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -41,6 +42,84 @@ function Swatch({ name, color, onPick }: { name: string; color: string; onPick: 
       document.removeEventListener("keydown", close);
     };
   }, [open]);
+  return { open, setOpen, ref };
+}
+
+const pop = {
+  initial: { opacity: 0, scale: 0.96 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.96 },
+  transition: { duration: 0.15 },
+};
+
+const EMOJI = [
+  "💼", "📚", "🏋️", "🍽️", "😴", "🚗", "🧘", "🎮",
+  "🎵", "🎨", "💻", "🧠", "📞", "🛒", "🧹", "❤️",
+  "☕", "🏃", "🎓", "🌿", "✍️", "📖", "🎬", "⭐",
+];
+/** First grapheme only, so "👍🏽" or "🏳️‍🌈" survive but pasted text doesn't. */
+const firstGrapheme = (s: string) => [...new Intl.Segmenter().segment(s.trim())][0]?.segment ?? "";
+
+function EmojiPicker({ value, onPick }: { value: string; onPick: (e: string) => void }) {
+  const { open, setOpen, ref } = usePopover();
+  const choose = (e: string) => {
+    onPick(e);
+    setOpen(false);
+  };
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={value ? `Icon ${value}. Change icon` : "Add an icon"}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`grid size-9 place-items-center rounded-[10px] text-lg ${ghost} ${value ? "" : "text-ink-dim"}`}
+      >
+        {value || <Smiley size={18} weight="bold" aria-hidden />}
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div {...pop} className="glass-strong absolute top-11 left-0 z-20 w-64 origin-top-left rounded-[10px] p-2">
+            <div className="grid grid-cols-8 gap-0.5">
+              {EMOJI.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  aria-label={`Icon ${e}`}
+                  aria-pressed={e === value}
+                  onClick={() => choose(e)}
+                  className={`grid size-7 place-items-center rounded-md text-base transition hover:bg-white/10 active:scale-[0.95] ${e === value ? "bg-white/15 ring-1 ring-accent" : ""}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                aria-label="Any emoji"
+                placeholder="Or type any emoji"
+                maxLength={16}
+                onChange={(e) => {
+                  const g = firstGrapheme(e.target.value);
+                  if (g) choose(g);
+                }}
+                className="h-8 min-w-0 flex-1 rounded-md border border-line bg-white/5 px-2 text-sm outline-none placeholder:text-ink-dim focus:border-accent"
+              />
+              {value && (
+                <button type="button" onClick={() => choose("")} className={`h-8 shrink-0 rounded-md px-2 text-xs text-ink-dim ${ghost}`}>
+                  None
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Swatch({ name, color, onPick }: { name: string; color: string; onPick: (c: string) => void }) {
+  const { open, setOpen, ref } = usePopover();
 
   return (
     <div ref={ref} className="relative shrink-0">
@@ -56,10 +135,7 @@ function Swatch({ name, color, onPick }: { name: string; color: string; onPick: 
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.15 }}
+            {...pop}
             className="glass-strong absolute top-9 left-0 z-20 grid origin-top-left grid-cols-5 gap-1.5 rounded-[10px] p-2"
           >
             {SWATCHES.map((s) => (
@@ -107,6 +183,7 @@ function Row(props: {
       <div className="flex items-center gap-1">
         <Swatch name={name} color={categoryColor(name, cat.color)} onPick={(color) => onPatch({ color })} />
         <span className="min-w-0 flex-1 truncate text-[15px] font-medium" title={name}>
+          {cat.emoji && <span aria-hidden className="mr-1.5">{cat.emoji}</span>}
           {name}
         </span>
         <MovableToggle name={name} movable={cat.movable} onToggle={() => onPatch({ movable: !cat.movable })} />
@@ -167,8 +244,9 @@ function Row(props: {
   );
 }
 
-function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (name: string, movable: boolean) => void }) {
+function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (name: string, movable: boolean, emoji: string) => void }) {
   const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("");
   const [movable, setMovable] = useState(true);
   const [error, setError] = useState("");
 
@@ -178,8 +256,9 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
     if (!n) return setError("Enter a name.");
     if (n.length > 40) return setError("Keep it under 40 characters.");
     if (Object.keys(categories).some((k) => k.toLowerCase() === n.toLowerCase())) return setError(`${n} already exists.`);
-    onAdd(n, movable);
+    onAdd(n, movable, emoji);
     setName("");
+    setEmoji("");
     setError("");
   };
 
@@ -189,6 +268,7 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
         New category name
       </label>
       <div className="flex items-center gap-1.5">
+        <EmojiPicker value={emoji} onPick={setEmoji} />
         <input
           id="new-category"
           value={name}
@@ -261,10 +341,10 @@ export default function Sidebar(props: {
 
         <AddCategory
           categories={categories}
-          onAdd={(name, movable) =>
+          onAdd={(name, movable, emoji) =>
             onChange((c) => {
               const taken = Object.entries(c).map(([n, cat]) => categoryColor(n, cat.color));
-              return { ...c, [name]: { movable, priority: 5, color: freshColor(name, taken) } };
+              return { ...c, [name]: { movable, priority: 5, color: freshColor(name, taken), ...(emoji && { emoji }) } };
             })
           }
         />

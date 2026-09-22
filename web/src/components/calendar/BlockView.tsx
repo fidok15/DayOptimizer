@@ -12,16 +12,17 @@ interface Props {
   day: Weekday;
   color: string;
   lane: Lane;
+  emoji?: string;
   fresh: boolean;
   dragging: boolean;
   drag: DragHandlers;
   onOpen: (id: string, day: Weekday) => void;
 }
 
-function BlockView({ block: b, day, color, lane, fresh, dragging, drag, onOpen }: Props) {
+function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, onOpen }: Props) {
   const s = toMin(b.start);
   const dur = toMin(b.end) - s;
-  const label = b.title || b.category;
+  const label = `${emoji ? `${emoji} ` : ""}${b.title || b.category}`;
   const compact = dur < 45;
   const time = `${b.start} - ${b.end}`;
   const ink = readableText(color);

@@ -20,6 +20,7 @@ class CategoryConfig(BaseModel):
     movable: bool
     priority: int = Field(default=5, ge=0, le=10)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    emoji: str | None = Field(default=None, min_length=1, max_length=8)
 
 
 class TemplateBlock(BaseModel):

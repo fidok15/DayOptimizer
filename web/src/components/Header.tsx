@@ -36,10 +36,10 @@ export default function Header(props: {
   return (
     <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div className="relative isolate min-w-0 max-w-2xl">
-        {/* soft smoke scrim: keeps text legible over any hour of the scene without a hard box */}
+        {/* radial scrim: darkens behind the text and fades to nothing, so no box edge shows over the scene */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -inset-x-4 -inset-y-5 md:-inset-x-6 -z-10 rounded-[32px] bg-night/55 blur-2xl"
+          className="pointer-events-none absolute -inset-x-16 -inset-y-12 -z-10 bg-[radial-gradient(ellipse_farthest-side_at_40%_55%,rgb(4_6_16/0.72),rgb(4_6_16/0.5)_45%,transparent)]"
         />
         <p className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-ink">
           {greeting(hour)}
@@ -53,13 +53,13 @@ export default function Header(props: {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
-            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 text-3xl leading-[1.1] font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.8),0_2px_10px_rgb(0_0_0/0.6),0_0_32px_rgb(4_6_16/0.7)] md:text-5xl"
+            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 text-3xl leading-[1.1] font-semibold tracking-tight [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-5xl"
           >
             {line}
           </motion.h1>
         </AnimatePresence>
-        <p className="mt-2 text-[15px] text-ink [text-shadow:0_1px_2px_rgb(0_0_0/0.8),0_0_16px_rgb(4_6_16/0.8)]">
-          Draw your typical week. DayOptimizer plans your days around it.
+        <p className="mt-2 max-w-[60ch] text-[15px] text-ink [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
+          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar.
         </p>
       </div>
 
