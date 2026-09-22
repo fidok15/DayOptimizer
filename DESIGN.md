@@ -16,25 +16,35 @@ It is an app, not a landing page. Layout stays predictable where people work
 
 ## The scene (background)
 
-A real photo of a city skyline (river, park, towers) that follows the user's local
-time. It sits fixed behind the UI.
+An illustrated riverside downtown at the user's local time: tall skyscrapers, a
+river with reflections, an arched footbridge and a park in the foreground. It is
+drawn on a `<canvas>` fixed behind the UI.
+
+The scene is hand-drawn on purpose, because it has to follow the clock. A
+photographic version was tried and rejected: it looked foreign next to the flat UI.
 
 | Layer | Behaviour |
 |---|---|
-| Photos | Four Unsplash shots, bundled as WebP in `web/src/assets/scene/` (credits in `CREDITS.md`): day, golden hour, sunset (Frankfurt) and night. Each photo holds its part of the day (night until 05:00, dawn and sunset 05:30-06:30 and 19:15-20:30, golden 07:00-09:00 and 17:30-18:45, day 09:30-17:00). The crossfades between them last 30 min, because different shots ghost if they are blended for longer. Opacity is re-evaluated every 30 s. |
-| Drift | A slow Ken Burns zoom and pan (70 s, alternating), done in CSS. |
-| Parallax | The photo stack shifts up to 14 px with the pointer. |
-| Life | A canvas over the photos: flocks of birds with flapping wings during the day. At night, a plane with blinking lights and an occasional shooting star near the top edge. There are no static stars, because the night photo's towers reach the top of the frame. |
-| Legibility | A dark gradient at the top and bottom keeps the headline and footer readable over any photo. |
+| Sky | Vertical gradient blended between 10 keyframes (00:00, 05:00, 06:15, 07:30, 10:00, 13:00, 17:00, 19:00, 20:30, 22:00). Re-evaluated every 30 s. |
+| Sun / moon | Sun follows an arc from 06:00 to 20:00, moon from 20:00 to 06:00. Soft glow. |
+| Stars | Visible when dark. They twinkle, with an occasional shooting star. |
+| Clouds | Soft, slowly drifting shapes. Dimmer at night. |
+| Skyline | Three layers (far, mid, near) of tall towers standing on the far bank (`GROUND`, 74 % of the height). Generated from a fixed seed, so the city is the same on every visit. Hand-placed landmarks: supertalls, an art-deco spire tower, glass towers. Far layers fade into the haze. |
+| Windows | Each window has its own threshold, so more lights come on as it gets darker. Some slowly switch on and off. |
+| Far bank | Promenade with trees and lamps that glow at night. |
+| River | Mirrors the sky, the skyline and the bank as shimmering horizontal strips. At night, lit windows become warm streaks on the water. |
+| Bridge | Arched footbridge over the river, with lamps and its own reflection. |
+| Park | Foreground bank: trees, a path, benches and lamps. |
+| Life | Birds by day, a plane and shooting stars at night, boats crossing the river. |
+| Parallax | Depth follows the pointer, from far towers (least) to the park (most). |
 
-The scene uses photos because a hand-drawn skyline looked small and artificial.
-Realism was the goal, and it matches the reference the user picked.
+The vertical composition lives in `web/src/scene/layout.ts`.
 
 `?hour=21.5` in the URL overrides the clock. It is used for QA screenshots and
 to preview other times of day.
 
-Reduced motion (`prefers-reduced-motion: reduce`): the photos still change with
-the hour. There is no Ken Burns, no parallax and no canvas animation.
+Reduced motion (`prefers-reduced-motion: reduce`): the scene is drawn once and
+redrawn every 30 s. There is no animation and no parallax.
 
 ## Layout
 
