@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
+import { CalendarPlus, Tag } from "@phosphor-icons/react";
 import { WEEKDAYS, WEEKDAY_LABEL, type Block, type Categories, type View, type Week, type Weekday } from "../lib/types";
 import { categoryColor } from "../lib/colors";
-import { fromMin, sceneHour, toMin, uid } from "../lib/time";
+import { durationLabel, fromMin, sceneHour, toMin, uid } from "../lib/time";
 import DayColumn from "./calendar/DayColumn";
 import Editor from "./calendar/Editor";
 import Toolbar from "./calendar/Toolbar";
-import { DRAFT_ID, GRID_H, HOUR_PX, PX_PER_MIN, todayKey } from "./calendar/geometry";
+import { DRAFT_ID, GRID_H, HOUR_PX, PX_PER_MIN, SURFACE, todayKey } from "./calendar/geometry";
 import { useGridDrag, type Preview } from "./calendar/useGridDrag";
 
 interface Props {
@@ -23,9 +24,15 @@ interface Props {
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const GRID_BG = {
   height: GRID_H,
+  backgroundColor: SURFACE,
   backgroundImage: `repeating-linear-gradient(to bottom,
-    var(--color-line) 0 1px, transparent 1px ${HOUR_PX / 2}px,
-    rgb(255 255 255 / 0.04) ${HOUR_PX / 2}px ${HOUR_PX / 2 + 1}px, transparent ${HOUR_PX / 2 + 1}px ${HOUR_PX}px)`,
+    rgb(255 255 255 / 0.11) 0 1px, transparent 1px ${HOUR_PX / 2}px,
+    rgb(255 255 255 / 0.045) ${HOUR_PX / 2}px ${HOUR_PX / 2 + 1}px, transparent ${HOUR_PX / 2 + 1}px ${HOUR_PX}px)`,
+};
+
+const dayTotal = (blocks: Block[]) => {
+  const m = blocks.reduce((t, b) => t + toMin(b.end) - toMin(b.start), 0);
+  return m ? durationLabel(m) : "0h";
 };
 
 /** Blocks of `d` with the in-flight move/resize applied, so only affected days get a new array. */
@@ -136,44 +143,66 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
   const days = view === "week" ? WEEKDAYS : [day];
   const weekEmpty = WEEKDAYS.every((d) => week[d].length === 0) && !preview;
   const draftColor = newCat ? categoryColor(newCat, categories[newCat]?.color) : "#f4b860";
-  const hintTop = toMin(dayStart) * PX_PER_MIN + 3 * HOUR_PX;
+
+  const addFirstBlock = () => {
+    if (!newCat) return;
+    const id = uid();
+    const el = scrollRef.current;
+    if (el) el.scrollTop = Math.max(0, 8 * HOUR_PX);
+    onChange((w) => ({ ...w, [today]: [...w[today], { id, start: "09:00", end: "10:00", category: newCat, title: "" }] }));
+    if (view === "day") onDayChange(today);
+    setFreshId(id);
+    setEditing(id);
+  };
 
   return (
     <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-[20px] p-4 md:p-5">
       <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} />
 
+      <div className="relative">
       <motion.div
         ref={scrollRef}
         layoutScroll
-        className="scroll-thin relative max-h-[calc(100dvh-260px)] min-h-[420px] select-none overflow-auto rounded-[14px] border border-line"
+        className="scroll-thin relative h-[70dvh] min-h-[420px] select-none overflow-auto rounded-[14px] border border-line lg:h-[calc(100dvh-330px)]"
+        style={{ backgroundColor: SURFACE }}
       >
         <div data-cal-grid className={view === "week" ? "min-w-[760px]" : ""}>
           {view === "week" && (
-            <div className="sticky top-0 z-40 grid grid-cols-[3.25rem_1fr] border-b border-line bg-[var(--glass-strong)] backdrop-blur-md">
-              <div className="sticky left-0 bg-[var(--glass-strong)]" />
+            <div className="sticky top-0 z-40 grid grid-cols-[3.5rem_1fr] border-b border-line" style={{ backgroundColor: SURFACE }}>
+              <div className="sticky left-0" style={{ backgroundColor: SURFACE }} />
               <div className="grid grid-cols-7">
                 {WEEKDAYS.map((d) => (
                   <div
                     key={d}
-                    className={`flex items-center justify-center gap-1.5 border-l border-line py-2 text-sm ${
-                      d === today ? "font-medium text-accent" : "text-ink-dim"
+                    className={`flex flex-col items-center gap-0.5 border-l border-line py-2 ${
+                      d === today ? "bg-accent/10" : ""
                     }`}
                   >
-                    {WEEKDAY_LABEL[d]}
-                    {d === today && <span className="sr-only">(today)</span>}
+                    <span
+                      className={`rounded-full px-2 text-sm font-medium ${
+                        d === today ? "bg-accent text-night" : "text-ink"
+                      }`}
+                    >
+                      {WEEKDAY_LABEL[d]}
+                      {d === today && <span className="sr-only"> (today)</span>}
+                    </span>
+                    <span className="font-mono text-[11px] text-ink-dim">
+                      <span className="sr-only">Planned: </span>
+                      {dayTotal(week[d])}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-[3.25rem_1fr]">
-            <div aria-hidden className="sticky left-0 z-30 bg-[var(--glass-strong)]" style={{ height: GRID_H }}>
+          <div className="grid grid-cols-[3.5rem_1fr]">
+            <div aria-hidden className="sticky left-0 z-30 border-r border-line" style={{ height: GRID_H, backgroundColor: SURFACE }}>
               <div className="relative h-full">
                 {HOURS.map((h) => (
                   <span
                     key={h}
-                    className={`absolute right-2 font-mono text-[11px] text-ink-dim ${h === 0 ? "" : "-translate-y-1/2"}`}
+                    className={`absolute right-2 font-mono text-xs text-ink-dim ${h === 0 ? "" : "-translate-y-1/2"}`}
                     style={{ top: h === 0 ? 2 : h * HOUR_PX }}
                   >
                     {String(h).padStart(2, "0")}:00
@@ -191,6 +220,8 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
                 <DayColumn
                   key={d}
                   day={d}
+                  tint={d === today ? "today" : d === "sat" || d === "sun" ? "weekend" : null}
+                  canCreate={hasCats && !editing && !preview}
                   blocks={shownBlocks(week, d, preview)}
                   categories={categories}
                   draft={preview?.id === DRAFT_ID && preview.day === d ? preview : null}
@@ -202,21 +233,36 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
                   onOpen={openEditor}
                 />
               ))}
-
-              {(!hasCats || weekEmpty) && (
-                <p
-                  className="pointer-events-none absolute inset-x-4 z-10 text-center text-sm text-ink-dim"
-                  style={{ top: hintTop }}
-                >
-                  {hasCats
-                    ? "Drag on a day to add your first block"
-                    : "Add a category in the sidebar first. Every block needs one."}
-                </p>
-              )}
             </div>
           </div>
         </div>
       </motion.div>
+
+      {(!hasCats || (weekEmpty && !editing)) && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center p-4">
+          <div className="glass-strong pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-[20px] px-6 py-6 text-center shadow-2xl">
+            <span className="grid size-11 place-items-center rounded-full bg-accent/15 text-accent">
+              {hasCats ? <CalendarPlus weight="bold" size={22} /> : <Tag weight="bold" size={22} />}
+            </span>
+            <h2 className="text-base font-medium text-ink">{hasCats ? "Your week is empty" : "No categories yet"}</h2>
+            <p className="text-sm text-ink-dim">
+              {hasCats
+                ? "Drag on any day to draw a block, or click an empty slot to add one hour."
+                : "Add a category in the sidebar first. Every block needs one."}
+            </p>
+            {hasCats && (
+              <button
+                type="button"
+                onClick={addFirstBlock}
+                className="mt-1 flex min-h-9 items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-night transition active:scale-[0.98]"
+              >
+                <CalendarPlus weight="bold" size={16} /> Add first block
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      </div>
 
       {createPortal(
         <AnimatePresence>

@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Check, Trash } from "@phosphor-icons/react";
 import type { Block, Categories } from "../../lib/types";
 import { categoryColor } from "../../lib/colors";
-import { DAY_MIN, fromMin, toMin } from "../../lib/time";
+import { DAY_MIN, durationLabel, fromMin, toMin } from "../../lib/time";
 import { clamp, normalizeRange } from "./geometry";
 
 interface Props {
@@ -48,8 +48,17 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
     let left = r.right + 10;
     if (left + W > vw - M) left = r.left - 10 - W;
     if (left < M) left = clamp(r.right - W - 8, M, vw - W - M);
-    setPos({ left, top: clamp(r.top, M, Math.max(M, vh - pop.offsetHeight - M)) });
+    setPos({ left: clamp(left, M, Math.max(M, vw - W - M)), top: clamp(r.top, M, Math.max(M, vh - pop.offsetHeight - M)) });
   }, [block.id, sheet]);
+
+  // A resize could push the popover off-screen; closing is simpler and safe (edits are already applied).
+  // (Not for the mobile sheet: the on-screen keyboard fires resize while typing.)
+  useEffect(() => {
+    if (sheet) return;
+    const onResize = () => onClose(false);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [onClose, sheet]);
 
   useEffect(() => {
     titleRef.current?.focus({ preventScroll: true });
@@ -98,7 +107,8 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
   };
 
   const inputCls =
-    "w-full rounded-[10px] border border-line bg-white/5 px-3 py-2 text-sm text-ink outline-none focus:border-accent/60";
+    "w-full rounded-[10px] border border-white/20 bg-white/[0.06] px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-dim/70 focus:border-accent";
+  const labelCls = "text-xs font-medium text-ink-dim";
 
   return (
     <motion.div
@@ -109,13 +119,13 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: "spring", stiffness: 400, damping: 32 }}
-      className={`glass-strong fixed z-50 flex flex-col gap-4 p-4 shadow-2xl ${
+      className={`glass-strong scroll-thin fixed z-50 flex max-h-[calc(100dvh-24px)] flex-col gap-4 overflow-y-auto p-4 shadow-2xl ${
         sheet ? "inset-x-0 bottom-0 rounded-t-[20px] pb-6" : "rounded-[20px]"
       }`}
       style={sheet ? undefined : { width: W, left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
     >
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-xs text-ink-dim">Category</legend>
+        <legend className={`mb-2 ${labelCls}`}>Category</legend>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(categories).map(([name, cat]) => {
             const active = name === block.category;
@@ -125,11 +135,11 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
                 type="button"
                 aria-pressed={active}
                 onClick={() => onUpdate({ category: name })}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition active:scale-[0.98] ${
-                  active ? "border-transparent bg-white/10 text-ink ring-2 ring-accent" : "border-line text-ink-dim hover:text-ink"
+                className={`flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[13px] transition active:scale-[0.98] ${
+                  active ? "border-transparent bg-white/15 font-medium text-ink ring-2 ring-accent" : "border-white/20 text-ink hover:bg-white/10"
                 }`}
               >
-                <span className="size-2 rounded-full" style={{ background: categoryColor(name, cat.color) }} />
+                <span className="size-2.5 rounded-full" style={{ background: categoryColor(name, cat.color) }} />
                 {name}
               </button>
             );
@@ -138,7 +148,7 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
       </fieldset>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${uidBase}-title`} className="text-xs text-ink-dim">Title</label>
+        <label htmlFor={`${uidBase}-title`} className={labelCls}>Title</label>
         <input
           id={`${uidBase}-title`}
           ref={titleRef}
@@ -155,7 +165,7 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
       <div className="flex flex-col gap-1.5">
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${uidBase}-start`} className="text-xs text-ink-dim">Start</label>
+            <label htmlFor={`${uidBase}-start`} className={labelCls}>Start</label>
             <input
               id={`${uidBase}-start`}
               type="time"
@@ -168,7 +178,7 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${uidBase}-end`} className="text-xs text-ink-dim">End</label>
+            <label htmlFor={`${uidBase}-end`} className={labelCls}>End</label>
             <input
               id={`${uidBase}-end`}
               type="time"
@@ -182,25 +192,32 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
             />
           </div>
         </div>
-        <p id={`${uidBase}-err`} aria-live="polite" className="min-h-4 text-xs text-[#f08a80]">{error}</p>
+        <p id={`${uidBase}-err`} aria-live="polite" className={`min-h-4 text-xs ${error ? "text-[#f5988f]" : "text-ink-dim"}`}>
+          {error || <>Duration: <span className="font-mono text-ink">{durationLabel(e - s)}</span></>}
+        </p>
       </div>
 
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={onDelete}
-          className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98]"
+          className="flex min-h-8 items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-sm text-ink transition hover:border-[#f5988f]/60 hover:text-[#f5988f] active:scale-[0.98]"
         >
           <Trash weight="bold" size={16} /> Delete
         </button>
         <button
           type="button"
           onClick={() => onClose(true)}
-          className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-night transition active:scale-[0.98]"
+          className="flex min-h-8 items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-night transition active:scale-[0.98]"
         >
           <Check weight="bold" size={16} /> Done
         </button>
       </div>
+      {!sheet && (
+        <p className="-mt-1 text-[11px] text-ink-dim">
+          <kbd className="font-mono text-ink">Esc</kbd> to close, <kbd className="font-mono text-ink">Del</kbd> to delete
+        </p>
+      )}
     </motion.div>
   );
 }

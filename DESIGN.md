@@ -65,7 +65,7 @@ redrawn every 30 s. There is no animation and no parallax.
 +----------------------------------------------------------------+
 ```
 
-- Grid: `grid-cols-[18rem_1fr]` from `lg` up. Below `lg` the sidebar sits above the calendar in a single column.
+- Grid: `grid-cols-[20rem_1fr]` from `lg` up. Below `lg` the sidebar sits above the calendar in a single column.
 - Page width is capped at `max-w-[1400px] mx-auto`. Viewport height uses `min-h-[100dvh]`.
 - On screens narrower than `md`, the planner opens in Day view by default. Week view scrolls sideways inside its own panel, never the whole page.
 
@@ -73,11 +73,11 @@ redrawn every 30 s. There is no animation and no parallax.
 
 | Token | Value | Use |
 |---|---|---|
-| `--glass` | `rgb(12 16 30 / .72)` | Panels (smoke glass) |
-| `--glass-strong` | `rgb(12 16 30 / .82)` | Popovers, reduced-transparency fallback |
-| `--line` | `rgb(255 255 255 / .10)` | 1 px borders, hour lines |
+| `--glass` | `rgb(11 14 26 / .94)` | Panels: nearly opaque smoke glass, so text never competes with the scene |
+| `--glass-strong` | `rgb(13 17 30 / .97)` | Popovers, reduced-transparency fallback |
+| `--line` | `rgb(255 255 255 / .13)` | 1 px borders, hour lines |
 | `--ink` | `#f3f1ec` | Primary text |
-| `--ink-dim` | `#b9bccb` | Secondary text (AA on `--glass` over the brightest sky) |
+| `--ink-dim` | `#c9ccd9` | Secondary text (AA on `--glass` over the brightest sky) |
 | `--accent` | `#f4b860` | The single UI accent (sunrise amber): primary buttons, focus ring, active toggle |
 
 Panels always use dark smoke glass with light text. The sky behind them goes from
@@ -141,7 +141,7 @@ changes under reduced motion.
 
 - **Loading:** skeleton panels in the same shape as the final layout.
 - **Server unreachable:** the calendar is replaced by a message and a Retry button.
-- **Empty week:** a hint inside the grid: "Drag on a day to add your first block".
+- **Empty week:** a card centred on the grid ("Your week is empty") with an "Add first block" button that creates a 1 h block today at 09:00.
 
 ## Accessibility
 

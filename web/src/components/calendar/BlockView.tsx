@@ -40,7 +40,7 @@ function BlockView({ block: b, day, color, lane, fresh, dragging, drag, onOpen }
       onClick={() => {
         if (!drag.takeSuppressClick()) onOpen(b.id, day);
       }}
-      className={`absolute z-[1] overflow-hidden rounded-[10px] text-left hover:brightness-110 ${
+      className={`absolute z-[1] overflow-hidden rounded-[10px] text-left transition-[filter,box-shadow] hover:z-10 hover:brightness-110 hover:ring-2 hover:ring-white/40 focus-visible:z-10 focus-visible:outline-offset-1 ${
         dragging ? "z-20 cursor-grabbing shadow-lg" : "cursor-grab"
       }`}
       style={{
@@ -50,20 +50,21 @@ function BlockView({ block: b, day, color, lane, fresh, dragging, drag, onOpen }
         width: `calc(${100 / lane.lanes}% - 4px)`,
         background: `${color}d9`,
         color: ink,
-        boxShadow: "inset 0 1px 0 rgb(255 255 255 / 0.25)",
+        // Darker left edge + hairline border give each block a crisp outline on the grid.
+        boxShadow: "inset 3px 0 0 rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.14)",
         touchAction: "none",
       }}
     >
-      <motion.span layout="position" transition={SPRING} className={`block px-2 ${dur <= 15 ? "py-0" : compact ? "py-[3px]" : "py-1"}`}>
+      <motion.span layout="position" transition={SPRING} className={`block pl-2.5 pr-1.5 ${dur <= 15 ? "py-0" : compact ? "py-[3px]" : "py-1"}`}>
         {compact ? (
-          <span className="flex items-baseline gap-1.5 truncate text-[10.5px] leading-none">
+          <span className={`flex items-baseline gap-1.5 truncate leading-none ${dur <= 15 ? "text-[11px]" : dur < 30 ? "text-[12px]" : "text-[13px]"}`}>
             <span className="truncate font-medium">{label}</span>
-            <span className="font-mono opacity-80">{b.start}</span>
+            <span className="font-mono text-[11px] opacity-85">{b.start}</span>
           </span>
         ) : (
           <>
-            <span className="block truncate text-[12px] font-medium leading-tight">{label}</span>
-            <span className="block font-mono text-[10.5px] opacity-80">{time}</span>
+            <span className="block truncate text-[13px] font-medium leading-tight">{label}</span>
+            <span className="block font-mono text-[11px] opacity-85">{time}</span>
           </>
         )}
       </motion.span>

@@ -38,7 +38,7 @@ export default function App() {
         {p.load === "loading" && <LoadingSkeleton />}
         {p.load === "error" && <LoadError message={p.loadError} onRetry={p.reload} />}
         {p.load === "ready" && (
-          <main className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[18rem_1fr]">
+          <main className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[20rem_1fr]">
             <motion.div {...rise(1)} className="order-2 min-w-0 lg:order-none">
               <Sidebar
                 categories={p.categories}

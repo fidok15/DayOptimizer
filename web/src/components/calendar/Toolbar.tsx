@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy, Eraser, Info } from "@phosphor-icons/react";
+import { Check, Copy, CursorClick, Eraser, X } from "@phosphor-icons/react";
 import { WEEKDAYS, WEEKDAY_LABEL, type View, type Week, type Weekday } from "../../lib/types";
 import { uid } from "../../lib/time";
 import { DAY_NAME, todayKey } from "./geometry";
@@ -13,10 +13,19 @@ interface Props {
   onChange: (fn: (w: Week) => Week) => void;
 }
 
+const HINT_KEY = "dayoptimizer.weekHintDismissed";
+const readHint = () => {
+  try {
+    return localStorage.getItem(HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
 const ghost =
-  "flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
+  "flex min-h-8 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
 const primary =
-  "flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-night transition active:scale-[0.98] disabled:opacity-40";
+  "flex min-h-8 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-night transition active:scale-[0.98] disabled:opacity-40";
 
 const PICKS: [string, Weekday[]][] = [
   ["Weekdays", ["mon", "tue", "wed", "thu", "fri"]],
@@ -25,12 +34,31 @@ const PICKS: [string, Weekday[]][] = [
 ];
 
 export default function Toolbar({ view, day, week, onDayChange, onChange }: Props) {
+  const [hintHidden, setHintHidden] = useState(readHint);
   if (view === "week") {
+    if (hintHidden) return null;
     return (
-      <p className="flex items-center gap-2 text-sm text-ink-dim">
-        <Info weight="bold" size={16} />
-        Drag on a day to add a block. Drag a block to move it, or its bottom edge to resize.
-      </p>
+      <div className="flex items-center gap-3 rounded-[14px] border border-line bg-white/[0.04] py-1 pl-3 pr-1 text-sm text-ink">
+        <CursorClick weight="bold" size={18} className="shrink-0 text-accent" />
+        <p className="flex-1">
+          Drag on a day to add a block. Drag to move, pull the bottom edge to resize.
+        </p>
+        <button
+          type="button"
+          aria-label="Dismiss hint"
+          onClick={() => {
+            setHintHidden(true);
+            try {
+              localStorage.setItem(HINT_KEY, "1");
+            } catch {
+              /* storage blocked: the hint just comes back next time */
+            }
+          }}
+          className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-white/10 hover:text-ink active:scale-[0.96]"
+        >
+          <X weight="bold" size={16} />
+        </button>
+      </div>
     );
   }
   const today = todayKey();
@@ -45,8 +73,8 @@ export default function Toolbar({ view, day, week, onDayChange, onChange }: Prop
             aria-selected={d === day}
             aria-label={DAY_NAME[d]}
             onClick={() => onDayChange(d)}
-            className={`rounded-full px-3 py-1.5 text-sm transition active:scale-[0.98] ${
-              d === day ? "bg-accent font-medium text-night" : "text-ink-dim hover:bg-white/5 hover:text-ink"
+            className={`min-h-8 rounded-full px-3 py-1.5 text-sm transition active:scale-[0.98] ${
+              d === day ? "bg-accent font-medium text-night" : "text-ink hover:bg-white/10"
             }`}
           >
             {WEEKDAY_LABEL[d]}

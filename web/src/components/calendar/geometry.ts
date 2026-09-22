@@ -1,10 +1,12 @@
 import { WEEKDAYS, type Block, type Weekday } from "../../lib/types";
 import { DAY_MIN, SNAP, toMin } from "../../lib/time";
 
-export const HOUR_PX = 44;
+export const HOUR_PX = 52;
 export const PX_PER_MIN = HOUR_PX / 60;
 export const GRID_H = 24 * HOUR_PX;
 export const DRAFT_ID = "__draft__";
+/** Opaque grid surface: the scene must never show through the hour cells. */
+export const SURFACE = "rgb(15 19 34)";
 
 export const DAY_NAME: Record<Weekday, string> = {
   mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday",
