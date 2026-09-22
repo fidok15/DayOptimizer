@@ -55,8 +55,10 @@ class OllamaBackend:
             raise LLMUnavailable("Ollama isn't running. Start it with:  brew services start ollama") from None
 
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
-        raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories),
-                         DayRequest.model_json_schema())
+        schema = DayRequest.model_json_schema()
+        # the grammar then can't produce a category the user doesn't have
+        schema["$defs"]["NewEvent"]["properties"]["category"]["enum"] = list(categories)
+        raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:

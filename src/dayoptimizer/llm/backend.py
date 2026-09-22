@@ -98,15 +98,25 @@ _REQUEST_SYSTEM = (
     "- One event per activity; never merge two activities or invent one. Example: 'dentist at 10, "
     "then work until 17' is TWO events: dentist 10:00 (no end given) and work from when the "
     "dentist ends until 17:00.\n"
-    "- category must be exactly one of the listed categories: pick the closest fit.\n"
+    "- category must be exactly one of the listed categories: pick the closest fit for what the "
+    "activity IS. A doctor's or dentist's visit, an errand or meeting a friend is not Work.\n"
     "- day is a word: today, tomorrow, day_after_tomorrow or a weekday name. A day said once "
     "('tomorrow dentist at 10, then work') applies to the events after it until another day is said. "
     "'morning'/'evening' alone do not change the day.\n"
     "- start_time is HH:MM, 24h. 'then'/'after that' starts when the previous event ends. "
     "If the time can't be worked out, leave start_time empty.\n"
     "- end_time is HH:MM when the user says until when ('until 17', 'from 20 to 22'). "
-    "Otherwise duration_minutes from the message ('about an hour' = 60); empty if not said.\n"
-    "- If the message isn't about the schedule, return no events and a short reply."
+    "Otherwise duration_minutes from the message: 'half an hour' = 30, 'about an hour' = 60, "
+    "'an hour and a half' / 'półtorej godziny' = 90, '2h' = 120; empty if not said.\n"
+    "- title is the activity alone, without its time or day.\n"
+    "- If the message isn't about the schedule, return no events and a short reply.\n"
+    "Example, with categories Important, Meeting, Work, Food, Gym:\n"
+    "'tomorrow dentist at 10 for half an hour, then work until 17, coffee with Tom at 18' -> "
+    '{"events":[{"title":"dentist","category":"Important","day":"tomorrow","start_time":"10:00",'
+    '"duration_minutes":30},{"title":"work","category":"Work","day":"tomorrow","start_time":"10:30",'
+    '"end_time":"17:00"},{"title":"coffee with Tom","category":"Meeting","day":"tomorrow",'
+    '"start_time":"18:00"}]}  (appointments and seeing people go to a category for such things, '
+    "not to Work or Food)"
 )
 
 _SUMMARY_SYSTEM = (
