@@ -154,7 +154,19 @@ time and a Fixed one is only flagged, so your own events always win. Days you
 leave empty stay empty. Each category gets its own calendar in the Calendar app
 (in its colour) when you press **Save my routine**, and the planner creates any
 that are still missing when it first writes to them. Deleting a category never
-deletes its calendar. Without a drawn week, generic rules from
+deletes its calendar.
+
+**Recovery-aware training.** With Garmin connected, the planner reads the
+watch's recovery time and readiness. Because recovery time only says when the
+body is ready for the next *hard* session, a training block is kept and flagged
+"keep it easy" rather than dropped, and dropped only when it would load what
+recent hard work already tired out (legs after a long run; upper body and desk
+work are unaffected). Which region a block trains is learned from the watch's
+own history — what it actually recorded in those hours, or in the same
+category's other blocks — so nothing needs tagging and non-training blocks are
+never touched. Thresholds live in `day_rules`
+(`recovery_lighter_hours`, `recovery_skip_hours`, `respect_recovery: false` to
+ignore all of it). Without a drawn week, generic rules from
 `config.default.yaml` fill the day (meal windows, workouts, focus blocks).
 
 `dayoptimizer setup` (run automatically on first use) opens a local planner at

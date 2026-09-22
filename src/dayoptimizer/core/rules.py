@@ -49,6 +49,9 @@ class Rules:
     gym_duration_minutes: int = 75
     day_start: time = time(6, 0)
     day_end: time = time(23, 0)
+    respect_recovery: bool = True
+    recovery_lighter_hours: int = 24
+    recovery_skip_hours: int = 48
     work_days: frozenset[int] = field(default_factory=lambda: _DEFAULT_WORK_DAYS)
     holiday_calendars: list[str] = field(default_factory=lambda: list(_DEFAULT_HOLIDAY_CALENDARS))
     # weekday (0 = Monday) -> the user's routine for that day, from the setup page
@@ -159,6 +162,9 @@ def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
         gym_duration_minutes=d.get("gym_duration_minutes", 75),
         day_start=day_start,
         day_end=day_end,
+        respect_recovery=d.get("respect_recovery", True),
+        recovery_lighter_hours=d.get("recovery_lighter_hours", 24),
+        recovery_skip_hours=d.get("recovery_skip_hours", 48),
         work_days=work_days,
         holiday_calendars=holiday_calendars,
         typical_week=_parse_typical_week(data.get("typical_week")),

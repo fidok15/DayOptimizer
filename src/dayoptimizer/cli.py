@@ -37,6 +37,32 @@ def _fetch_garmin(storage, day: str):
                       markup=False, style="yellow")
         return storage.get_garmin(day)
 
+_ACTIVITY_WEEKS = 8
+_ACTIVITY_REFRESH_HOURS = 6
+
+def _fetch_activities(storage, now):
+    """Recorded workouts of the last weeks, refreshed at most every few hours:
+    the planner needs them to tell which routine blocks are training, and what
+    they load. Garmin's API is rate-limited, so the cache does the work."""
+    from dayoptimizer.core.garmin import GarminClient, garmin_configured
+    since = now - timedelta(weeks=_ACTIVITY_WEEKS)
+    last = storage.get_state("activities_synced")
+    stale = True
+    if last:
+        try:
+            stale = (now - datetime.fromisoformat(last)) > timedelta(hours=_ACTIVITY_REFRESH_HOURS)
+        except ValueError:
+            stale = True
+    if garmin_configured() and stale:
+        try:
+            storage.save_activities(GarminClient().activities(since.date().isoformat(),
+                                                              now.date().isoformat()))
+            storage.set_state("activities_synced", now.isoformat())
+        except Exception as exc:
+            console.print(f"Garmin activities unavailable ({exc}) — using cached ones",
+                          markup=False, style="yellow")
+    return storage.activities_since(since)
+
 def _confirm(change):
     prompt = f"Fixed-event change: {change.category}: {change.title} — {change.reason}. Approve? [y/N] "
     try:
@@ -80,7 +106,9 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     week_events_raw = calendar.list_events(week_start_dt, week_start_dt + timedelta(days=7))
     week_events = [e for e in week_events_raw if not e.all_day]
     week_gym_count = sum(1 for e in week_events if e.calendar == "Gym" and e.start.date() != day)
-    changes = plan_day(day, events, garmin, rules, now=datetime.now().astimezone(),
+    now = datetime.now().astimezone()
+    changes = plan_day(day, events, garmin, rules, now=now,
+                       activities=_fetch_activities(storage, now),
                        tomorrow_first_fixed=min((e.start for e in tomorrow_fixed), default=None),
                        week_gym_count=week_gym_count,
                        # tonight's sleep usually starts after midnight — the planner
