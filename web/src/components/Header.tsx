@@ -44,10 +44,12 @@ export default function Header(props: {
   return (
     <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div className="relative isolate min-w-0 max-w-2xl">
-        {/* radial scrim: darkens behind the text and fades to nothing, so no box edge shows over the scene */}
+        {/* Soft blurred blob behind the text: an oval with a heavy blur has no
+            straight side to show as a seam over the scene (a gradient clipped
+            by its own box does, which is what this replaces). */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -inset-x-24 -inset-y-16 -z-10 bg-[radial-gradient(60%_60%_at_38%_50%,rgb(4_6_16/0.72),rgb(4_6_16/0.45)_45%,rgb(4_6_16/0.12)_75%,transparent_100%)]"
+          className="pointer-events-none absolute -inset-x-16 -inset-y-12 -z-10 rounded-[50%] bg-night/55 blur-2xl"
         />
         <p className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-ink">
           {greeting(hour)}
