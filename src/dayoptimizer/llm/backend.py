@@ -120,8 +120,9 @@ _REQUEST_SYSTEM = (
 )
 
 _SUMMARY_SYSTEM = (
-    "You summarize the changes to the user's day plan for them. In English, "
-    "concise, bulleted, what and why. Do not invent changes outside the list."
+    "You summarize the changes to the user's day plan for them: concise, bulleted, what and why. "
+    "Write in the language of the event titles and quoted notes. Copy every title and quoted "
+    "note exactly, never translate them. Do not invent changes or reasons outside the list."
 )
 
 
