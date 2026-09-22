@@ -269,6 +269,19 @@ def cmd_stats(args, rules, config):
     for tip in suggest_adjustments(stats, rules):
         console.print(f"- {tip}")
 
+def cmd_sync(args, rules, config):
+    """Copy N days of the calendar into the local cache (used by the web import,
+    which cannot touch EventKit itself). Prints a SYNCED marker the caller checks."""
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        print("No calendar access. Enable it in System Settings → Privacy & Security → Calendars.")
+        return
+    start = datetime.combine(date.fromisoformat(args.start), time(0, 0)).astimezone()
+    end = start + timedelta(days=args.days)
+    events = calendar.list_events(start, end)
+    Storage(paths.db_path()).sync_events(events, start, end)
+    print(f"SYNCED {len(events)}")
+
 def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
     serve(port=args.port, open_browser=not args.no_open)
@@ -298,12 +311,15 @@ def main():
     p_garmin = sub.add_parser("garmin", help="Garmin Connect account")
     garmin_sub = p_garmin.add_subparsers(dest="garmin_command", required=True)
     garmin_sub.add_parser("login", help="log in and store OAuth tokens (password is not persisted)")
+    p_sync = sub.add_parser("sync", help="copy calendar events into the local cache")
+    p_sync.add_argument("--from", dest="start", required=True, help="first day (YYYY-MM-DD)")
+    p_sync.add_argument("--days", type=int, default=7)
     p_web = sub.add_parser("web", help="open the week planner in the browser (localhost)")
     p_web.add_argument("--port", type=int, default=8765)
     p_web.add_argument("--no-open", action="store_true", help="do not open a browser tab")
     args = parser.parse_args()
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "web": cmd_web}[args.command](args, rules, config)
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":
     main()

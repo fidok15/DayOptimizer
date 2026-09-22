@@ -3,7 +3,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, WarningCircle } from "@phosphor-icons/react";
 import { greeting, lineOfTheDay } from "../lib/copy";
 import { fromMin, sceneHour } from "../lib/time";
-import type { SaveStatus, View } from "../lib/types";
+import type { Categories, SaveStatus, View, Week } from "../lib/types";
+import ImportCalendar from "./ImportCalendar";
 
 const VIEWS = [
   { id: "day" as const, label: "Day", Icon: CalendarBlank },
@@ -24,8 +25,10 @@ export default function Header(props: {
   saveStatus: SaveStatus;
   saveError: string;
   onRetry: () => void;
+  categories: Categories;
+  onImport: (week: Week, newCats: Categories, replace: boolean) => void;
 }) {
-  const { view, onViewChange, saveStatus, saveError, onRetry } = props;
+  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -64,6 +67,7 @@ export default function Header(props: {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <ImportCalendar categories={categories} onImport={onImport} />
         <div role="group" aria-label="View" className="glass inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;

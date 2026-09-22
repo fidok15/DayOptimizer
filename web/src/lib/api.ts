@@ -22,3 +22,15 @@ export const saveState = (categories: Categories, week: Week): Promise<ServerSta
     body: JSON.stringify({ categories, typical_week }),
   }).then(parse);
 };
+
+/** Read one calendar week (Monday date) as typical-week blocks. Nothing is saved server-side. */
+export const importWeek = async (weekStart: string): Promise<ServerState["typical_week"]> => {
+  const res = await fetch("/api/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ week_start: weekStart }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Import failed (${res.status})`);
+  return body.typical_week;
+};

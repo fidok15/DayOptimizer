@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsOutLineVertical, Lock, Minus, Plus, Smiley, Trash } from "@phosphor-icons/react";
 import { categoryColor, freshColor, SWATCHES } from "../lib/colors";
+import { usePopover } from "../lib/usePopover";
 import { durationLabel, toMin } from "../lib/time";
 import { WEEKDAYS, type Categories, type Category, type Week } from "../lib/types";
 
@@ -24,25 +25,6 @@ function MovableToggle({ movable, onToggle, name }: { movable: boolean; onToggle
       {movable ? "Flex" : "Fixed"}
     </button>
   );
-}
-
-/** Popover open state that closes on outside click or Escape. */
-function usePopover() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: Event) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-  return { open, setOpen, ref };
 }
 
 const pop = {

@@ -129,6 +129,12 @@ class Storage:
         todays = [e for e in events if e.start.date().isoformat() == date_iso]
         return sorted(todays, key=lambda e: e.start)
 
+    def events_between(self, start: datetime, end: datetime) -> list[Event]:
+        """Cached events overlapping [start, end), sorted by start."""
+        rows = self._conn.execute("SELECT data FROM events_cache").fetchall()
+        events = [_event_from_json(json.loads(r[0])) for r in rows]
+        return sorted((e for e in events if e.start < end and e.end > start), key=lambda e: e.start)
+
     def save_pending(self, change: PlannedChange) -> int:
         payload = asdict(change)
         for k in ("new_start", "new_end"):

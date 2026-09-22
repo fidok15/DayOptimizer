@@ -25,13 +25,15 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <Skyline />
       <div className="relative mx-auto flex min-h-[100dvh] max-w-[1400px] flex-col gap-5 px-4 py-5 md:px-8 md:py-8">
-        <motion.div {...rise(0)}>
+        <motion.div {...rise(0)} className="relative z-50">
           <Header
             view={view}
             onViewChange={setView}
             saveStatus={p.saveStatus}
             saveError={p.saveError}
             onRetry={p.retrySave}
+            categories={p.categories}
+            onImport={p.importBlocks}
           />
         </motion.div>
 

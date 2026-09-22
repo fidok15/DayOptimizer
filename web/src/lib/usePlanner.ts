@@ -99,12 +99,19 @@ export function usePlanner() {
     );
   }, []);
 
+  /** Merge imported blocks (and the categories they need) into the week. */
+  const importBlocks = useCallback((incoming: Week, newCats: Categories, replace: boolean) => {
+    touch();
+    setCategories((c) => ({ ...newCats, ...c }));
+    setWeek((w) => Object.fromEntries(WEEKDAYS.map((d) => [d, replace ? incoming[d] : [...w[d], ...incoming[d]]])) as Week);
+  }, []);
+
   const retrySave = useCallback(() => save(categories, week), [save, categories, week]);
 
   return {
     load, loadError, reload,
     categories, week, defaults, dayStart,
-    updateWeek, updateCategories, removeCategory,
+    updateWeek, updateCategories, removeCategory, importBlocks,
     saveStatus, saveError, retrySave,
   };
 }
