@@ -43,5 +43,6 @@ case ":$PATH:" in
 esac
 
 step "Done"
-echo "Open the planner any time with:  dayoptimizer"
-echo "Other commands:                  dayoptimizer --help"
+echo "Next: run  dayoptimizer  (first time it opens a page to set up your typical week)."
+echo "Then, day to day:  dayoptimizer                      optimize today"
+echo "                   dayoptimizer \"gym at 18, then...\"  tell it about your day"

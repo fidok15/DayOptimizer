@@ -3,12 +3,12 @@ from unittest.mock import MagicMock
 import anthropic
 import httpx
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import Intent, format_changes
+from dayoptimizer.llm.backend import DayRequest, NewEvent, format_changes
 from dayoptimizer.llm.anthropic_backend import AnthropicBackend
 
-def test_intent_model_validates():
-    i = Intent(action="add_event", date="2026-07-04", category="Learn", duration_minutes=60)
-    assert i.action == "add_event" and i.title is None
+def test_day_request_model_validates():
+    r = DayRequest(date="2026-07-04", events=[NewEvent(title="Standup", category="Work", date="2026-07-04")])
+    assert r.events[0].start_time is None and r.reply is None
 
 def test_format_changes_readable():
     ch = PlannedChange(kind="move", category="Gym", title="Workout",
@@ -17,17 +17,18 @@ def test_format_changes_readable():
     text = format_changes([ch])
     assert "Gym" in text and "17:00" in text and "Body Battery" in text
 
-def test_parse_intent_uses_messages_parse():
+def test_parse_request_sends_user_categories():
     backend = AnthropicBackend.__new__(AnthropicBackend)
     backend.model = "claude-opus-4-8"
     backend.client = MagicMock()
     fake = MagicMock()
-    fake.parsed_output = Intent(action="plan_day", date="2026-07-03")
+    fake.parsed_output = DayRequest(date="2026-07-03")
     backend.client.messages.parse.return_value = fake
-    intent = backend.parse_intent("plan my day today", today="2026-07-03")
-    assert intent.action == "plan_day"
+    req = backend.parse_request("plan my day", today="2026-07-03", now="09:00", categories=["Choir", "Work"])
+    assert req.date == "2026-07-03"
     kwargs = backend.client.messages.parse.call_args.kwargs
-    assert kwargs["output_format"] is Intent
+    assert kwargs["output_format"] is DayRequest
+    assert "Choir, Work" in kwargs["messages"][0]["content"]
     assert "temperature" not in kwargs  # rejected on Opus 4.7+
 
 def test_summarize_changes_uses_messages_create():

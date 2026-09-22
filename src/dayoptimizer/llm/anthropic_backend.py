@@ -1,13 +1,19 @@
 from __future__ import annotations
 import anthropic
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import Intent, format_changes
+from dayoptimizer.llm.backend import DayRequest, format_changes
 
-_INTENT_SYSTEM = (
-    "You are the intent parser for the DayOptimizer calendar assistant. "
-    "Turn the user's message into an intent. Calendar categories: Important, Meeting, "
-    "Work, Sleep, Gym, Food, Learn, Transport, Free time. "
-    "Return dates as ISO (YYYY-MM-DD) relative to the given 'today'."
+_REQUEST_SYSTEM = (
+    "You turn a user's message about their day into calendar events for the DayOptimizer "
+    "planner. The message may be in any language; keep event titles in that language.\n"
+    "- One event per thing the user says they will do at a known time. Never invent events.\n"
+    "- category must be exactly one of the listed categories: pick the closest fit.\n"
+    "- Dates are ISO (YYYY-MM-DD), resolved against 'today' ('tomorrow', weekday names...).\n"
+    "- start_time is HH:MM, 24h. 'then'/'after that' starts when the previous event ends. "
+    "If the time can't be worked out, leave start_time empty.\n"
+    "- duration_minutes from the message ('about an hour' = 60); empty if not said.\n"
+    "- date is the day the message is about (today if unclear).\n"
+    "- If the message isn't about the schedule, return no events and a short reply."
 )
 
 _SUMMARY_SYSTEM = (
@@ -20,13 +26,14 @@ class AnthropicBackend:
         self.model = model
         self.client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from env
 
-    def parse_intent(self, text: str, today: str) -> Intent:
+    def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
         response = self.client.messages.parse(
             model=self.model,
-            max_tokens=1024,
-            system=_INTENT_SYSTEM,
-            messages=[{"role": "user", "content": f"today: {today}\nmessage: {text}"}],
-            output_format=Intent,
+            max_tokens=2048,
+            system=_REQUEST_SYSTEM,
+            messages=[{"role": "user", "content": (
+                f"today: {today} ({now})\ncategories: {', '.join(categories)}\nmessage: {text}")}],
+            output_format=DayRequest,
         )
         return response.parsed_output
 

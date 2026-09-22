@@ -63,7 +63,7 @@ export default function Header(props: {
           </motion.h1>
         </AnimatePresence>
         <p className="mt-2 max-w-[60ch] text-[15px] text-ink [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
-          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar.
+          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar. Done? Close this tab and use <code className="rounded bg-black/30 px-1 font-mono text-[13px]">dayoptimizer</code> in your terminal.
         </p>
       </div>
 

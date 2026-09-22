@@ -1,19 +1,23 @@
 from __future__ import annotations
-from typing import Literal, Protocol
+from typing import Protocol
 from pydantic import BaseModel
 from dayoptimizer.core.models import PlannedChange
 
-class Intent(BaseModel):
-    action: Literal["plan_day", "move_event", "add_event", "show_plan", "question"]
-    date: str | None = None            # ISO YYYY-MM-DD
-    category: str | None = None        # calendar/category name
-    title: str | None = None
+class NewEvent(BaseModel):
+    title: str
+    category: str                      # one of the user's categories
+    date: str                          # ISO YYYY-MM-DD
+    start_time: str | None = None      # "HH:MM"; None when the user gave no usable time
     duration_minutes: int | None = None
-    start_time: str | None = None      # "HH:MM"
-    answer_hint: str | None = None     # for action=question: what the user asks about
+
+class DayRequest(BaseModel):
+    """What the user said about their day: events to add, and the day to replan."""
+    date: str                          # ISO YYYY-MM-DD, the day the message is about
+    events: list[NewEvent] = []
+    reply: str | None = None           # set when the message isn't about the schedule
 
 class LLMBackend(Protocol):
-    def parse_intent(self, text: str, today: str) -> Intent: ...
+    def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest: ...
     def summarize_changes(self, changes: list[PlannedChange]) -> str: ...
 
 def format_changes(changes: list[PlannedChange]) -> str:

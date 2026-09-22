@@ -80,16 +80,26 @@ scripts/install.sh
 
 The installer syncs the Python dependencies, builds the small app bundle macOS
 needs for calendar access, and puts a `dayoptimizer` command in `~/.local/bin`
-(adding it to your PATH if needed). From then on, in any terminal:
+(adding it to your PATH if needed).
+
+The first time you run `dayoptimizer` it opens a page in your browser where you
+draw your typical week: your categories, routines and habits. That page is only
+for this setup (reopen it with `dayoptimizer setup`). After that you use the
+terminal:
 
 ```bash
-dayoptimizer          # open the week planner in your browser
-dayoptimizer --help   # every other command
+dayoptimizer                                  # optimize today around what's in your calendar
+dayoptimizer "meeting at 14:00 for about an hour, then gym"
+dayoptimizer "tomorrow I'm off, dentist at 10"
+dayoptimizer --help                           # every other command
 ```
 
-Running `dayoptimizer` while the planner is already open just brings it up in
-the browser again. Rerun `scripts/install.sh` after `git pull`; it is safe to
-repeat.
+Plain-words requests use Claude: put `ANTHROPIC_API_KEY=...` in a `.env` file in
+the DayOptimizer folder. Bare `dayoptimizer` works without it. Commands that touch
+the calendar run through DayOptimizer's app bundle automatically (see
+[macOS calendar permission](#macos-calendar-permission-tcc)).
+
+Rerun `scripts/install.sh` after `git pull`; it is safe to repeat.
 
 **Why no Docker image?** DayOptimizer reads and writes Apple Calendar through
 macOS itself (EventKit, with the calendar permission granted to its app bundle),
@@ -128,8 +138,7 @@ asks for your Garmin password itself).
 
 ### Web planner
 
-Prefer clicking to chatting? `dayoptimizer` (or `uv run dayoptimizer web` in the
-checkout) opens a local planner at
+`dayoptimizer setup` (run automatically on first use) opens a local planner at
 `http://127.0.0.1:8765/`: add, recolour or remove categories, mark them Fixed or
 Flexible, and draw your typical week on a day or week calendar. Changes autosave
 to `~/.dayoptimizer/config.local.yaml` (categories plus a `typical_week` section).
@@ -163,6 +172,8 @@ directory" before running any of these.
 
 | Command | What it does |
 |---|---|
+| `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
+| `dayoptimizer "<your day in plain words>"` | Adds what you describe to the calendar, then replans (needs `ANTHROPIC_API_KEY`) |
 | `uv run dayoptimizer plan [--date YYYY-MM-DD] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |
 | `uv run dayoptimizer agent install [--interval SECONDS]` | Installs the launchd background agent (label `com.dayoptimizer.check`, default interval 900s / 15 min) that runs `check` periodically |
@@ -171,14 +182,14 @@ directory" before running any of these.
 | `uv run dayoptimizer garmin login` | Logs into Garmin Connect once and stores OAuth tokens (password is never persisted) |
 | `uv run dayoptimizer stats` | 14-day Garmin trends and suggested rule adjustments |
 | `uv run dayoptimizer apply --ids 3,4` | Applies pending fixed-event changes by id, after you've reviewed them |
-| `uv run dayoptimizer web [--port N] [--no-open]` | Opens the local week planner in the browser (see [Web planner](#web-planner)) |
-| `uv run dayoptimizer chat` | Terminal chat loop — a CLI alternative to the Claude Code plugin, not a local/offline one (see note below) |
+| `uv run dayoptimizer setup [--port N] [--no-open]` | Opens the typical-week setup page in the browser (see [Web planner](#web-planner)) |
+| `uv run dayoptimizer chat` | Several plain-words requests in a row, one per line |
 
-Because EventKit needs the TCC bundle (see below), `plan`, `apply`, `check`,
-and `chat` should be run through `scripts/dayoptimizer-app <command>` rather
-than the bare `dayoptimizer` binary — see next section.
+Because EventKit needs the TCC bundle (see below), the calendar commands
+(`plan`, `apply`, `check`, `sync` and plain-words requests) hand themselves to
+the bundle when started from a terminal, and print its output when done.
 
-`dayoptimizer chat` calls the Anthropic API directly (not a local model): it
+Plain-words requests and `chat` call the Anthropic API directly (not a local model): they
 requires `ANTHROPIC_API_KEY` set in your environment (or in a `.env` file in
 the plugin directory, which `dayoptimizer` loads automatically). It does not
 work offline.
