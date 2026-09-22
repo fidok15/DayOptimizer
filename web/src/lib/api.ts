@@ -9,13 +9,17 @@ async function parse(res: Response): Promise<ServerState> {
 export const fetchState = (): Promise<ServerState> =>
   fetch("/api/state", { cache: "no-store" }).then(parse);
 
-export const saveState = (categories: Categories, week: Week): Promise<ServerState> => {
-  const typical_week = Object.fromEntries(
+/** Blocks without their client-only ids, as the server stores them. */
+const toServerWeek = (week: Week) =>
+  Object.fromEntries(
     Object.entries(week).map(([day, blocks]) => [
       day,
       blocks.map(({ start, end, category, title }) => ({ start, end, category, title })),
     ]),
   );
+
+export const saveState = (categories: Categories, week: Week): Promise<ServerState> => {
+  const typical_week = toServerWeek(week);
   return fetch("/api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -58,3 +62,7 @@ export const garminLogin = (email: string, password: string) =>
   post<{ status: "connected" | "mfa" }>("/api/garmin/login", { email, password });
 export const garminMfa = (code: string) => post<{ status: "connected" }>("/api/garmin/mfa", { code });
 export const garminDisconnect = () => post<{ status: "disconnected" }>("/api/garmin/disconnect", {});
+
+/** Save the week and write the routine brief the LLM reads. Returns that brief. */
+export const saveRoutine = (categories: Categories, week: Week) =>
+  post<{ path: string; text: string }>("/api/routine", { categories, typical_week: toServerWeek(week) });

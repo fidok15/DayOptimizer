@@ -70,8 +70,12 @@ _SUMMARY_SYSTEM = (
 
 
 def request_prompt(text: str, today: str, now: str, categories: list[str]) -> str:
-    """User turn for parse_request (`today` is unused: days come back as words)."""
-    return f"now: {now}\ncategories: {', '.join(categories)}\nmessage: {text}"
+    """User turn for parse_request (`today` is unused: days come back as words).
+    Includes the user's routine brief, when saved, for typical durations and habits."""
+    from dayoptimizer.routine import load_routine
+    routine = load_routine()
+    context = f"the user's routine (use it for usual durations, don't copy it into events):\n{routine}\n" if routine else ""
+    return f"{context}now: {now}\ncategories: {', '.join(categories)}\nmessage: {text}"
 
 
 class LLMUnavailable(RuntimeError):

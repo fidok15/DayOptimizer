@@ -6,6 +6,7 @@ API
   PUT /api/state  <- {categories, typical_week}  (validated, then saved)
   POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
                     source calendar; the user maps calendars onto categories, nothing is saved)
+  POST /api/routine <- {categories, typical_week} -> {path, text}  (save + write the LLM brief)
   GET  /api/garmin          -> {connected}
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
   POST /api/garmin/mfa      <- {code}            -> {status: connected}
@@ -155,6 +156,14 @@ class ApiError(RuntimeError):
         self.status = status
 
 
+def save_routine_brief(payload: object) -> dict:
+    """The setup page's 'Save my routine': store the week, then write the brief the LLM reads."""
+    from dayoptimizer.routine import render_routine, save_routine
+    state = write_state(payload)
+    text = render_routine(state["categories"], state["typical_week"])
+    return {"path": save_routine(text), "text": text}
+
+
 MFA_TTL = 300  # seconds a started Garmin login waits for its MFA code
 _mfa_lock = threading.Lock()
 _mfa_pending: dict = {}  # {"api": Garmin, "at": monotonic} for the one login in flight
@@ -276,6 +285,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     POST_ROUTES = {
         "/api/import": import_week,
+        "/api/routine": save_routine_brief,
         "/api/garmin/login": garmin_login,
         "/api/garmin/mfa": garmin_mfa,
         "/api/garmin/disconnect": garmin_disconnect,

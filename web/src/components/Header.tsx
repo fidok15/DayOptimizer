@@ -6,6 +6,7 @@ import { fromMin, sceneHour } from "../lib/time";
 import type { Categories, SaveStatus, View, Week, Weekday } from "../lib/types";
 import GarminConnect from "./GarminConnect";
 import ImportCalendar from "./ImportCalendar";
+import SaveRoutine from "./SaveRoutine";
 
 const VIEWS = [
   { id: "day" as const, label: "Day", Icon: CalendarBlank },
@@ -29,8 +30,9 @@ export default function Header(props: {
   categories: Categories;
   onImport: (week: Week, replace: boolean, days: Weekday[]) => void;
   day: Weekday;
+  week: Week;
 }) {
-  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, day } = props;
+  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, day, week } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -64,13 +66,14 @@ export default function Header(props: {
           </motion.h1>
         </AnimatePresence>
         <p className="mt-2 max-w-[60ch] text-[15px] text-ink [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
-          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar. Done? Close this tab and use <code className="rounded bg-black/30 px-1 font-mono text-[13px]">dayoptimizer</code> in your terminal.
+          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar. Done? Hit <span className="font-semibold text-accent">Save my routine</span>.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} view={view} day={day} />
+        <SaveRoutine categories={categories} week={week} />
         <div role="group" aria-label="View" className="glass inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;

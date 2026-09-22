@@ -165,3 +165,11 @@ def test_serve_refuses_foreign_port():
         s.listen()
         with pytest.raises(SystemExit, match="another program"):
             web.serve(port=s.getsockname()[1], open_browser=False)
+
+
+def test_http_save_routine_writes_state_and_brief(server):
+    status, state = _request(server, "GET")
+    payload = {"categories": state["categories"], "typical_week": {"mon": [BLOCK]}}
+    status, body = _request(server, "POST", payload, {"Content-Type": "application/json"}, "/api/routine")
+    assert status == 200 and body["path"].endswith("routine.md") and "## Mon" in body["text"]
+    assert read_state()["typical_week"] == {"mon": [BLOCK]}

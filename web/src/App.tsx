@@ -35,6 +35,7 @@ export default function App() {
             categories={p.categories}
             onImport={p.importBlocks}
             day={day}
+            week={p.week}
           />
         </motion.div>
 
