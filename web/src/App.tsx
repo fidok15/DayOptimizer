@@ -34,6 +34,7 @@ export default function App() {
             onRetry={p.retrySave}
             categories={p.categories}
             onImport={p.importBlocks}
+            day={day}
           />
         </motion.div>
 

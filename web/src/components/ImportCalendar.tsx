@@ -1,21 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowClockwise, ArrowLeft, CalendarPlus, CircleNotch, DownloadSimple, WarningCircle } from "@phosphor-icons/react";
 import { ApiError, importWeek, type ImportedWeek } from "../lib/api";
 import { toMin, uid } from "../lib/time";
 import { usePopover } from "../lib/usePopover";
-import { WEEKDAYS, type Categories, type Week } from "../lib/types";
+import { WEEKDAYS, type Categories, type View, type Week, type Weekday } from "../lib/types";
+import { DAY_NAME } from "./calendar/geometry";
 
-const WEEKS = [
-  { offset: -1, label: "Last week" },
-  { offset: 0, label: "This week" },
-  { offset: 1, label: "Next week" },
-];
-
-/** Local YYYY-MM-DD of the Monday `offset` weeks from now. */
-const mondayISO = (offset: number) => {
+/** Local YYYY-MM-DD of last week's Monday: the most recent complete week. */
+const lastMondayISO = () => {
   const d = new Date();
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
@@ -26,10 +21,17 @@ const primary =
 
 type Failure = { message: string; code: string };
 
-export default function ImportCalendar(props: { categories: Categories; onImport: (week: Week, replace: boolean) => void }) {
-  const { categories, onImport } = props;
+export default function ImportCalendar(props: {
+  categories: Categories;
+  onImport: (week: Week, replace: boolean, days: Weekday[]) => void;
+  view: View;
+  day: Weekday;
+}) {
+  const { categories, onImport, view, day } = props;
   const { open, setOpen, ref } = usePopover();
-  const [offset, setOffset] = useState(0);
+  // Day view imports just that weekday; week view the whole week.
+  const days: Weekday[] = view === "day" ? [day] : [...WEEKDAYS];
+  const target = view === "day" ? `last ${DAY_NAME[day]}` : "last week";
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [found, setFound] = useState<ImportedWeek | null>(null);
@@ -39,9 +41,15 @@ export default function ImportCalendar(props: { categories: Categories; onImport
   // calendar name -> number of events, biggest first
   const calendars = useMemo(() => {
     const n: Record<string, number> = {};
-    for (const d of WEEKDAYS) for (const b of found?.[d] ?? []) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
+    for (const d of days) for (const b of found?.[d] ?? []) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
     return Object.entries(n).sort(([, a], [, b]) => b - a);
-  }, [found]);
+  }, [found, view, day]);
+
+  // a loaded week belongs to the view and day it was loaded for
+  useEffect(() => {
+    setFound(null);
+    setFailure(null);
+  }, [view, day]);
 
   const mapped = calendars.filter(([cal]) => categories[mapping[cal]]);
   const mappedCount = mapped.reduce((sum, [, n]) => sum + n, 0);
@@ -54,12 +62,12 @@ export default function ImportCalendar(props: { categories: Categories; onImport
   const load = () => {
     setLoading(true);
     setFailure(null);
-    importWeek(mondayISO(offset))
+    importWeek(lastMondayISO())
       .then((w) => {
         // preselect a category only where the calendar already has the same name
         const byLower = new Map(Object.keys(categories).map((c) => [c.toLowerCase(), c]));
         const guess: Record<string, string> = {};
-        for (const d of WEEKDAYS) for (const b of w[d] ?? []) guess[b.calendar] = byLower.get(b.calendar.toLowerCase()) ?? "";
+        for (const d of days) for (const b of w[d] ?? []) guess[b.calendar] = byLower.get(b.calendar.toLowerCase()) ?? "";
         setMapping(guess);
         setFound(w);
       })
@@ -74,12 +82,12 @@ export default function ImportCalendar(props: { categories: Categories; onImport
     const week = Object.fromEntries(
       WEEKDAYS.map((d) => [
         d,
-        (found[d] ?? [])
+        (days.includes(d) ? (found[d] ?? []) : [])
           .filter((b) => categories[mapping[b.calendar]] && toMin(b.end) > toMin(b.start))
           .map((b) => ({ id: uid(), start: b.start, end: b.end, category: mapping[b.calendar], title: b.title.slice(0, 60) })),
       ]),
     ) as Week;
-    onImport(week, replace);
+    onImport(week, replace, days);
     setOpen(false);
     reset();
   };
@@ -110,31 +118,17 @@ export default function ImportCalendar(props: { categories: Categories; onImport
             className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 rounded-[20px] p-4 shadow-2xl"
           >
             <div>
-              <h2 className="text-[15px] font-semibold tracking-tight">Start from your calendar</h2>
+              <h2 className="text-[15px] font-semibold tracking-tight">
+                {view === "day" ? `Fill ${DAY_NAME[day]} from your calendar` : "Fill the week from your calendar"}
+              </h2>
               <p className="mt-1 text-xs leading-snug text-ink-dim">
-                Copies a real week from Apple Calendar (and Google or other accounts added in macOS Settings) as a starting
-                point. You choose which of your categories each calendar belongs to.
+                Copies {target}'s events from Apple Calendar (and Google or other accounts added in macOS Settings) as a
+                starting point. You choose which of your categories each calendar belongs to.
               </p>
             </div>
 
             {!found ? (
               <>
-                <div role="radiogroup" aria-label="Week" className="flex gap-1 rounded-full border border-line p-1">
-                  {WEEKS.map((w) => (
-                    <button
-                      key={w.offset}
-                      type="button"
-                      role="radio"
-                      aria-checked={offset === w.offset}
-                      onClick={() => setOffset(w.offset)}
-                      className={`flex-1 rounded-full px-2 py-1.5 text-sm transition ${
-                        offset === w.offset ? "bg-accent font-medium text-night" : "text-ink-dim hover:text-ink"
-                      }`}
-                    >
-                      {w.label}
-                    </button>
-                  ))}
-                </div>
                 {failure && (
                   <div role="alert" className="flex gap-2 rounded-[12px] border border-[#ff8a80]/30 bg-[#ff8a80]/10 p-2.5 text-xs leading-snug text-ink">
                     <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-[#ff8a80]" aria-hidden />
@@ -164,10 +158,10 @@ export default function ImportCalendar(props: { categories: Categories; onImport
               </>
             ) : calendars.length === 0 ? (
               <>
-                <p className="text-sm text-ink-dim">No timed events that week. Pick another week or draw your days by hand.</p>
+                <p className="text-sm text-ink-dim">No timed events {target}. Draw it by hand instead.</p>
                 <div className="flex justify-end">
                   <button type="button" onClick={reset} className={ghost}>
-                    <ArrowLeft size={16} weight="bold" aria-hidden /> Pick another week
+                    <ArrowLeft size={16} weight="bold" aria-hidden /> Back
                   </button>
                 </div>
               </>
@@ -201,8 +195,8 @@ export default function ImportCalendar(props: { categories: Categories; onImport
                 </fieldset>
                 <div role="radiogroup" aria-label="How to import" className="flex flex-col gap-1 text-sm">
                   {[
-                    { v: false, label: "Add to my typical week" },
-                    { v: true, label: "Replace my typical week" },
+                    { v: false, label: view === "day" ? `Add to my ${DAY_NAME[day]}` : "Add to my typical week" },
+                    { v: true, label: view === "day" ? `Replace my ${DAY_NAME[day]}` : "Replace my typical week" },
                   ].map((o) => (
                     <label key={String(o.v)} className="flex cursor-pointer items-center gap-2 px-1">
                       <input

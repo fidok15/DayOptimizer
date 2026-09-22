@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchState, saveState } from "./api";
 import { uid } from "./time";
-import { WEEKDAYS, type Categories, type SaveStatus, type ServerState, type Week } from "./types";
+import { WEEKDAYS, type Categories, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
 
 const AUTOSAVE_MS = 700;
 
@@ -99,10 +99,14 @@ export function usePlanner() {
     );
   }, []);
 
-  /** Put imported blocks into the week, replacing it or adding to it. */
-  const importBlocks = useCallback((incoming: Week, replace: boolean) => {
+  /** Put imported blocks into the given days, replacing them or adding to them. */
+  const importBlocks = useCallback((incoming: Week, replace: boolean, days: Weekday[]) => {
     touch();
-    setWeek((w) => Object.fromEntries(WEEKDAYS.map((d) => [d, replace ? incoming[d] : [...w[d], ...incoming[d]]])) as Week);
+    setWeek((w) =>
+      Object.fromEntries(
+        WEEKDAYS.map((d) => [d, !days.includes(d) ? w[d] : replace ? incoming[d] : [...w[d], ...incoming[d]]]),
+      ) as Week,
+    );
   }, []);
 
   const retrySave = useCallback(() => save(categories, week), [save, categories, week]);

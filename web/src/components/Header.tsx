@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, WarningCircle } from "@phosphor-icons/react";
 import { greeting, lineOfTheDay } from "../lib/copy";
 import { fromMin, sceneHour } from "../lib/time";
-import type { Categories, SaveStatus, View, Week } from "../lib/types";
+import type { Categories, SaveStatus, View, Week, Weekday } from "../lib/types";
 import GarminConnect from "./GarminConnect";
 import ImportCalendar from "./ImportCalendar";
 
@@ -27,9 +27,10 @@ export default function Header(props: {
   saveError: string;
   onRetry: () => void;
   categories: Categories;
-  onImport: (week: Week, replace: boolean) => void;
+  onImport: (week: Week, replace: boolean, days: Weekday[]) => void;
+  day: Weekday;
 }) {
-  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport } = props;
+  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, day } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -69,7 +70,7 @@ export default function Header(props: {
 
       <div className="flex flex-wrap items-center gap-3">
         <GarminConnect />
-        <ImportCalendar categories={categories} onImport={onImport} />
+        <ImportCalendar categories={categories} onImport={onImport} view={view} day={day} />
         <div role="group" aria-label="View" className="glass inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;
