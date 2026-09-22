@@ -23,6 +23,10 @@ chmod 700 "$HOME_DIR"
 cp -f "$VENV/bin/python" "$MACOS/dayopt"
 cp -f "$VENV/pyvenv.cfg" "$MACOS/pyvenv.cfg"
 ln -sfn "$VENV/lib" "$MACOS/lib"
+# uv's standalone python loads libpython from @executable_path/../lib: point
+# the bundle's Contents/lib at the real interpreter's lib dir
+REAL_LIB="$(cd "$(dirname "$(readlink -f "$VENV/bin/python")")/../lib" && pwd)"
+ln -sfn "$REAL_LIB" "$APP/Contents/lib"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
