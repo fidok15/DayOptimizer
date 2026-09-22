@@ -68,7 +68,7 @@ def _find_slot(slots, duration, not_before):
 
 def _is_planner_managed(title: str, rules: Rules) -> bool:
     return (title in PLANNER_TITLES or title == rules.free_time_activity
-            or title.startswith("Commute:"))
+            or title.startswith("Commute:") or title in rules.routine_titles)
 
 def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
     """A block is effectively movable if its category is movable in config OR
@@ -415,6 +415,57 @@ def _dedupe_moves(changes):
     return [c for i, c in enumerate(changes)
             if not (c.kind == "move" and c.event_id is not None and last_move_at[c.event_id] != i)]
 
+def _nearest_start(events, usual, duration, lo, hi):
+    """Free start closest to `usual` for a block of `duration` inside [lo, hi]."""
+    best = None
+    for s, e in free_slots(events, lo, hi):
+        if e - s < duration:
+            continue
+        start = min(max(usual, s), e - duration)
+        if best is None or abs(start - usual) < abs(best - usual):
+            best = start
+    return best
+
+def place_routine(day, events, rules, now, day_start, day_end):
+    """Put the user's routine for this weekday into the day: each block at its
+    usual time when that is free. A clash moves a flexible block to the nearest
+    free time (within the planning window) and only notes a fixed one; the
+    user's own events always win. Idempotent: a block whose category and title
+    are already on the calendar that day, or whose category already fills its
+    usual time, is left alone."""
+    changes: list[PlannedChange] = []
+    midnight = datetime.combine(day, time(0)).astimezone()
+    working = list(events)
+    for b in rules.typical_week.get(day.weekday(), []):
+        start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
+        if start < now:
+            continue  # the usual time has passed (or is under way) today
+        if any(e.calendar == b.category and (e.title == b.label or (e.start < end and e.end > start))
+               for e in working):
+            continue
+        usual = f"{start:%H:%M}-{end:%H:%M}"
+        clash = [e for e in working if e.start < end and e.end > start]
+        if not clash:
+            new_start, reason = start, f"your routine ({usual})"
+        elif rules.is_movable(b.category):
+            new_start = _nearest_start(working, start, end - start, max(day_start, now), day_end)
+            reason = f"your routine has it at {usual}, but '{clash[0].title}' is there — nearest free time"
+            if new_start is None:
+                changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                             reason=f"no free time today for your usual {usual}"))
+                continue
+        else:
+            changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                         reason=f"your usual {usual} clashes with '{clash[0].title}'"))
+            continue
+        new_end = new_start + (end - start)
+        working.append(Event(id=f"routine:{b.label}:{new_start.isoformat()}", calendar=b.category,
+                             title=b.label, start=new_start, end=new_end))
+        # the user drew this block themselves: creating it needs no approval
+        changes.append(PlannedChange(kind="create", category=b.category, title=b.label, reason=reason,
+                                     new_start=new_start, new_end=new_end))
+    return changes
+
 def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gym_count: int = 0,
              next_day_events: list[Event] | None = None, is_workday: bool = True):
     day_start = _window_dt(day, rules.day_start)
@@ -429,6 +480,12 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
 
     run(resolve_conflicts(working, rules, day_start, day_end))
     run(adjust_gym(working, garmin, rules, day_start, day_end, now))
+    if rules.has_routine:
+        # the user's own week replaces the generic meal/gym/sleep/filler generators
+        run(place_routine(day, working, rules, now, day_start, day_end))
+        run(insert_transport(working, rules))
+        run(check_free_time(working, rules, day_start, day_end))
+        return _dedupe_moves(changes)
     run(schedule_gym(working, rules, day_start, day_end, now, garmin, week_gym_count))
     run(ensure_meals(working, rules, day, now, day_end, day_start))
     run(insert_transport(working, rules))

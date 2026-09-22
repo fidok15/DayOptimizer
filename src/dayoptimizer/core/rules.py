@@ -16,6 +16,18 @@ class MealWindow:
     end: time
     duration_minutes: int
 
+@dataclass
+class RoutineBlock:
+    """One block of the user's typical week, in minutes since midnight (end <= 1440)."""
+    start: int
+    end: int
+    category: str
+    title: str
+
+    @property
+    def label(self) -> str:
+        return self.title or self.category
+
 _WEEKDAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _DEFAULT_WORK_DAYS = frozenset({0, 1, 2, 3, 4})
 _DEFAULT_HOLIDAY_CALENDARS = ["Public Holidays", "Holidays"]
@@ -39,6 +51,16 @@ class Rules:
     day_end: time = time(23, 0)
     work_days: frozenset[int] = field(default_factory=lambda: _DEFAULT_WORK_DAYS)
     holiday_calendars: list[str] = field(default_factory=lambda: list(_DEFAULT_HOLIDAY_CALENDARS))
+    # weekday (0 = Monday) -> the user's routine for that day, from the setup page
+    typical_week: dict[int, list[RoutineBlock]] = field(default_factory=dict)
+
+    @property
+    def has_routine(self) -> bool:
+        return any(self.typical_week.values())
+
+    @property
+    def routine_titles(self) -> frozenset[str]:
+        return frozenset(b.label for blocks in self.typical_week.values() for b in blocks)
 
     def is_movable(self, category: str) -> bool:
         rule = self.categories.get(category)
@@ -92,6 +114,20 @@ def _day_window(d: dict) -> tuple[time, time]:
         return time(6, 0), time(23, 0)
     return day_start, day_end
 
+def _minutes(s: str) -> int:
+    h, m = s.split(":")
+    return int(h) * 60 + int(m)
+
+def _parse_typical_week(week) -> dict[int, list[RoutineBlock]]:
+    out: dict[int, list[RoutineBlock]] = {}
+    for name, blocks in (week or {}).items():
+        if name not in _WEEKDAY_NAMES or not isinstance(blocks, list):
+            continue
+        parsed = [RoutineBlock(_minutes(b["start"]), _minutes(b["end"]), b["category"], b.get("title") or "")
+                  for b in blocks if isinstance(b, dict) and {"start", "end", "category"} <= b.keys()]
+        out[_WEEKDAY_NAMES.index(name)] = sorted((b for b in parsed if b.end > b.start), key=lambda b: b.start)
+    return out
+
 def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
     data = load_config_data(path, user_path)
     cats = {
@@ -125,4 +161,5 @@ def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
         day_end=day_end,
         work_days=work_days,
         holiday_calendars=holiday_calendars,
+        typical_week=_parse_typical_week(data.get("typical_week")),
     )

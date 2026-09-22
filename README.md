@@ -147,6 +147,13 @@ asks for your Garmin password itself).
 
 ### Web planner
 
+**How the week you draw is used.** When you have a typical week, the planner
+builds each day from it: every block goes into the calendar at its usual time.
+If something already sits there, a Flexible block moves to the nearest free
+time and a Fixed one is only flagged, so your own events always win. Days you
+leave empty stay empty. Without a drawn week, generic rules from
+`config.default.yaml` fill the day (meal windows, workouts, focus blocks).
+
 `dayoptimizer setup` (run automatically on first use) opens a local planner at
 `http://127.0.0.1:8765/`: add, recolour or remove categories, mark them Fixed or
 Flexible, and draw your typical week on a day or week calendar. Changes autosave

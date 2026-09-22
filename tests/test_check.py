@@ -60,6 +60,7 @@ def test_morning_and_event_replan_combine():
 def _rules():
     r = MagicMock()
     r.is_movable.return_value = True
+    r.routine_titles = frozenset()
     return r
 
 def test_run_check_event_replan_calls_plan_notify_but_not_state(monkeypatch):

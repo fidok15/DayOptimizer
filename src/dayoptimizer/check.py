@@ -67,7 +67,7 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     # deterministic and the plan already reflects the move) and settles.
     changed_events = storage.sync_events(events, window_start, window_end)
     new_foreign_events = [e for e in changed_events
-                          if _is_foreign(e.title, extra={rules.free_time_activity})]
+                          if _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
 
     garmin = fetch_garmin_fn(storage, today)
 
