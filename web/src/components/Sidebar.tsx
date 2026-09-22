@@ -268,7 +268,6 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
         New category name
       </label>
       <div className="flex items-center gap-1.5">
-        <EmojiPicker value={emoji} onPick={setEmoji} />
         <input
           id="new-category"
           value={name}
@@ -282,6 +281,7 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
           aria-describedby={error ? "new-category-error" : undefined}
           className="h-9 min-w-0 flex-1 rounded-[10px] border border-line bg-white/5 px-3 text-sm outline-none transition placeholder:text-ink-dim focus:border-accent"
         />
+        <EmojiPicker value={emoji} onPick={setEmoji} />
         <MovableToggle movable={movable} onToggle={() => setMovable((m) => !m)} />
         <button
           type="submit"
