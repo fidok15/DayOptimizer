@@ -1,4 +1,4 @@
-import type { Categories, ServerState, Week } from "./types";
+import type { Categories, ImportedBlock, ServerState, Week, Weekday } from "./types";
 
 async function parse(res: Response): Promise<ServerState> {
   const body = await res.json().catch(() => ({}));
@@ -23,14 +23,29 @@ export const saveState = (categories: Categories, week: Week): Promise<ServerSta
   }).then(parse);
 };
 
-/** Read one calendar week (Monday date) as typical-week blocks. Nothing is saved server-side. */
-export const importWeek = async (weekStart: string): Promise<ServerState["typical_week"]> => {
-  const res = await fetch("/api/import", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ week_start: weekStart }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `Import failed (${res.status})`);
+export type ImportedWeek = Partial<Record<Weekday, ImportedBlock[]>>;
+
+/** Import failure with a machine-readable reason (setup | denied | timeout | failed | offline | bad). */
+export class ImportError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
+/** Read one calendar week (Monday date) as blocks tagged with their calendar. Nothing is saved. */
+export const importWeek = async (weekStart: string): Promise<ImportedWeek> => {
+  let res: Response;
+  try {
+    res = await fetch("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ week_start: weekStart }),
+    });
+  } catch {
+    throw new ImportError("Can't reach DayOptimizer. Is `dayoptimizer web` still running?", "offline");
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body) throw new ImportError(body?.error ?? `Import failed (${res.status}).`, body?.code ?? "failed");
+  if (typeof body.typical_week !== "object") throw new ImportError("The calendar answer looked wrong. Try again.", "bad");
   return body.typical_week;
 };

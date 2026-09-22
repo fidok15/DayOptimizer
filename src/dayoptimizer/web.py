@@ -4,10 +4,13 @@ JSON API over the user's config.local.yaml. Binds to 127.0.0.1 only.
 API
   GET /api/state  -> {categories, typical_week, defaults, day_start, day_end}
   PUT /api/state  <- {categories, typical_week}  (validated, then saved)
-  POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks, not saved)
+  POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
+                    source calendar; the user maps calendars onto categories, nothing is saved)
+  Errors are {error, code?}; import codes: setup, denied, timeout, failed.
 """
 from __future__ import annotations
 import json
+import os
 import webbrowser
 from datetime import date, datetime, time, timedelta
 from functools import partial
@@ -82,8 +85,9 @@ MIN_BLOCK = timedelta(minutes=5)
 
 def events_to_week(events: list[Event], week_start: date) -> dict[str, list[dict]]:
     """Turn a week of calendar events into typical-week blocks: one block per
-    event per day it touches (overnight events are split at midnight), the
-    calendar name as category. All-day markers carry no time, so they're skipped."""
+    event per day it touches (overnight events are split at midnight), tagged
+    with the source calendar so the user can map it onto one of their own
+    categories. All-day markers carry no time, so they're skipped."""
     week: dict[str, list[dict]] = {d: [] for d in WEEKDAYS}
     for i in range(7):
         day = week_start + timedelta(days=i)
@@ -98,7 +102,7 @@ def events_to_week(events: list[Event], week_start: date) -> dict[str, list[dict
             week[WEEKDAYS[day.weekday()]].append({
                 "start": f"{s:%H:%M}",
                 "end": "24:00" if t >= d1 else f"{t:%H:%M}",
-                "category": e.calendar[:40] or "Imported",
+                "calendar": e.calendar or "Calendar",
                 "title": e.title[:60],
             })
     return week
@@ -112,9 +116,20 @@ def import_week(payload: object) -> dict:
     except (TypeError, KeyError, ValueError):
         raise ConfigError("week_start must be a YYYY-MM-DD date.")
     from dayoptimizer.mcp_server import _bundle_run
+    bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
+    if not os.access(bundle, os.X_OK):
+        raise ImportFailed("setup", "Calendar access isn't set up yet. Run scripts/setup-bundle.sh "
+                                    "from the DayOptimizer folder once, then try again.")
     out = _bundle_run(["sync", "--from", week_start.isoformat(), "--days", "7"])
+    if "NO_ACCESS" in out:
+        raise ImportFailed("denied", "macOS blocked calendar access. Allow DayOptimizer in System "
+                                     "Settings, Privacy & Security, Calendars, then try again.")
+    if "timed out" in out:
+        raise ImportFailed("timeout", "Reading the calendar took too long. If a permission prompt "
+                                      "is waiting, answer it and try again.")
     if "SYNCED" not in out:
-        raise ImportFailed(out.strip()[-400:] or "Calendar read failed.")
+        detail = out.strip().splitlines()[-1][:200] if out.strip() else "no output"
+        raise ImportFailed("failed", f"Couldn't read the calendar ({detail}).")
     start = datetime.combine(week_start, time()).astimezone()
     storage = Storage(paths.db_path())
     try:
@@ -125,7 +140,9 @@ def import_week(payload: object) -> dict:
 
 
 class ImportFailed(RuntimeError):
-    pass
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -176,7 +193,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ConfigError as exc:
             return self._json(422, {"error": str(exc)})
         except ImportFailed as exc:
-            return self._json(502, {"error": str(exc)})
+            return self._json(502, {"error": str(exc), "code": exc.code})
 
     def do_PUT(self):
         if self.path != "/api/state":

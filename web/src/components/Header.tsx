@@ -26,7 +26,7 @@ export default function Header(props: {
   saveError: string;
   onRetry: () => void;
   categories: Categories;
-  onImport: (week: Week, newCats: Categories, replace: boolean) => void;
+  onImport: (week: Week, replace: boolean) => void;
 }) {
   const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport } = props;
   const [hour, setHour] = useState(sceneHour);

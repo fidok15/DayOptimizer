@@ -22,6 +22,14 @@ export interface Block {
 }
 export type Week = Record<Weekday, Block[]>;
 
+/** An event from the user's calendar, before they map its calendar onto a category. */
+export interface ImportedBlock {
+  start: string;
+  end: string;
+  calendar: string;
+  title: string;
+}
+
 export type View = "day" | "week";
 
 /** Shape of GET /api/state (blocks arrive without ids). */

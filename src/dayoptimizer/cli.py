@@ -271,10 +271,10 @@ def cmd_stats(args, rules, config):
 
 def cmd_sync(args, rules, config):
     """Copy N days of the calendar into the local cache (used by the web import,
-    which cannot touch EventKit itself). Prints a SYNCED marker the caller checks."""
+    which cannot touch EventKit itself). Prints SYNCED n or NO_ACCESS for the caller."""
     calendar = CalendarClient()
     if not calendar.request_access():
-        print("No calendar access. Enable it in System Settings → Privacy & Security → Calendars.")
+        print("NO_ACCESS")
         return
     start = datetime.combine(date.fromisoformat(args.start), time(0, 0)).astimezone()
     end = start + timedelta(days=args.days)

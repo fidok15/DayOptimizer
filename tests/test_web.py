@@ -102,7 +102,7 @@ def test_events_to_week_splits_overnight_and_skips_all_day():
         _ev("2026-09-24T00:00", "2026-09-25T00:00", cal="Holidays", all_day=True),
         _ev("2026-09-27T23:30", "2026-09-28T08:00", cal="Sleep"),  # tail is next week
     ], date(2026, 9, 21))
-    assert week["mon"] == [{"start": "09:00", "end": "17:30", "category": "Work", "title": "Office"}]
+    assert week["mon"] == [{"start": "09:00", "end": "17:30", "calendar": "Work", "title": "Office"}]
     assert [(b["start"], b["end"]) for b in week["tue"]] == [("23:00", "24:00")]
     assert [(b["start"], b["end"]) for b in week["wed"]] == [("00:00", "07:00")]
     assert week["thu"] == [] and [(b["start"], b["end"]) for b in week["sun"]] == [("23:30", "24:00")]
@@ -112,3 +112,9 @@ def test_http_import_rejects_bad_date(server):
     hdr = {"Content-Type": "application/json"}
     assert _request(server, "POST", {"week_start": "nope"}, hdr, "/api/import")[0] == 422
     assert _request(server, "POST", {"week_start": "2026-09-21"}, {"Content-Type": "text/plain"}, "/api/import")[0] == 403
+
+
+def test_http_import_without_bundle_says_how_to_set_up(server):
+    status, body = _request(server, "POST", {"week_start": "2026-09-21"},
+                            {"Content-Type": "application/json"}, "/api/import")
+    assert status == 502 and body["code"] == "setup" and "setup-bundle.sh" in body["error"]
