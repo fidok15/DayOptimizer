@@ -19,8 +19,8 @@ def test_parse_request_uses_schema_and_no_thinking(monkeypatch):
 
     def fake_urlopen(req, timeout):
         sent.update(json.loads(req.data))
-        answer = {"date": "2026-09-22", "events": [
-            {"title": "Spotkanie", "category": "Meeting", "date": "2026-09-22", "start_time": "14:00", "duration_minutes": 60}]}
+        answer = {"events": [
+            {"title": "Spotkanie", "category": "Meeting", "day": "today", "start_time": "14:00", "duration_minutes": 60}]}
         return _Resp(json.dumps({"message": {"content": json.dumps(answer)}}).encode())
 
     monkeypatch.setattr(ob, "urlopen", fake_urlopen)
@@ -56,6 +56,6 @@ def test_make_backend_prefers_local_then_api(monkeypatch):
         make_backend({"backend": "auto"})
 
 
-def test_request_prompt_spells_out_the_week():
+def test_request_prompt_has_now_and_categories():
     p = request_prompt("x", "2026-09-22", "Tuesday 09:00", ["Work"])
-    assert "Thursday=2026-09-24" in p and "categories: Work" in p
+    assert "now: Tuesday 09:00" in p and "categories: Work" in p

@@ -7,8 +7,17 @@ from dayoptimizer.llm.backend import DayRequest, NewEvent, format_changes
 from dayoptimizer.llm.anthropic_backend import AnthropicBackend
 
 def test_day_request_model_validates():
-    r = DayRequest(date="2026-07-04", events=[NewEvent(title="Standup", category="Work", date="2026-07-04")])
-    assert r.events[0].start_time is None and r.reply is None
+    r = DayRequest(events=[NewEvent(title="Standup", category="Work")])
+    assert r.events[0].day == "today" and r.events[0].start_time is None and r.reply is None
+
+
+def test_resolve_day_words():
+    from datetime import date
+    from dayoptimizer.llm.backend import resolve_day
+    tue = date(2026, 9, 22)
+    assert resolve_day("tomorrow", tue) == date(2026, 9, 23)
+    assert resolve_day("thursday", tue) == date(2026, 9, 24)
+    assert resolve_day("tuesday", tue) == tue and resolve_day("monday", tue) == date(2026, 9, 28)
 
 def test_format_changes_readable():
     ch = PlannedChange(kind="move", category="Gym", title="Workout",
@@ -22,10 +31,10 @@ def test_parse_request_sends_user_categories():
     backend.model = "claude-opus-4-8"
     backend.client = MagicMock()
     fake = MagicMock()
-    fake.parsed_output = DayRequest(date="2026-07-03")
+    fake.parsed_output = DayRequest()
     backend.client.messages.parse.return_value = fake
     req = backend.parse_request("plan my day", today="2026-07-03", now="09:00", categories=["Choir", "Work"])
-    assert req.date == "2026-07-03"
+    assert req.events == []
     kwargs = backend.client.messages.parse.call_args.kwargs
     assert kwargs["output_format"] is DayRequest
     assert "Choir, Work" in kwargs["messages"][0]["content"]

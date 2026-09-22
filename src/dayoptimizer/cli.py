@@ -13,7 +13,7 @@ from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import load_config_data, load_rules
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend
+from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend, resolve_day
 
 console = Console()
 
@@ -196,7 +196,7 @@ def cmd_check(args, rules, config):
 
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
-def events_to_create(req, categories) -> tuple[list[tuple[str, str, datetime, datetime]], list[str]]:
+def events_to_create(req, categories, today: date) -> tuple[list[tuple[str, str, datetime, datetime]], list[str]]:
     """Validate what the LLM extracted: (category, title, start, end) to create,
     plus a note for every event that can't be placed as said."""
     ok, problems = [], []
@@ -204,74 +204,103 @@ def events_to_create(req, categories) -> tuple[list[tuple[str, str, datetime, da
         if e.category not in categories:
             problems.append(f"'{e.title}': no category '{e.category}' — skipped")
             continue
-        try:
-            day = date.fromisoformat(e.date)
-        except ValueError:
-            problems.append(f"'{e.title}': unclear day — skipped")
-            continue
+        day = resolve_day(e.day, today)
         if not e.start_time or not _HHMM.match(e.start_time):
             problems.append(f"'{e.title}': no time given — say when, e.g. 'gym at 18:00'")
             continue
         h, m = (int(x) for x in e.start_time.split(":"))
         start = datetime.combine(day, time(h, m)).astimezone()
-        minutes = min(max(e.duration_minutes or 60, 5), 12 * 60)
-        ok.append((e.category, e.title[:100] or e.category, start, start + timedelta(minutes=minutes)))
+        end = None
+        if e.end_time and _HHMM.match(e.end_time):
+            eh, em = (int(x) for x in e.end_time.split(":"))
+            end = datetime.combine(day, time(eh, em)).astimezone()
+        if end is None or end <= start:
+            minutes = min(max(e.duration_minutes or 60, 5), 12 * 60)
+            end = start + timedelta(minutes=minutes)
+        ok.append((e.category, e.title[:100] or e.category, start, end))
     return ok, problems
 
 def cmd_ask(args, rules, config):
-    """`dayoptimizer "meeting at 14 for an hour, then gym"`: add what the user
-    said to the calendar, then replan the day(s) around it."""
+    """`dayoptimizer "meeting at 14 for an hour, then gym"`: understand the text
+    (here, in the terminal), show it, and on OK hand the events to `add`, which
+    writes them to the calendar inside the app bundle and replans."""
+    import json
     try:
         backend = make_backend(config["llm"])
-    except LLMUnavailable as exc:
-        console.print(f"{exc}\nWithout one, `dayoptimizer` still optimizes today.", markup=False, style="yellow")
-        return
-    calendar = CalendarClient()
-    if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
-        return
-    now = datetime.now()
-    try:
+        now = datetime.now()
         req = backend.parse_request(args.text, today=now.date().isoformat(), now=f"{now:%A %H:%M}",
                                     categories=list(rules.categories))
     except LLMUnavailable as exc:
-        console.print(str(exc), markup=False, style="yellow")
+        console.print(f"{exc}\nWithout it, `dayoptimizer` still optimizes today.", markup=False, style="yellow")
         return
     except Exception as exc:
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    if req.reply and not req.events:
-        console.print(req.reply, markup=False)
+    to_create, problems = events_to_create(req, rules.categories, now.date())
+    for p in problems:
+        console.print(p, markup=False, style="yellow")
+    if not to_create:
+        console.print(req.reply or "Nothing to add. Say what and when, e.g. 'gym at 18:00'.", markup=False)
         return
-    to_create, problems = events_to_create(req, rules.categories)
-    storage = Storage(paths.db_path())
-    days = {date.fromisoformat(req.date)} if _valid_iso(req.date) else {date.today()}
+    console.print("I'll add:")
     for category, title, start, end in to_create:
+        console.print(f"  {start:%a %d.%m %H:%M}-{end:%H:%M}  {title}  ({category})", markup=False)
+    if sys.stdin.isatty():
+        try:
+            answer = console.input("Add to your calendar and replan? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"
+        if answer not in ("", "y", "yes", "t", "tak"):
+            console.print("Nothing changed.")
+            return
+    payload = json.dumps([{"category": c, "title": t, "start": s.isoformat(), "end": e.isoformat()}
+                          for c, t, s, e in to_create], ensure_ascii=False)
+    if _in_bundle() or sys.platform != "darwin":
+        cmd_add(argparse.Namespace(events=payload), rules, config)
+    else:
+        console.print("Working on your calendar...", style="dim")
+        console.print(_calendar_run(["add", payload]), markup=False)
+
+def cmd_add(args, rules, config):
+    """Internal: create the events `ask` confirmed, then replan their days."""
+    import json
+    try:
+        items = json.loads(args.events)
+        events = [(i["category"], str(i["title"])[:100], datetime.fromisoformat(i["start"]),
+                   datetime.fromisoformat(i["end"])) for i in items]
+    except (ValueError, KeyError, TypeError):
+        console.print("Couldn't read the events to add.", style="red")
+        return
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        return
+    storage = Storage(paths.db_path())
+    days = set()
+    for category, title, start, end in events:
+        if category not in rules.categories or end <= start:
+            continue
         try:
             calendar.create_event(category, title, start, end)
         except KeyError:
-            problems.append(f"'{title}': there's no '{category}' calendar — create it in the Calendar app")
+            console.print(f"'{title}': there's no '{category}' calendar — create it in the Calendar app",
+                          markup=False, style="yellow")
             continue
-        storage.log_change(f"[added] {category}: {title} {start:%Y-%m-%d %H:%M}", "requested in chat")
+        storage.log_change(f"[added] {category}: {title} {start:%Y-%m-%d %H:%M}", "requested in plain words")
         console.print(f"Added {title} ({category}) {start:%a %H:%M}-{end:%H:%M}", markup=False, style="green")
         days.add(start.date())
-    for p in problems:
-        console.print(p, markup=False, style="yellow")
+    try:
+        summarize = make_backend(config["llm"]).summarize_changes
+    except LLMUnavailable:
+        summarize = format_changes
     for day in sorted(days):
         changes, applied, errors = _run_plan(day, calendar, storage, rules)
         if len(days) > 1:
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
-        console.print(backend.summarize_changes(changes), markup=False)
+        console.print(summarize(changes), markup=False)
         _print_errors(errors)
     _print_pending(storage)
-
-def _valid_iso(s: str) -> bool:
-    try:
-        date.fromisoformat(s)
-        return True
-    except (TypeError, ValueError):
-        return False
 
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
@@ -284,7 +313,7 @@ def cmd_chat(args, rules, config):
         if text.lower() in ("exit", "quit", "q"):
             break
         if text:
-            console.print(_calendar_run(["ask", text]), markup=False)
+            cmd_ask(argparse.Namespace(text=text), rules, config)
 
 def cmd_agent(args, rules, config):
     from dayoptimizer import agent
@@ -337,7 +366,7 @@ def cmd_web(args, rules, config):
 
 # Commands that read or write the calendar. macOS only lets the DayOptimizer app
 # bundle do that (TCC), so from a terminal they are re-run inside the bundle.
-CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "ask"}
+CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add"}
 
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
@@ -379,6 +408,8 @@ def main(argv: list[str] | None = None):
     sub.add_parser("chat", help="keep telling DayOptimizer about your day, one line at a time")
     p_ask = sub.add_parser("ask", help='add what you say to the calendar and replan (same as dayoptimizer "...")')
     p_ask.add_argument("text")
+    p_add = sub.add_parser("add")  # internal: ask hands confirmed events to the app bundle
+    p_add.add_argument("events")
     sub.add_parser("check", help="stateless background cycle (sleep, new events, stress)")
     sub.add_parser("stats", help="14-day Garmin trends and suggestions")
     p_agent = sub.add_parser("agent", help="manage the background agent (launchd)")
@@ -414,7 +445,7 @@ def main(argv: list[str] | None = None):
         console.print(_calendar_run(argv), markup=False)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "ask": cmd_ask,
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "ask": cmd_ask, "add": cmd_add,
      "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":

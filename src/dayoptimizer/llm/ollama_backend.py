@@ -31,7 +31,7 @@ class OllamaBackend:
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
-            "think": False,  # reasoning models (qwen3) answer much faster without it
+            "think": False,  # qwen3 answers in ~6 s without it, ~40 s with
             "options": {"temperature": 0},
         }
         if schema:
@@ -46,7 +46,11 @@ class OllamaBackend:
             if exc.code == 404 and "not found" in detail:
                 raise LLMUnavailable(f"The local model isn't downloaded yet. Run:  ollama pull {self.model}") from None
             raise LLMUnavailable(f"Ollama error {exc.code}: {detail[:200]}") from None
-        except (URLError, OSError):
+        except TimeoutError:
+            raise LLMUnavailable("The local model took too long to answer. Try again, or a shorter message.") from None
+        except (URLError, OSError) as exc:
+            if isinstance(getattr(exc, "reason", None), TimeoutError):
+                raise LLMUnavailable("The local model took too long to answer. Try again, or a shorter message.") from None
             raise LLMUnavailable("Ollama isn't running. Start it with:  brew services start ollama") from None
 
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:

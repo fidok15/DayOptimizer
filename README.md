@@ -94,8 +94,17 @@ dayoptimizer "tomorrow I'm off, dentist at 10"
 dayoptimizer --help                           # every other command
 ```
 
-Plain-words requests use Claude: put `ANTHROPIC_API_KEY=...` in a `.env` file in
-the DayOptimizer folder. Bare `dayoptimizer` works without it. Commands that touch
+Plain-words requests need a language model. DayOptimizer shows what it understood
+and asks before touching the calendar. It uses a local model when
+[Ollama](https://ollama.com) is running (free, nothing leaves your Mac):
+
+```bash
+brew install ollama && brew services start ollama && ollama pull qwen3:8b
+```
+
+Otherwise it uses Claude when `ANTHROPIC_API_KEY=...` is in a `.env` file in the
+DayOptimizer folder. `llm.backend` in the config forces one (`ollama`, `anthropic`,
+default `auto`). Bare `dayoptimizer` needs neither. Commands that touch
 the calendar run through DayOptimizer's app bundle automatically (see
 [macOS calendar permission](#macos-calendar-permission-tcc)).
 
@@ -173,7 +182,7 @@ directory" before running any of these.
 | Command | What it does |
 |---|---|
 | `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
-| `dayoptimizer "<your day in plain words>"` | Adds what you describe to the calendar, then replans (needs `ANTHROPIC_API_KEY`) |
+| `dayoptimizer "<your day in plain words>"` | Shows the events it understood, adds them on your OK, then replans (local Ollama or `ANTHROPIC_API_KEY`) |
 | `uv run dayoptimizer plan [--date YYYY-MM-DD] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |
 | `uv run dayoptimizer agent install [--interval SECONDS]` | Installs the launchd background agent (label `com.dayoptimizer.check`, default interval 900s / 15 min) that runs `check` periodically |
