@@ -1,7 +1,8 @@
 from __future__ import annotations
 import anthropic
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import _REQUEST_SYSTEM, _SUMMARY_SYSTEM, DayRequest, format_changes, request_prompt
+from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
+                                      DayRequest, compile_prompt, format_changes, request_prompt)
 
 class AnthropicBackend:
     def __init__(self, model: str = "claude-opus-4-8"):
@@ -15,6 +16,16 @@ class AnthropicBackend:
             system=_REQUEST_SYSTEM,
             messages=[{"role": "user", "content": request_prompt(text, today, now, categories)}],
             output_format=DayRequest,
+        )
+        return response.parsed_output
+
+    def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
+        response = self.client.messages.parse(
+            model=self.model,
+            max_tokens=2048,
+            system=_NOTES_SYSTEM,
+            messages=[{"role": "user", "content": compile_prompt(notes, categories)}],
+            output_format=CompiledNotes,
         )
         return response.parsed_output
 

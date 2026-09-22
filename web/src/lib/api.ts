@@ -67,6 +67,7 @@ export interface RoutineSaved {
   path: string;
   text: string;
   calendars: { created: string[]; error: string | null };
+  notes: { rules: string[]; not_compiled: string[]; error: string | null };
 }
 
 /** Save the week, write the routine brief the LLM reads, and create a Calendar-app

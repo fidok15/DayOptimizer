@@ -201,3 +201,62 @@ def test_notes_roundtrip_and_validation(server):
     # clearing the notes drops the key instead of storing an empty string
     assert _request(server, "PUT", {**payload, "notes": "   "}, hdr)[1]["notes"] == ""
     assert "notes" not in yaml.safe_load(paths.user_config_path().read_text())
+
+
+def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monkeypatch):
+    from dayoptimizer.llm import backend as llm
+    from dayoptimizer import web
+
+    asked = []
+
+    class FakeLLM:
+        """Answers one sentence at a time, the way the compiler asks."""
+        def compile_notes(self, sentence, categories):
+            asked.append(sentence)
+            if "lunch" in sentence:
+                return llm.CompiledNotes(not_before=[llm.TimeRule(category="Food", time="14:00", source="echoed wrong")])
+            if "gym" in sentence:
+                return llm.CompiledNotes(max_per_week=[llm.WeekRule(category="Gym", count=3, source="x")])
+            if "invented" in sentence:  # a category the user doesn't have
+                return llm.CompiledNotes(not_before=[llm.TimeRule(category="Nope", time="09:00", source="x")])
+            if "broken" in sentence:    # unparseable time
+                return llm.CompiledNotes(not_after=[llm.TimeRule(time="oops", source="x")])
+            return llm.CompiledNotes()  # a mood: no rule
+
+    monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
+    out = web.compile_notes("no lunch before 14. gym 3x a week\ninvented one; broken one. I want to feel less rushed",
+                            ["Food", "Gym"])
+    assert asked == ["no lunch before 14", "gym 3x a week", "invented one", "broken one",
+                     "I want to feel less rushed"]
+    assert out["rules"] == ["Food: not before 14:00", "Gym: at most 3 time(s) a week"]
+    assert out["not_compiled"] == ["invented one", "broken one", "I want to feel less rushed"]
+    stored = yaml.safe_load(paths.user_config_path().read_text())["note_rules"]
+    # the source is the user's own sentence, not whatever the model echoed
+    assert [(r["type"], r["source"]) for r in stored] == [("not_before", "no lunch before 14"),
+                                                          ("max_per_week", "gym 3x a week")]
+    # the rules reach the planner through the normal config path
+    assert [r.type for r in load_rules(DEFAULT_CONFIG).note_rules] == ["not_before", "max_per_week"]
+    # clearing the notes clears the rules
+    assert web.compile_notes("", ["Food"]) == {"rules": [], "not_compiled": [], "error": None}
+    assert "note_rules" not in yaml.safe_load(paths.user_config_path().read_text())
+
+
+def test_compile_notes_without_llm_keeps_the_notes(monkeypatch):
+    from dayoptimizer.llm import backend as llm
+    from dayoptimizer import web
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_running", lambda: False)
+    out = web.compile_notes("no lunch before 14", ["Food"])
+    assert out["rules"] == [] and "language model" in out["error"]
+
+
+def test_time_rules_need_a_time_in_the_sentence():
+    from dayoptimizer import web
+    # a model turning "it's family time" into a whole free Sunday is invention
+    assert web._clean_rule({"type": "keep_free", "source": "it's family time",
+                            "start": "00:00", "end": "23:59"}, []) is None
+    assert web._clean_rule({"type": "keep_free", "source": "Sundays 18:00-22:00 are family time",
+                            "start": "18:00", "end": "22:00"}, []) is not None
+    # counts may be spelled out ("two days in a row"), so they aren't checked for digits
+    assert web._clean_rule({"type": "min_gap_days", "source": "never two days in a row",
+                            "category": "Gym", "days": 2}, ["Gym"]) is not None

@@ -108,3 +108,48 @@ def test_routine_training_reacts_to_recovery():
     off = dataclasses.replace(rules, respect_recovery=False)
     kept = next(c for c in plan_day(DAY, [], poor, off, now=EARLY, activities=history + [race]) if c.title == "Run")
     assert kept.kind == "create" and "recovery" not in kept.reason
+
+
+def _with_notes(raw, week):
+    from dayoptimizer.core.constraints import parse_rules
+    return dataclasses.replace(RULES, note_rules=parse_rules(raw), typical_week=week)
+
+
+def test_note_rule_moves_a_block_out_of_a_forbidden_window():
+    # "no lunch before 14:00", but the routine has it at 12:00
+    rules = _with_notes([{"type": "not_before", "category": "Food", "time": "14:00",
+                          "source": "no lunch before 14"}],
+                        {4: [RoutineBlock(12 * 60, 12 * 60 + 45, "Food", "Lunch")]})
+    lunch = next(c for c in plan_day(DAY, [], None, rules, now=EARLY) if c.title == "Lunch")
+    assert (lunch.kind, f"{lunch.new_start:%H:%M}") == ("create", "14:00")
+    assert "no lunch before 14" in lunch.reason
+
+
+def test_keep_free_window_is_as_binding_as_an_event():
+    rules = _with_notes([{"type": "keep_free", "weekday": "fri", "start": "18:00", "end": "21:00",
+                          "source": "family time"}],
+                        {4: [RoutineBlock(18 * 60, 19 * 60, "Gym", "Workout"),
+                             RoutineBlock(19 * 60, 20 * 60, "Work", "Emails")]})
+    changes = plan_day(DAY, [], None, rules, now=EARLY)
+    gym = next(c for c in changes if c.title == "Workout")
+    # flexible: moved to the nearest time outside the window (17:00 is nearer than 21:00)
+    assert gym.kind == "create" and f"{gym.new_start:%H:%M}" == "17:00"
+    assert gym.new_end <= D.replace(hour=18) or gym.new_start >= D.replace(hour=21)
+    emails = next(c for c in changes if c.title == "Emails")
+    assert emails.kind == "note" and "family time" in emails.reason  # fixed: only flagged
+
+
+def test_min_gap_and_weekly_limit_skip_the_block():
+    week = {4: [RoutineBlock(18 * 60, 19 * 60, "Gym", "Workout")]}
+    gap = _with_notes([{"type": "min_gap_days", "category": "Gym", "days": 2,
+                        "source": "no training two days in a row"}], week)
+    note = next(c for c in plan_day(DAY, [], None, gap, now=EARLY,
+                                    history={"Gym": [date(2026, 7, 2)]}) if c.title == "Workout")
+    assert note.kind == "note" and "two days in a row" in note.reason
+    # two days off is enough: the block is placed
+    assert next(c for c in plan_day(DAY, [], None, gap, now=EARLY,
+                                    history={"Gym": [date(2026, 7, 1)]}) if c.title == "Workout").kind == "create"
+    weekly = _with_notes([{"type": "max_per_week", "category": "Gym", "count": 2, "source": "gym 2x a week"}], week)
+    note = next(c for c in plan_day(DAY, [], None, weekly, now=EARLY,
+                                    history={"Gym": [date(2026, 6, 29), date(2026, 7, 1)]}) if c.title == "Workout")
+    assert note.kind == "note" and "gym 2x a week" in note.reason

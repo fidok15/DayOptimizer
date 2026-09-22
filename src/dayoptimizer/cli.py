@@ -107,8 +107,15 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     week_events = [e for e in week_events_raw if not e.all_day]
     week_gym_count = sum(1 for e in week_events if e.calendar == "Gym" and e.start.date() != day)
     now = datetime.now().astimezone()
+    # what each category already did in the days before: needed for the user's
+    # own rules ("no training two days in a row", "gym at most 3x a week")
+    past = calendar.list_events(day_start - timedelta(days=8), day_start)
+    history: dict[str, list[date]] = {}
+    for e in past:
+        if not e.all_day:
+            history.setdefault(e.calendar, []).append(e.start.date())
     changes = plan_day(day, events, garmin, rules, now=now,
-                       activities=_fetch_activities(storage, now),
+                       activities=_fetch_activities(storage, now), history=history,
                        tomorrow_first_fixed=min((e.start for e in tomorrow_fixed), default=None),
                        week_gym_count=week_gym_count,
                        # tonight's sleep usually starts after midnight — the planner

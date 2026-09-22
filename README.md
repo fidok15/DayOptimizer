@@ -156,6 +156,16 @@ leave empty stay empty. Each category gets its own calendar in the Calendar app
 that are still missing when it first writes to them. Deleting a category never
 deletes its calendar.
 
+**Your notes become rules.** The notes box is compiled into rules the planner
+enforces on its own, once, when you press Save my routine — so planning still
+needs no LLM and stays deterministic. "No lunch before 14:00" becomes a real
+constraint; "Sundays 18:00-22:00 are family time" keeps that window empty; "I
+never train two days in a row" and "gym three times a week at most" cap it.
+The dialog lists exactly what became a rule and what stayed a note (a mood like
+"I want to feel less rushed" can't be enforced, so the assistant just reads it).
+Rules live under `note_rules` in `config.local.yaml`, so you can fix or delete
+any of them by hand.
+
 **Recovery-aware training.** With Garmin connected, the planner reads the
 watch's recovery time and readiness. Because recovery time only says when the
 body is ready for the next *hard* session, a training block is kept and flagged
