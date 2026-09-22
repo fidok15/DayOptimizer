@@ -294,7 +294,7 @@ def main():
     load_dotenv()
     rules, config = _load_config()
     parser = argparse.ArgumentParser(prog="dayoptimizer")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")  # no command = open the web planner
     p_plan = sub.add_parser("plan", help="replan the day (or several days)")
     p_plan.add_argument("--date", default=None, help="start date (YYYY-MM-DD, defaults to today)")
     p_plan.add_argument("--week", nargs="?", const=7, type=int, default=None,
@@ -321,6 +321,8 @@ def main():
     p_web.add_argument("--port", type=int, default=8765)
     p_web.add_argument("--no-open", action="store_true", help="do not open a browser tab")
     args = parser.parse_args()
+    if args.command is None:
+        args = parser.parse_args(["web"])
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
      "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "web": cmd_web}[args.command](args, rules, config)
 

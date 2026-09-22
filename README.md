@@ -67,6 +67,37 @@ activity label (`day_rules.free_time_activity`), via `config.local.yaml` /
 the onboarding interview — but the calendar names themselves must stay
 exactly as listed above.
 
+## Quick start
+
+Needs macOS and [uv](https://docs.astral.sh/uv/). Node is not needed: the web
+planner ships prebuilt.
+
+```bash
+git clone https://github.com/fidok15/DayOptimizer.git
+cd DayOptimizer
+scripts/install.sh
+```
+
+The installer syncs the Python dependencies, builds the small app bundle macOS
+needs for calendar access, and puts a `dayoptimizer` command in `~/.local/bin`
+(adding it to your PATH if needed). From then on, in any terminal:
+
+```bash
+dayoptimizer          # open the week planner in your browser
+dayoptimizer --help   # every other command
+```
+
+Running `dayoptimizer` while the planner is already open just brings it up in
+the browser again. Rerun `scripts/install.sh` after `git pull`; it is safe to
+repeat.
+
+**Why no Docker image?** DayOptimizer reads and writes Apple Calendar through
+macOS itself (EventKit, with the calendar permission granted to its app bundle),
+runs in the background through launchd and sends macOS notifications. A Docker
+container is a Linux machine with none of those, so the planner would lose the
+calendar, which is the point of the app. The installer above is the supported
+setup.
+
 ## Install as a Claude Code plugin
 
 ```
@@ -97,7 +128,8 @@ asks for your Garmin password itself).
 
 ### Web planner
 
-Prefer clicking to chatting? `uv run dayoptimizer web` opens a local planner at
+Prefer clicking to chatting? `dayoptimizer` (or `uv run dayoptimizer web` in the
+checkout) opens a local planner at
 `http://127.0.0.1:8765/`: add, recolour or remove categories, mark them Fixed or
 Flexible, and draw your typical week on a day or week calendar. Changes autosave
 to `~/.dayoptimizer/config.local.yaml` (categories plus a `typical_week` section).
@@ -119,9 +151,9 @@ a running `dayoptimizer web --no-open`); `npm run build` writes the bundle into
 
 ## CLI reference
 
-DayOptimizer also works as a standalone CLI (`dayoptimizer`, installed by
-`uv sync` via `pyproject.toml`'s `[project.scripts]`). All commands below
-must be run with `uv run` from the plugin's checkout directory — the
+DayOptimizer also works as a standalone CLI. After `scripts/install.sh` the
+`dayoptimizer` command works from anywhere, so drop the `uv run` prefix below.
+Without the installer, run the commands with `uv run` from the checkout directory — the
 `pyproject.toml`-managed virtualenv is what makes the bare `dayoptimizer`
 binary resolve at all. If Claude Code installed the plugin for you, that
 checkout lives at `~/.claude/plugins/cache/dayoptimizer/dayoptimizer`

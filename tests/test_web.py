@@ -147,3 +147,21 @@ def test_http_garmin_bad_password_never_echoed(server, monkeypatch):
     assert _request(server, "POST", {"email": "a@b.c", "password": "x"},
                     {"Content-Type": "application/json", "Origin": "http://evil.example"},
                     "/api/garmin/login")[0] == 403
+
+
+def test_serve_reuses_running_planner(server, monkeypatch, capsys):
+    from dayoptimizer import web
+    opened = []
+    monkeypatch.setattr(web.webbrowser, "open", opened.append)
+    web.serve(port=server)  # port already taken by our own planner
+    assert opened == [f"http://127.0.0.1:{server}/"] and "already running" in capsys.readouterr().out
+
+
+def test_serve_refuses_foreign_port():
+    import socket
+    from dayoptimizer import web
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen()
+        with pytest.raises(SystemExit, match="another program"):
+            web.serve(port=s.getsockname()[1], open_browser=False)

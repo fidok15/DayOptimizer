@@ -14,6 +14,7 @@ API
   Garmin's sign-in; only the returned session tokens are stored.
 """
 from __future__ import annotations
+import errno
 import json
 import os
 import threading
@@ -294,12 +295,33 @@ def make_server(port: int = 8765) -> ThreadingHTTPServer:
     return ThreadingHTTPServer(("127.0.0.1", port), partial(Handler, directory=str(STATIC_DIR)))
 
 
+def _is_ours(url: str) -> bool:
+    """Is a DayOptimizer planner already answering at `url`?"""
+    from urllib.request import urlopen
+    try:
+        with urlopen(url + "api/garmin", timeout=2) as resp:
+            return resp.headers.get("Server", "").startswith("DayOptimizer")
+    except OSError:
+        return False
+
+
 def serve(port: int = 8765, open_browser: bool = True) -> None:
     if not (STATIC_DIR / "index.html").exists():
         raise SystemExit("Web planner is not built — run `npm run build` in web/.")
-    server = make_server(port)
+    try:
+        server = make_server(port)
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        url = f"http://127.0.0.1:{port}/"
+        if not _is_ours(url):
+            raise SystemExit(f"Port {port} is used by another program. Try: dayoptimizer web --port {port + 1}")
+        print(f"DayOptimizer planner is already running at {url}")
+        if open_browser:
+            webbrowser.open(url)
+        return
     url = f"http://127.0.0.1:{server.server_address[1]}/"
-    print(f"DayOptimizer planner running at {url} (Ctrl+C to stop)")
+    print(f"DayOptimizer planner running at {url} (Ctrl+C to stop)", flush=True)
     if open_browser:
         webbrowser.open(url)
     try:
