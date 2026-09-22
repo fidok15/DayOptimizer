@@ -1,9 +1,11 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from dayoptimizer.core.models import GarminSummary
+from datetime import datetime, timedelta
+from dayoptimizer.core.models import Activity, GarminSummary
 
-def build_summary(date, sleep_data, battery_data, stress_data, hrv_data, rhr) -> GarminSummary:
+def build_summary(date, sleep_data, battery_data, stress_data, hrv_data, rhr,
+                  readiness=None) -> GarminSummary:
     sleep_seconds = sleep_score = battery = stress = hrv_status = None
     if sleep_data:
         dto = sleep_data.get("dailySleepDTO") or {}
@@ -15,9 +17,16 @@ def build_summary(date, sleep_data, battery_data, stress_data, hrv_data, rhr) ->
         stress = stress_data.get("avgStressLevel")
     if hrv_data:
         hrv_status = (hrv_data.get("hrvSummary") or {}).get("status")
+    if isinstance(readiness, list):
+        readiness = readiness[0] if readiness else None
+    readiness = readiness or {}
     return GarminSummary(date=date, sleep_seconds=sleep_seconds, sleep_score=sleep_score,
                          body_battery_start=battery, hrv_status=hrv_status,
-                         stress_avg=stress, resting_hr=rhr)
+                         stress_avg=stress, resting_hr=rhr,
+                         recovery_minutes=readiness.get("recoveryTime"),
+                         recovery_measured_at=readiness.get("timestampLocal"),
+                         readiness_score=readiness.get("score"),
+                         readiness_level=readiness.get("level"))
 
 def summarize(s: GarminSummary) -> str:
     parts = []
@@ -141,6 +150,7 @@ class GarminClient:
         battery = _try(self._api.get_body_battery, date)
         stress = _try(self._api.get_stress_data, date)
         hrv = _try(self._api.get_hrv_data, date)
+        readiness = _try(self._api.get_training_readiness, date)
         rhr_data = _try(self._api.get_rhr_day, date)
         rhr = None
         if rhr_data:
@@ -149,4 +159,22 @@ class GarminClient:
                 rhr = metrics[0]["value"]
             except (KeyError, IndexError, TypeError):
                 rhr = None
-        return build_summary(date, sleep, battery, stress, hrv, rhr)
+        return build_summary(date, sleep, battery, stress, hrv, rhr, readiness)
+
+    def activities(self, start: str, end: str) -> list[Activity]:
+        """Recorded workouts between two ISO dates (inclusive)."""
+        out = []
+        for a in self._api.get_activities_by_date(start, end) or []:
+            try:
+                begin = datetime.fromisoformat(a["startTimeLocal"]).astimezone()
+                seconds = float(a.get("duration") or 0)
+            except (KeyError, TypeError, ValueError):
+                continue
+            out.append(Activity(
+                id=str(a.get("activityId")),
+                type_key=str((a.get("activityType") or {}).get("typeKey") or "other"),
+                name=str(a.get("activityName") or ""),
+                start=begin, end=begin + timedelta(seconds=seconds),
+                aerobic_te=float(a.get("aerobicTrainingEffect") or 0),
+                anaerobic_te=float(a.get("anaerobicTrainingEffect") or 0)))
+        return sorted(out, key=lambda x: x.start)

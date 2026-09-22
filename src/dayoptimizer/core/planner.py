@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, date, time, timedelta
 from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
+from dayoptimizer.core.recovery import learn_region, training_advice
 from dayoptimizer.core.rules import Rules
 
 # Titles of events the planner itself creates/manages. The background watcher
@@ -426,7 +427,7 @@ def _nearest_start(events, usual, duration, lo, hi):
             best = start
     return best
 
-def place_routine(day, events, rules, now, day_start, day_end):
+def place_routine(day, events, rules, now, day_start, day_end, garmin=None, activities=()):
     """Put the user's routine for this weekday into the day: each block at its
     usual time when that is free. A clash moves a flexible block to the nearest
     free time (within the planning window) and only notes a fixed one; the
@@ -440,6 +441,17 @@ def place_routine(day, events, rules, now, day_start, day_end):
         start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
         if start < now:
             continue  # the usual time has passed (or is under way) today
+        advice, advice_reason = "keep", ""
+        if rules.respect_recovery and garmin is not None and activities:
+            # only blocks the watch has seen workouts in count as training
+            region = learn_region(list(activities), rules.typical_week, day.weekday(), b, now=now)
+            advice, advice_reason = training_advice(
+                region, garmin, list(activities), now,
+                rules.recovery_lighter_hours, rules.recovery_skip_hours)
+        if advice == "skip":
+            changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                         reason=advice_reason))
+            continue
         if any(e.calendar == b.category and (e.title == b.label or (e.start < end and e.end > start))
                for e in working):
             continue
@@ -458,6 +470,8 @@ def place_routine(day, events, rules, now, day_start, day_end):
             changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
                                          reason=f"your usual {usual} clashes with '{clash[0].title}'"))
             continue
+        if advice_reason:
+            reason += f" — {advice_reason}"
         new_end = new_start + (end - start)
         working.append(Event(id=f"routine:{b.label}:{new_start.isoformat()}", calendar=b.category,
                              title=b.label, start=new_start, end=new_end))
@@ -467,7 +481,8 @@ def place_routine(day, events, rules, now, day_start, day_end):
     return changes
 
 def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gym_count: int = 0,
-             next_day_events: list[Event] | None = None, is_workday: bool = True):
+             next_day_events: list[Event] | None = None, is_workday: bool = True,
+             activities: list | None = None):
     day_start = _window_dt(day, rules.day_start)
     day_end = _window_dt(day, rules.day_end)
     changes: list[PlannedChange] = []
@@ -482,7 +497,7 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     run(adjust_gym(working, garmin, rules, day_start, day_end, now))
     if rules.has_routine:
         # the user's own week replaces the generic meal/gym/sleep/filler generators
-        run(place_routine(day, working, rules, now, day_start, day_end))
+        run(place_routine(day, working, rules, now, day_start, day_end, garmin, activities or ()))
         run(insert_transport(working, rules))
         run(check_free_time(working, rules, day_start, day_end))
         return _dedupe_moves(changes)

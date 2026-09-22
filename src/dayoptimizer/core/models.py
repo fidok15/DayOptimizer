@@ -23,6 +23,24 @@ class GarminSummary:
     hrv_status: str | None = None
     stress_avg: int | None = None
     resting_hr: int | None = None
+    # Training readiness (Garmin): recovery_minutes is what was LEFT at
+    # recovery_measured_at, so callers must subtract the time since.
+    recovery_minutes: int | None = None
+    recovery_measured_at: str | None = None
+    readiness_score: int | None = None
+    readiness_level: str | None = None
+
+@dataclass
+class Activity:
+    """A workout the watch recorded. `type_key` is Garmin's own (running,
+    strength_training, ...); the training effects say how hard it was."""
+    id: str
+    type_key: str
+    name: str
+    start: datetime
+    end: datetime
+    aerobic_te: float = 0.0
+    anaerobic_te: float = 0.0
 
 @dataclass
 class PlannedChange:

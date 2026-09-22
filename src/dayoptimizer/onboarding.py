@@ -56,6 +56,9 @@ class DayRulesConfig(BaseModel):
     deep_work_minutes: int | None = Field(default=None, ge=15, le=300)
     deep_work_blocks_per_day: int | None = Field(default=None, ge=0, le=8)
     buffer_minutes: int | None = Field(default=None, ge=0, le=120)
+    respect_recovery: bool | None = None
+    recovery_lighter_hours: int | None = Field(default=None, ge=0, le=336)
+    recovery_skip_hours: int | None = Field(default=None, ge=0, le=336)
     wind_down_minutes: int | None = Field(default=None, ge=0, le=180)
     sleep_target_hours: float | None = Field(default=None, ge=4, le=12)
     morning_buffer_minutes: int | None = Field(default=None, ge=0, le=240)
