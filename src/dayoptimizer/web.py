@@ -38,6 +38,13 @@ DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config.default.yaml"
 MAX_BODY = 256 * 1024
 
 
+def _code_stamp() -> str:
+    """Changes whenever the code or the built page changes: a planner left
+    running from before a `git pull` must not keep serving the old code."""
+    files = [*Path(__file__).parent.rglob("*.py"), STATIC_DIR / "index.html"]
+    return str(int(max((f.stat().st_mtime for f in files if f.exists()), default=0)))
+
+
 def _defaults() -> dict:
     return yaml.safe_load(DEFAULT_CONFIG.read_text())
 
@@ -184,6 +191,8 @@ def _clean_rule(row: dict, categories: list[str]) -> dict | None:
     # a no-op limit is the model padding the schema, not something the user said
     if (row.get("type"), row.get("time")) in (("not_before", "00:00"), ("not_after", "24:00")):
         return None
+    if row.get("type") == "min_gap_days" and isinstance(row.get("days"), int) and row["days"] <= 1:
+        return None  # "1 day apart" allows every day
     # a time rule must come from a sentence that actually names a time: without
     # digits the model invented it (e.g. "it's family time" -> all Sunday free)
     if row.get("type") in ("not_before", "not_after", "keep_free") and not any(
@@ -200,13 +209,19 @@ def _clean_rule(row: dict, categories: list[str]) -> dict | None:
     return row
 
 
-def split_notes(notes: str, limit: int = 20) -> list[str]:
-    """One sentence per line or per '.', '!', ';' — the compiler asks about each
-    separately, which a small local model gets right far more often than a whole
-    note at once, and it keeps every rule tied to the words it came from."""
+def split_notes(notes: str, limit: int = 20) -> list[list[str]]:
+    """Sentences (per line or '.', '!', ';'), each cut into its comma-separated
+    parts. The compiler asks about each part separately, which a small local
+    model gets right far more often than a whole note at once, and it keeps
+    every rule tied to the words it came from."""
     import re
-    parts = [p.strip(" -•\t") for p in re.split(r"[\n.;!,]+", notes)]
-    return [p for p in parts if len(p) > 2][:limit]
+    out = []
+    for sentence in re.split(r"[\n.;!]+", notes):
+        parts = [p.strip(" -•\t") for p in sentence.split(",")]
+        parts = [p for p in parts if len(p) > 2]
+        if parts:
+            out.append(parts)
+    return out[:limit]
 
 
 def compile_notes(notes: str, categories: list[str]) -> dict:
@@ -226,19 +241,22 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
                 f"Your notes are saved, but turning them into rules needs a language model. {exc}"}
     rows: list[dict] = []
     unclear: list[str] = []
-    for sentence in split_notes(notes):
-        try:
-            compiled = backend.compile_notes(sentence, categories)
-        except Exception:
-            unclear.append(sentence)
-            continue
-        # the sentence we asked about is the source, whatever the model echoes back
-        mine = [_clean_rule({**row, "source": sentence}, categories) for row in compiled.rows()]
-        mine = [row for row in mine if row is not None and parse_rules([row])]
-        if mine:
-            rows += mine
+    for parts in split_notes(notes):
+        found = []
+        for part in parts:
+            try:
+                compiled = backend.compile_notes(part, categories)
+            except Exception:
+                continue
+            # the part we asked about is the source, whatever the model echoes back
+            mine = [_clean_rule({**row, "source": part}, categories) for row in compiled.rows()]
+            found += [row for row in mine if row is not None and parse_rules([row])]
+        # a part without a rule is usually the tail of one that has it
+        # ("Sunday 12-18 is family time, plan nothing") — report whole sentences only
+        if found:
+            rows += found
         else:
-            unclear.append(sentence)
+            unclear.append(", ".join(parts))
     # keep only rules the planner really enforces, so the config can't hold a dud
     # rules dropped by dedupe (a second limit of the same kind) are reported too
     kept = parse_rules(rows)
@@ -334,7 +352,7 @@ def garmin_disconnect(_payload: object) -> dict:
 
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "DayOptimizer"
+    server_version = f"DayOptimizer/{_code_stamp()}"
 
     def _host_ok(self) -> bool:
         # DNS-rebinding guard: only our own loopback names are accepted
@@ -346,6 +364,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-DayOptimizer-Pid", str(os.getpid()))
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -412,14 +431,33 @@ def make_server(port: int = 8765) -> ThreadingHTTPServer:
     return ThreadingHTTPServer(("127.0.0.1", port), partial(Handler, directory=str(STATIC_DIR)))
 
 
-def _is_ours(url: str) -> bool:
-    """Is a DayOptimizer planner already answering at `url`?"""
+def _running_planner(url: str):
+    """(server header, pid) of a DayOptimizer planner answering at `url`, else None."""
     from urllib.request import urlopen
     try:
         with urlopen(url + "api/garmin", timeout=2) as resp:
-            return resp.headers.get("Server", "").startswith("DayOptimizer")
+            server = resp.headers.get("Server", "")
+            if server.startswith("DayOptimizer"):
+                return server, int(resp.headers.get("X-DayOptimizer-Pid") or 0)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _stop_stale(pid: int, port: int) -> bool:
+    """Stop an older planner so this one can take the port."""
+    import signal
+    try:
+        os.kill(pid, signal.SIGTERM)
     except OSError:
         return False
+    for _ in range(50):
+        try:
+            make_server(port).server_close()
+            return True
+        except OSError:
+            time_mod.sleep(0.1)
+    return False
 
 
 def serve(port: int = 8765, open_browser: bool = True) -> None:
@@ -431,12 +469,20 @@ def serve(port: int = 8765, open_browser: bool = True) -> None:
         if exc.errno != errno.EADDRINUSE:
             raise
         url = f"http://127.0.0.1:{port}/"
-        if not _is_ours(url):
+        running = _running_planner(url)
+        if running is None:
             raise SystemExit(f"Port {port} is used by another program. Try: dayoptimizer web --port {port + 1}")
-        print(f"DayOptimizer planner is already running at {url}")
-        if open_browser:
-            webbrowser.open(url)
-        return
+        server_header, pid = running
+        if server_header.split()[0] == Handler.server_version:
+            print(f"DayOptimizer planner is already running at {url}")
+            if open_browser:
+                webbrowser.open(url)
+            return
+        if not pid or not _stop_stale(pid, port):
+            raise SystemExit(f"An older DayOptimizer planner is running at {url}. Close it "
+                             f"(or restart your Mac) and run this again.")
+        print("Restarted the planner with the updated code.")
+        server = make_server(port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"DayOptimizer planner running at {url} (Ctrl+C to stop)", flush=True)
     if open_browser:
