@@ -459,8 +459,12 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
     working = list(events)
     history = history or {}
     placed_per_category: dict[str, int] = {}
+    seen_labels: dict[tuple[str, str], int] = {}
     for b in rules.typical_week.get(day.weekday(), []):
         start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
+        # the Nth block with this title is already there once the day holds N of
+        # them (a routine may repeat a title: work before and after lunch)
+        nth = seen_labels[(b.category, b.label)] = seen_labels.get((b.category, b.label), 0) + 1
         if start < now:
             continue  # the usual time has passed (or is under way) today
         # rules the user wrote down: a broken limit drops the block with the reason
@@ -482,8 +486,9 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
             changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
                                          reason=advice_reason))
             continue
-        if any(e.calendar == b.category and (e.title == b.label or (e.start < end and e.end > start))
-               for e in working):
+        same = [e for e in working if e.calendar == b.category and e.title == b.label]
+        if len(same) >= nth or any(e.calendar == b.category and e.start < end and e.end > start
+                                   for e in working):
             continue
         usual = f"{start:%H:%M}-{end:%H:%M}"
         blocked = _blocked_events(rules, day, midnight, b.category)

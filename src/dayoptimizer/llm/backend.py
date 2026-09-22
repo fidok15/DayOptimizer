@@ -47,7 +47,8 @@ class FreeRule(BaseModel):
 class GapRule(BaseModel):
     source: str
     category: str
-    days: int
+    rest_days: int                     # days off between two occurrences; models
+                                       # mix up "days apart" with "days of break"
 
 class WeekRule(BaseModel):
     source: str
@@ -67,7 +68,10 @@ class CompiledNotes(BaseModel):
         rows = []
         for kind in ("not_before", "not_after", "keep_free", "min_gap_days", "max_per_week"):
             for rule in getattr(self, kind):
-                rows.append({"type": kind, **rule.model_dump()})
+                row = {"type": kind, **rule.model_dump()}
+                if kind == "min_gap_days":
+                    row["days"] = row.pop("rest_days") + 1
+                rows.append(row)
         return rows
 
 class LLMBackend(Protocol):
@@ -149,9 +153,9 @@ _NOTES_SYSTEM = (
     "- not_before / not_after: set `time` (HH:MM). The category may not be scheduled before/after it\n"
     "- keep_free: set `start` and `end` (HH:MM) for a window that stays empty, and `weekday` for a "
     "single day (mon..sun). Do NOT use `time` for this type\n"
-    "- min_gap_days: `days` = how many days apart two occurrences must be. "
-    "'not two days in a row' / 'never on consecutive days' = 2, 'every other day at most' = 2, "
-    "'at most once every three days' = 3\n"
+    "- min_gap_days: `rest_days` = how many days without it must pass between two occurrences. "
+    "'not two days in a row' / 'at least one day of rest between' = 1, "
+    "'two days of break between' = 2, 'at most once every three days' = 2\n"
     "- max_per_week: `count` = how many times a week at most\n"
     "Rules:\n"
     "- category must be copied EXACTLY from the listed categories, or left empty when the sentence "
@@ -176,7 +180,7 @@ _NOTES_SYSTEM = (
     '{"keep_free":[{"source":"every day 12:00-13:00 stays free","start":"12:00","end":"13:00"}]}  '
     "(no weekday means every day; set weekday only when the note names one day)\n"
     '"I never train two days in a row" -> '
-    '{"min_gap_days":[{"source":"I never train two days in a row","category":"Gym","days":2}]}\n'
+    '{"min_gap_days":[{"source":"I never train two days in a row","category":"Gym","rest_days":1}]}\n'
     '"gym three times a week at most" -> '
     '{"max_per_week":[{"source":"gym three times a week at most","category":"Gym","count":3}]}\n'
     '"no work after 18:00" -> '

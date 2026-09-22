@@ -153,3 +153,19 @@ def test_min_gap_and_weekly_limit_skip_the_block():
     note = next(c for c in plan_day(DAY, [], None, weekly, now=EARLY,
                                     history={"Gym": [date(2026, 6, 29), date(2026, 7, 1)]}) if c.title == "Workout")
     assert note.kind == "note" and "gym 2x a week" in note.reason
+
+
+def test_a_title_repeated_in_one_day_is_placed_every_time():
+    split = [RoutineBlock(0, 7 * 60, "Sleep", "Sleep"), RoutineBlock(9 * 60, 12 * 60, "Work", "Work"),
+             RoutineBlock(13 * 60, 17 * 60, "Work", "Work"), RoutineBlock(23 * 60, 24 * 60, "Sleep", "Sleep")]
+    rules = dataclasses.replace(BASE, typical_week={4: split})
+    assert _created(plan_day(DAY, [], None, rules, now=D)) == [
+        ("Sleep", "00:00", "07:00"), ("Work", "09:00", "12:00"), ("Work", "13:00", "17:00"), ("Sleep", "23:00", "00:00")]
+    # replan with everything on the calendar: nothing new
+    on_cal = [_ev("s1", "Sleep", 0, 7, "Sleep"), _ev("w1", "Work", 9, 12, "Work"),
+              _ev("w2", "Work", 13, 17, "Work"), _ev("s2", "Sleep", 23, 23, "Sleep", m2=59)]
+    assert _created(plan_day(DAY, on_cal, None, rules, now=D)) == []
+    # at 12:30 the morning block has passed: the afternoon one still isn't doubled
+    assert _created(plan_day(DAY, on_cal[:2], None, rules, now=D.replace(hour=12, minute=30))) == [
+        ("Work", "13:00", "17:00"), ("Sleep", "23:00", "00:00")]
+    assert _created(plan_day(DAY, on_cal, None, rules, now=D.replace(hour=12, minute=30))) == []

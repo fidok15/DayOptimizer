@@ -221,21 +221,26 @@ def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monke
                 return llm.CompiledNotes(not_before=[llm.TimeRule(category="Nope", time="09:00", source="x")])
             if "broken" in sentence:    # unparseable time
                 return llm.CompiledNotes(not_after=[llm.TimeRule(time="oops", source="x")])
+            if "family" in sentence:
+                return llm.CompiledNotes(keep_free=[llm.FreeRule(start="12:00", end="18:00", weekday="sun", source="x")])
             return llm.CompiledNotes()  # a mood: no rule
 
     monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
-    out = web.compile_notes("no lunch before 14. gym 3x a week\ninvented one; broken one. I want to feel less rushed",
-                            ["Food", "Gym"])
+    out = web.compile_notes("no lunch before 14. gym 3x a week\ninvented one; broken one. I want to feel less rushed. "
+                            "Sunday 12:00-18:00 is family time, plan nothing", ["Food", "Gym"])
     assert asked == ["no lunch before 14", "gym 3x a week", "invented one", "broken one",
-                     "I want to feel less rushed"]
-    assert out["rules"] == ["Food: not before 14:00", "Gym: at most 3 time(s) a week"]
+                     "I want to feel less rushed", "Sunday 12:00-18:00 is family time", "plan nothing"]
+    # "plan nothing" is the tail of a sentence that made a rule: not reported as unclear
+    assert out["rules"] == ["Food: not before 14:00", "Gym: at most 3 time(s) a week",
+                            "Sun 12:00-18:00: kept free"]
     assert out["not_compiled"] == ["invented one", "broken one", "I want to feel less rushed"]
     stored = yaml.safe_load(paths.user_config_path().read_text())["note_rules"]
     # the source is the user's own sentence, not whatever the model echoed
     assert [(r["type"], r["source"]) for r in stored] == [("not_before", "no lunch before 14"),
-                                                          ("max_per_week", "gym 3x a week")]
+                                                          ("max_per_week", "gym 3x a week"),
+                                                          ("keep_free", "Sunday 12:00-18:00 is family time")]
     # the rules reach the planner through the normal config path
-    assert [r.type for r in load_rules(DEFAULT_CONFIG).note_rules] == ["not_before", "max_per_week"]
+    assert [r.type for r in load_rules(DEFAULT_CONFIG).note_rules] == ["not_before", "max_per_week", "keep_free"]
     # clearing the notes clears the rules
     assert web.compile_notes("", ["Food"]) == {"rules": [], "not_compiled": [], "error": None}
     assert "note_rules" not in yaml.safe_load(paths.user_config_path().read_text())
@@ -260,3 +265,13 @@ def test_time_rules_need_a_time_in_the_sentence():
     # counts may be spelled out ("two days in a row"), so they aren't checked for digits
     assert web._clean_rule({"type": "min_gap_days", "source": "never two days in a row",
                             "category": "Gym", "days": 2}, ["Gym"]) is not None
+
+
+def test_gap_rules_count_rest_days():
+    from dayoptimizer import web
+    from dayoptimizer.llm import backend as llm
+    # "one day of rest between" = rest_days 1 = two days apart (Mon -> Wed)
+    rows = llm.CompiledNotes(min_gap_days=[llm.GapRule(category="Gym", rest_days=1, source="x")]).rows()
+    assert rows[0]["days"] == 2 and "rest_days" not in rows[0]
+    # one day apart allows every day: a no-op the model padded in
+    assert web._clean_rule({"type": "min_gap_days", "source": "x", "category": "Gym", "days": 1}, ["Gym"]) is None
