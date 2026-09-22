@@ -118,3 +118,32 @@ def test_http_import_without_bundle_says_how_to_set_up(server):
     status, body = _request(server, "POST", {"week_start": "2026-09-21"},
                             {"Content-Type": "application/json"}, "/api/import")
     assert status == 502 and body["code"] == "setup" and "setup-bundle.sh" in body["error"]
+
+
+def test_http_garmin_mfa_flow(server, monkeypatch):
+    import dayoptimizer.core.garmin as g
+    calls = []
+    monkeypatch.setattr(g, "garmin_start_login", lambda e, p: (True, "api"))
+    monkeypatch.setattr(g, "garmin_finish_mfa", lambda api, code: calls.append((api, code)))
+    hdr = {"Content-Type": "application/json"}
+    post = lambda path, body: _request(server, "POST", body, hdr, path)
+    assert post("/api/garmin/mfa", {"code": "123456"})[1]["code"] == "expired"
+    assert post("/api/garmin/login", {"email": "nope", "password": "pw"})[0] == 422
+    assert post("/api/garmin/login", {"email": "a@b.c", "password": "pw"}) == (200, {"status": "mfa"})
+    assert post("/api/garmin/mfa", {"code": "12a"})[0] == 422
+    assert post("/api/garmin/mfa", {"code": "123456"}) == (200, {"status": "connected"})
+    assert calls == [("api", "123456")]
+    assert _request(server, "GET", path="/api/garmin") == (200, {"connected": False})
+
+
+def test_http_garmin_bad_password_never_echoed(server, monkeypatch):
+    import dayoptimizer.core.garmin as g
+    def fail(e, p):
+        raise g.GarminLoginError("auth", "Garmin didn't accept that email and password.")
+    monkeypatch.setattr(g, "garmin_start_login", fail)
+    status, body = _request(server, "POST", {"email": "a@b.c", "password": "hunter2"},
+                            {"Content-Type": "application/json"}, "/api/garmin/login")
+    assert status == 502 and body["code"] == "auth" and "hunter2" not in json.dumps(body)
+    assert _request(server, "POST", {"email": "a@b.c", "password": "x"},
+                    {"Content-Type": "application/json", "Origin": "http://evil.example"},
+                    "/api/garmin/login")[0] == 403

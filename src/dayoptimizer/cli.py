@@ -252,13 +252,16 @@ def cmd_agent(args, rules, config):
 def cmd_garmin(args, rules, config):
     if args.garmin_command == "login":
         from getpass import getpass
-        from dayoptimizer.core.garmin import garmin_login
+        from dayoptimizer.core.garmin import GarminLoginError, garmin_finish_mfa, garmin_start_login
         email = console.input("Garmin email: ").strip()
         password = getpass("Garmin password (used once, never stored): ")
         try:
-            console.print(garmin_login(email, password))
-        except Exception as exc:
-            console.print(f"[red]Login failed: {exc}[/red]")
+            needs_mfa, api = garmin_start_login(email, password)
+            if needs_mfa:
+                garmin_finish_mfa(api, console.input("Code from Garmin (email or authenticator app): ").strip())
+            console.print("Connected to Garmin. Only the session tokens are stored (password not kept).")
+        except GarminLoginError as exc:
+            console.print(f"[red]{exc}[/red]")
 
 def cmd_stats(args, rules, config):
     from dayoptimizer.core.patterns import render_stats, suggest_adjustments, weekly_stats

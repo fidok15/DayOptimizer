@@ -6,11 +6,18 @@ API
   PUT /api/state  <- {categories, typical_week}  (validated, then saved)
   POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
                     source calendar; the user maps calendars onto categories, nothing is saved)
-  Errors are {error, code?}; import codes: setup, denied, timeout, failed.
+  GET  /api/garmin          -> {connected}
+  POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
+  POST /api/garmin/mfa      <- {code}            -> {status: connected}
+  POST /api/garmin/disconnect                    -> {status: disconnected}
+  Errors are {error, code?}. The Garmin password is only passed through to
+  Garmin's sign-in; only the returned session tokens are stored.
 """
 from __future__ import annotations
 import json
 import os
+import threading
+import time as time_mod
 import webbrowser
 from datetime import date, datetime, time, timedelta
 from functools import partial
@@ -118,18 +125,18 @@ def import_week(payload: object) -> dict:
     from dayoptimizer.mcp_server import _bundle_run
     bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle, os.X_OK):
-        raise ImportFailed("setup", "Calendar access isn't set up yet. Run scripts/setup-bundle.sh "
+        raise ApiError("setup", "Calendar access isn't set up yet. Run scripts/setup-bundle.sh "
                                     "from the DayOptimizer folder once, then try again.")
     out = _bundle_run(["sync", "--from", week_start.isoformat(), "--days", "7"])
     if "NO_ACCESS" in out:
-        raise ImportFailed("denied", "macOS blocked calendar access. Allow DayOptimizer in System "
+        raise ApiError("denied", "macOS blocked calendar access. Allow DayOptimizer in System "
                                      "Settings, Privacy & Security, Calendars, then try again.")
     if "timed out" in out:
-        raise ImportFailed("timeout", "Reading the calendar took too long. If a permission prompt "
+        raise ApiError("timeout", "Reading the calendar took too long. If a permission prompt "
                                       "is waiting, answer it and try again.")
     if "SYNCED" not in out:
         detail = out.strip().splitlines()[-1][:200] if out.strip() else "no output"
-        raise ImportFailed("failed", f"Couldn't read the calendar ({detail}).")
+        raise ApiError("failed", f"Couldn't read the calendar ({detail}).")
     start = datetime.combine(week_start, time()).astimezone()
     storage = Storage(paths.db_path())
     try:
@@ -139,10 +146,74 @@ def import_week(payload: object) -> dict:
     return {"typical_week": events_to_week(events, week_start)}
 
 
-class ImportFailed(RuntimeError):
-    def __init__(self, code: str, message: str):
+class ApiError(RuntimeError):
+    """Error for the browser: a stable `code` plus a message a person can act on."""
+    def __init__(self, code: str, message: str, status: int = 502):
         super().__init__(message)
         self.code = code
+        self.status = status
+
+
+MFA_TTL = 300  # seconds a started Garmin login waits for its MFA code
+_mfa_lock = threading.Lock()
+_mfa_pending: dict = {}  # {"api": Garmin, "at": monotonic} for the one login in flight
+
+
+def garmin_status() -> dict:
+    from dayoptimizer.core.garmin import garmin_configured
+    return {"connected": garmin_configured()}
+
+
+def _str_field(payload: object, key: str, max_len: int) -> str:
+    value = payload.get(key) if isinstance(payload, dict) else None
+    if not isinstance(value, str) or not value.strip() or len(value) > max_len:
+        raise ApiError("invalid", f"Enter your {key}.", 422)
+    return value
+
+
+def garmin_login(payload: object) -> dict:
+    from dayoptimizer.core.garmin import GarminLoginError, garmin_start_login
+    email = _str_field(payload, "email", 254).strip()
+    password = _str_field(payload, "password", 256)
+    if "@" not in email:
+        raise ApiError("invalid", "Enter the email you use for Garmin Connect.", 422)
+    try:
+        needs_mfa, api = garmin_start_login(email, password)
+    except GarminLoginError as exc:
+        raise ApiError(exc.code, str(exc)) from None
+    if not needs_mfa:
+        return {"status": "connected"}
+    with _mfa_lock:
+        _mfa_pending.update(api=api, at=time_mod.monotonic())
+    return {"status": "mfa"}
+
+
+def garmin_mfa(payload: object) -> dict:
+    from dayoptimizer.core.garmin import GarminLoginError, garmin_finish_mfa
+    code = _str_field(payload, "code", 12).strip()
+    if not code.isdigit():
+        raise ApiError("invalid", "The code is digits only.", 422)
+    with _mfa_lock:
+        api = _mfa_pending.get("api")
+        fresh = api is not None and time_mod.monotonic() - _mfa_pending["at"] < MFA_TTL
+        if not fresh:
+            _mfa_pending.clear()
+            raise ApiError("expired", "That sign-in timed out. Start again.", 409)
+    try:
+        garmin_finish_mfa(api, code)
+    except GarminLoginError as exc:
+        raise ApiError(exc.code, str(exc)) from None
+    with _mfa_lock:
+        _mfa_pending.clear()
+    return {"status": "connected"}
+
+
+def garmin_disconnect(_payload: object) -> dict:
+    from dayoptimizer.core.garmin import garmin_disconnect as forget
+    with _mfa_lock:
+        _mfa_pending.clear()
+    forget()
+    return {"status": "disconnected"}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -170,6 +241,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, read_state())
             except (OSError, yaml.YAMLError) as exc:
                 return self._json(500, {"error": f"Could not read config: {exc}"})
+        if self.path.split("?")[0] == "/api/garmin":
+            return self._json(200, garmin_status())
         if self.path.startswith("/api/"):
             return self._json(404, {"error": "not found"})
         if not (STATIC_DIR / self.path.split("?")[0].lstrip("/")).is_file():
@@ -192,18 +265,26 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(400, {"error": "invalid JSON"})
         except ConfigError as exc:
             return self._json(422, {"error": str(exc)})
-        except ImportFailed as exc:
-            return self._json(502, {"error": str(exc), "code": exc.code})
+        except ApiError as exc:
+            return self._json(exc.status, {"error": str(exc), "code": exc.code})
 
     def do_PUT(self):
         if self.path != "/api/state":
             return self._json(404, {"error": "not found"})
         return self._write(write_state)
 
+    POST_ROUTES = {
+        "/api/import": import_week,
+        "/api/garmin/login": garmin_login,
+        "/api/garmin/mfa": garmin_mfa,
+        "/api/garmin/disconnect": garmin_disconnect,
+    }
+
     def do_POST(self):
-        if self.path != "/api/import":
+        action = self.POST_ROUTES.get(self.path)
+        if action is None:
             return self._json(404, {"error": "not found"})
-        return self._write(import_week)
+        return self._write(action)
 
     def log_message(self, format, *args):
         pass  # keep the terminal quiet
