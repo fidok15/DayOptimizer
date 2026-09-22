@@ -26,3 +26,6 @@ __pycache__/
 
 # graphify knowledge graph output (generated)
 graphify-out/
+
+# Browser automation screenshots/snapshots (may show private calendar data)
+.playwright-mcp/
