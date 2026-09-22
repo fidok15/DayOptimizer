@@ -85,9 +85,10 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
               ) : (
                 <p className="flex items-start gap-2 text-sm leading-snug">
                   <CalendarCheck size={20} weight="bold" className="shrink-0 text-[#4fb286]" aria-hidden />
-                  {result.calendars.created.length
-                    ? `Added to your Calendar app: ${result.calendars.created.join(", ")}.`
-                    : "Every category already has its calendar in the Calendar app."}
+                  {[
+                    result.calendars.created.length && `Added to your Calendar app: ${result.calendars.created.join(", ")}.`,
+                    result.calendars.recolored.length && `New colour in your Calendar app: ${result.calendars.recolored.join(", ")}.`,
+                  ].filter(Boolean).join(" ") || "Every category already has its calendar, in its colour, in the Calendar app."}
                 </p>
               )}
               {result.notes.error ? (

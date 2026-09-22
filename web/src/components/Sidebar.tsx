@@ -118,7 +118,7 @@ function Swatch({ name, color, onPick }: { name: string; color: string; onPick: 
         {open && (
           <motion.div
             {...pop}
-            className="glass-strong absolute top-9 left-0 z-20 grid origin-top-left grid-cols-5 gap-1.5 rounded-[10px] p-2"
+            className="glass-strong absolute top-9 left-0 z-20 grid w-max origin-top-left grid-cols-6 gap-1.5 rounded-[10px] p-2"
           >
             {SWATCHES.map((s) => (
               <button
@@ -134,6 +134,19 @@ function Swatch({ name, color, onPick }: { name: string; color: string; onPick: 
                 style={{ background: s }}
               />
             ))}
+            <label
+              title="Any colour"
+              className={`relative grid size-6 cursor-pointer place-items-center overflow-hidden rounded-full ring-1 ring-white/25 transition active:scale-[0.98] ${SWATCHES.includes(color) ? "" : "ring-2 ring-ink"}`}
+              style={{ background: SWATCHES.includes(color) ? "conic-gradient(#e0625a, #d4b44a, #4fb286, #4a9ec2, #6c6fd1, #c77dcb, #e0625a)" : color }}
+            >
+              <input
+                type="color"
+                aria-label={`Any colour for ${name}`}
+                value={color}
+                onChange={(e) => onPick(e.target.value)}
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
+              />
+            </label>
           </motion.div>
         )}
       </AnimatePresence>

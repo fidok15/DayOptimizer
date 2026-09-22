@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchState, saveState } from "./api";
+import { calendarColors, fetchState, saveState } from "./api";
 import { uid } from "./time";
 import { WEEKDAYS, type Categories, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
 
@@ -33,6 +33,15 @@ export function usePlanner() {
         setDefaults(s.defaults);
         setDayStart(s.day_start);
         setLoad("ready");
+        // a category without a colour of its own shows its calendar's, so the page and
+        // the Calendar app agree from the start (not an edit: nothing is autosaved)
+        calendarColors().then((colors) =>
+          setCategories((c) =>
+            Object.fromEntries(
+              Object.entries(c).map(([name, cat]) => [name, cat.color || !colors[name] ? cat : { ...cat, color: colors[name] }]),
+            ),
+          ),
+        );
       })
       .catch((e: Error) => {
         setLoadError(e.message);

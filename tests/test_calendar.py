@@ -44,7 +44,7 @@ class _Src:
 
 class _Cal:
     def __init__(self, title="", source=None):
-        self._title, self._source, self.color = title, source, None
+        self._title, self._source, self._color = title, source, None
 
     def title(self):
         return self._title
@@ -52,8 +52,11 @@ class _Cal:
     def setTitle_(self, t):
         self._title = t
 
+    def color(self):
+        return self._color
+
     def setColor_(self, c):
-        self.color = c
+        self._color = c
 
     def setSource_(self, s):
         self._source = s
@@ -100,7 +103,21 @@ def test_ensure_calendar_skips_existing_and_falls_back_to_a_writable_account():
     client = _client(store)
     assert client.ensure_calendar("Work") is False  # emoji-prefixed name counts
     assert client.ensure_calendar("Choir", "#4f9d8a") is True
-    assert store.saved == [("Choir", 2)] and store.calendars[-1].color is not None
+    assert store.saved == [("Choir", 2)] and store.calendars[-1].color() is not None
     locked = _client(_Store([], [_Src(2, False)]))
     with pytest.raises(KeyError, match="couldn't be created"):
         locked.ensure_calendar("Gym")
+
+
+def test_set_color_recolours_only_when_different(monkeypatch):
+    from dayoptimizer.core import calendar as cal_mod
+    monkeypatch.setattr(cal_mod, "_nscolor", lambda c: c)
+    monkeypatch.setattr(cal_mod, "_hex", lambda c: c)
+    google = _Src(2, True)
+    work = _Cal("🔨 Work ", google)
+    work.setColor_("#c2c2c2")
+    store = _Store([work], [google])
+    client = _client(store)
+    assert client.set_color("Work", "#C2C2C2") is False       # same colour: nothing saved
+    assert client.set_color("Work", "#4fb286") is True and work.color() == "#4fb286"
+    assert client.set_color("Nope", "#4fb286") is False       # no such calendar

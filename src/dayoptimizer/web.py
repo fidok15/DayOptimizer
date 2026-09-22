@@ -7,7 +7,8 @@ API
   POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
                     source calendar; the user maps calendars onto categories, nothing is saved)
   POST /api/routine <- {categories, typical_week, notes} -> {path, text, calendars, notes}  (save, write the LLM
-                    brief, create a Calendar-app calendar per category)
+                    brief, create/recolour a Calendar-app calendar per category)
+  GET  /api/calendar-colors -> {colors: {category: #rrggbb}}  (each category calendar's colour now)
   GET  /api/garmin          -> {connected}
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
   POST /api/garmin/mfa      <- {code}            -> {status: connected}
@@ -269,24 +270,45 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
             "not_compiled": unclear + dropped, "error": None}
 
 
+def _calendar_lines(out: str, tag: str) -> list[str]:
+    line = next((l for l in out.splitlines() if l.startswith(tag + " ")), f"{tag} ")
+    return [c for c in line[len(tag) + 1:].split("\t") if c]
+
+
+def _colors(out: str) -> dict[str, str]:
+    return dict(l[len("COLOR "):].split("\t", 1) for l in out.splitlines()
+                if l.startswith("COLOR ") and "\t" in l)
+
+
 def create_category_calendars() -> dict:
-    """Make sure every category has a calendar in the Calendar app (through the
-    TCC bundle). Never fails the save: problems come back as a message."""
+    """Make sure every category has a calendar in the Calendar app, in the
+    category's colour (through the TCC bundle). Never fails the save: problems
+    come back as a message."""
+    from dayoptimizer.mcp_server import _bundle_run
+    bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
+    empty = {"created": [], "recolored": [], "colors": {}}
+    if not os.access(bundle, os.X_OK):
+        return {**empty, "error": "Calendar access isn't set up yet, so your categories aren't "
+                                  "in the Calendar app. Run scripts/install.sh once."}
+    out = _bundle_run(["calendars"])
+    if "NO_ACCESS" in out:
+        return {**empty, "error": "macOS blocked calendar access. Allow DayOptimizer in System "
+                                  "Settings, Privacy & Security, Calendars."}
+    if not any(l.startswith("CREATED") for l in out.splitlines()):
+        return {**empty, "error": "Couldn't add your categories to the Calendar app."}
+    failed = [l[len("FAILED "):] for l in out.splitlines() if l.startswith("FAILED ")]
+    return {"created": _calendar_lines(out, "CREATED"), "recolored": _calendar_lines(out, "RECOLORED"),
+            "colors": _colors(out), "error": "; ".join(failed) or None}
+
+
+def calendar_colors() -> dict:
+    """The colour each category's calendar has now, so the page can show the
+    same one. Empty when calendar access isn't set up: the page keeps its own."""
     from dayoptimizer.mcp_server import _bundle_run
     bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle, os.X_OK):
-        return {"created": [], "error": "Calendar access isn't set up yet, so your categories aren't "
-                                        "in the Calendar app. Run scripts/install.sh once."}
-    out = _bundle_run(["calendars"])
-    if "NO_ACCESS" in out:
-        return {"created": [], "error": "macOS blocked calendar access. Allow DayOptimizer in System "
-                                        "Settings, Privacy & Security, Calendars."}
-    lines = out.splitlines()
-    created = next((l[len("CREATED "):].split("\t") for l in lines if l.startswith("CREATED")), None)
-    failed = [l[len("FAILED "):] for l in lines if l.startswith("FAILED ")]
-    if created is None:
-        return {"created": [], "error": "Couldn't add your categories to the Calendar app."}
-    return {"created": [c for c in created if c], "error": "; ".join(failed) or None}
+        return {"colors": {}}
+    return {"colors": _colors(_bundle_run(["calendars", "--read"]))}
 
 
 MFA_TTL = 300  # seconds a started Garmin login waits for its MFA code
@@ -379,6 +401,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(500, {"error": f"Could not read config: {exc}"})
         if self.path.split("?")[0] == "/api/garmin":
             return self._json(200, garmin_status())
+        if self.path.split("?")[0] == "/api/calendar-colors":
+            return self._json(200, calendar_colors())
         if self.path.startswith("/api/"):
             return self._json(404, {"error": "not found"})
         if not (STATIC_DIR / self.path.split("?")[0].lstrip("/")).is_file():

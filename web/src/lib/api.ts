@@ -1,3 +1,4 @@
+import { categoryColor } from "./colors";
 import type { Categories, ImportedBlock, ServerState, Week, Weekday } from "./types";
 
 async function parse(res: Response): Promise<ServerState> {
@@ -66,11 +67,23 @@ export const garminDisconnect = () => post<{ status: "disconnected" }>("/api/gar
 export interface RoutineSaved {
   path: string;
   text: string;
-  calendars: { created: string[]; error: string | null };
+  calendars: { created: string[]; recolored: string[]; error: string | null };
   notes: { rules: string[]; not_compiled: string[]; error: string | null };
 }
 
-/** Save the week, write the routine brief the LLM reads, and create a Calendar-app
- * calendar for every category that lacks one. */
-export const saveRoutine = (categories: Categories, week: Week, notes: string) =>
-  post<RoutineSaved>("/api/routine", { categories, typical_week: toServerWeek(week), notes });
+/** Save the week, write the routine brief the LLM reads, and give every category a
+ * Calendar-app calendar in the colour shown here (created or recoloured). */
+export const saveRoutine = (categories: Categories, week: Week, notes: string) => {
+  // send the colour on screen even when it's only a default, so the calendar matches it
+  const coloured = Object.fromEntries(
+    Object.entries(categories).map(([name, c]) => [name, { ...c, color: categoryColor(name, c.color) }]),
+  );
+  return post<RoutineSaved>("/api/routine", { categories: coloured, typical_week: toServerWeek(week), notes });
+};
+
+/** The colour each category's calendar has now in the Calendar app ({} without calendar access). */
+export const calendarColors = (): Promise<Record<string, string>> =>
+  fetch("/api/calendar-colors", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b: { colors?: Record<string, string> } | null) => b?.colors ?? {})
+    .catch(() => ({}));

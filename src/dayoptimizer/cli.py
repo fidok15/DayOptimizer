@@ -396,20 +396,29 @@ def cmd_sync(args, rules, config):
     print(f"SYNCED {len(events)}")
 
 def cmd_calendars(args, rules, config):
-    """Create a calendar in the Calendar app for every category that lacks one.
-    Prints CREATED <names> / FAILED <name>: <why> lines for the caller."""
+    """Create a calendar in the Calendar app for every category that lacks one
+    and give it the category's colour. Prints CREATED / RECOLORED <names>,
+    FAILED <name>: <why> and COLOR <name> <#hex> lines for the caller.
+    --read only reports the colours."""
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
         return
-    created = []
+    created, recolored = [], []
     for name, cat in config["categories"].items():
+        color = (cat or {}).get("color")
         try:
-            if calendar.ensure_calendar(name, (cat or {}).get("color")):
+            if not args.read and calendar.ensure_calendar(name, color):
                 created.append(name)
+            elif not args.read and color and calendar.set_color(name, color):
+                recolored.append(name)
         except KeyError as exc:
             print(f"FAILED {name}: {exc}")
+        actual = calendar.calendar_color(name)
+        if actual:
+            print(f"COLOR {name}\t{actual}")
     print("CREATED " + "\t".join(created))
+    print("RECOLORED " + "\t".join(recolored))
 
 def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
@@ -473,7 +482,8 @@ def main(argv: list[str] | None = None):
     p_garmin = sub.add_parser("garmin", help="Garmin Connect account")
     garmin_sub = p_garmin.add_subparsers(dest="garmin_command", required=True)
     garmin_sub.add_parser("login", help="log in and store OAuth tokens (password is not persisted)")
-    sub.add_parser("calendars", help="create a calendar in the Calendar app for each category")
+    p_cals = sub.add_parser("calendars", help="create a calendar in the Calendar app for each category")
+    p_cals.add_argument("--read", action="store_true", help="only report each category calendar's colour")
     p_sync = sub.add_parser("sync", help="copy calendar events into the local cache")
     p_sync.add_argument("--from", dest="start", required=True, help="first day (YYYY-MM-DD)")
     p_sync.add_argument("--days", type=int, default=7)

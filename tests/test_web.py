@@ -183,8 +183,12 @@ def test_category_calendars_report(monkeypatch):
     exe.parent.mkdir(parents=True)
     exe.write_text("")
     os.chmod(exe, 0o755)
-    monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "FAILED Gym: nope\nCREATED Choir\tRead\n")
-    assert web.create_category_calendars() == {"created": ["Choir", "Read"], "error": "Gym: nope"}
+    monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "FAILED Gym: nope\nCOLOR Choir\t#4f9d8a\n"
+                        "COLOR Work\t#c2c2c2\nCREATED Choir\tRead\nRECOLORED Work\n")
+    assert web.create_category_calendars() == {"created": ["Choir", "Read"], "recolored": ["Work"],
+                                               "colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"},
+                                               "error": "Gym: nope"}
+    assert web.calendar_colors() == {"colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"}}
     monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "NO_ACCESS\n")
     assert "blocked" in web.create_category_calendars()["error"]
 
