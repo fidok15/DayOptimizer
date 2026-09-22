@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowClockwise, ArrowLeft, CalendarPlus, CircleNotch, DownloadSimple, WarningCircle } from "@phosphor-icons/react";
-import { ImportError, importWeek, type ImportedWeek } from "../lib/api";
+import { ApiError, importWeek, type ImportedWeek } from "../lib/api";
 import { toMin, uid } from "../lib/time";
 import { usePopover } from "../lib/usePopover";
 import { WEEKDAYS, type Categories, type Week } from "../lib/types";
@@ -64,7 +64,7 @@ export default function ImportCalendar(props: { categories: Categories; onImport
         setFound(w);
       })
       .catch((e: unknown) =>
-        setFailure(e instanceof ImportError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" }),
+        setFailure(e instanceof ApiError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" }),
       )
       .finally(() => setLoading(false));
   };

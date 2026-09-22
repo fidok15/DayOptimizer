@@ -4,6 +4,7 @@ import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, WarningCirc
 import { greeting, lineOfTheDay } from "../lib/copy";
 import { fromMin, sceneHour } from "../lib/time";
 import type { Categories, SaveStatus, View, Week } from "../lib/types";
+import GarminConnect from "./GarminConnect";
 import ImportCalendar from "./ImportCalendar";
 
 const VIEWS = [
@@ -67,6 +68,7 @@ export default function Header(props: {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} />
         <div role="group" aria-label="View" className="glass inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
