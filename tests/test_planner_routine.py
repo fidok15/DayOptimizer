@@ -180,3 +180,14 @@ def test_a_block_pushed_by_a_new_event_still_obeys_the_notes():
     events = [_ev("l", "Learn", 20, 21, "English"), _ev("m", "Meeting", 20, 21, "Ania", m1=15)]
     moves = [c for c in plan_day(DAY, events, None, rules, now=EARLY) if c.kind == "move"]
     assert [(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in moves] == [("English", "19:15", "20:15")]
+
+
+def test_a_planner_block_that_breaks_a_note_is_moved_back_inside_the_rules():
+    rules = _with_notes([{"type": "not_after", "category": "Learn", "time": "21:00", "source": "no study after 21"}],
+                        {4: [RoutineBlock(20 * 60, 21 * 60, "Learn", "English")]})
+    late = _ev("l", "Learn", 21, 22, "English", m1=30, m2=30)       # left there by an older plan
+    mine = _ev("u", "Learn", 22, 23, "Exam prep", m1=30)             # the user's own: left alone
+    changes = plan_day(DAY, [late, mine], None, rules, now=EARLY)
+    moves = [(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes if c.kind == "move"]
+    assert moves == [("English", "20:00", "21:00")]
+    assert "no study after 21" in next(c.reason for c in changes if c.kind == "move")

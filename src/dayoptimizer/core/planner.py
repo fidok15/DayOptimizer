@@ -447,6 +447,34 @@ def _blocked_events(rules, day, midnight, category):
                          start=midnight + timedelta(minutes=start), end=midnight + timedelta(minutes=end)))
     return out
 
+def enforce_notes(day, events, rules, now, day_start, day_end):
+    """Blocks the planner placed that now break the user's notes (a rule added
+    later, an older plan) move to the nearest allowed time. What the user put
+    on the calendar themselves, or a fixed category, is theirs to change."""
+    changes: list[PlannedChange] = []
+    midnight = datetime.combine(day, time(0)).astimezone()
+    working = list(events)
+    for ev in sorted(events, key=lambda e: e.start):
+        if ev.start < now or not (rules.is_movable(ev.calendar) and _is_planner_managed(ev.title, rules)):
+            continue
+        broken = window_rule(rules.note_rules, ev.calendar, int((ev.start - midnight).total_seconds() // 60),
+                             int((ev.end - midnight).total_seconds() // 60), day.weekday())
+        if broken is None:
+            continue
+        others = [e for e in working if e.id != ev.id] + _blocked_events(rules, day, midnight, ev.calendar)
+        new_start = _nearest_start(others, ev.start, ev.end - ev.start, max(day_start, now), day_end)
+        if new_start is None:
+            changes.append(PlannedChange(kind="note", category=ev.calendar, title=ev.title, event_id=ev.id,
+                                         reason=f"breaks {explain(broken)}, and there is no allowed time left today"))
+            continue
+        moved = Event(id=ev.id, calendar=ev.calendar, title=ev.title, start=new_start,
+                      end=new_start + (ev.end - ev.start), location=ev.location)
+        working = [moved if e.id == ev.id else e for e in working]
+        changes.append(PlannedChange(kind="move", category=ev.calendar, title=ev.title, event_id=ev.id,
+                                     new_start=moved.start, new_end=moved.end,
+                                     reason=f"{explain(broken)} — nearest allowed time"))
+    return changes
+
 def place_routine(day, events, rules, now, day_start, day_end, garmin=None, activities=(),
                   history=None):
     """Put the user's routine for this weekday into the day: each block at its
@@ -541,6 +569,7 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
         working = _project(working, phase_changes)
 
     run(resolve_conflicts(working, rules, day_start, day_end))
+    run(enforce_notes(day, working, rules, now, day_start, day_end))
     run(adjust_gym(working, garmin, rules, day_start, day_end, now))
     if rules.has_routine:
         # the user's own week replaces the generic meal/gym/sleep/filler generators
