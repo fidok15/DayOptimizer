@@ -4,6 +4,7 @@ import Skyline from "./scene/Skyline";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import Calendar from "./components/Calendar";
+import Notes from "./components/Notes";
 import Footer from "./components/Footer";
 import { LoadError, LoadingSkeleton } from "./components/States";
 import { usePlanner } from "./lib/usePlanner";
@@ -36,6 +37,7 @@ export default function App() {
             onImport={p.importBlocks}
             day={day}
             week={p.week}
+            notes={p.notes}
           />
         </motion.div>
 
@@ -52,7 +54,7 @@ export default function App() {
                 onRemove={p.removeCategory}
               />
             </motion.div>
-            <motion.div {...rise(2)} className="min-w-0">
+            <motion.div {...rise(2)} className="flex min-w-0 flex-col gap-5">
               <Calendar
                 view={view}
                 week={p.week}
@@ -62,6 +64,7 @@ export default function App() {
                 onChange={p.updateWeek}
                 dayStart={p.dayStart}
               />
+              <Notes notes={p.notes} onChange={p.updateNotes} />
             </motion.div>
           </main>
         )}

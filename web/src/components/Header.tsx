@@ -31,8 +31,9 @@ export default function Header(props: {
   onImport: (week: Week, replace: boolean, days: Weekday[]) => void;
   day: Weekday;
   week: Week;
+  notes: string;
 }) {
-  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, day, week } = props;
+  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, day, week, notes } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -46,7 +47,7 @@ export default function Header(props: {
         {/* radial scrim: darkens behind the text and fades to nothing, so no box edge shows over the scene */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -inset-x-16 -inset-y-12 -z-10 bg-[radial-gradient(ellipse_farthest-side_at_40%_55%,rgb(4_6_16/0.72),rgb(4_6_16/0.5)_45%,transparent)]"
+          className="pointer-events-none absolute -inset-x-24 -inset-y-16 -z-10 bg-[radial-gradient(60%_60%_at_38%_50%,rgb(4_6_16/0.72),rgb(4_6_16/0.45)_45%,rgb(4_6_16/0.12)_75%,transparent_100%)]"
         />
         <p className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-ink">
           {greeting(hour)}
@@ -73,7 +74,7 @@ export default function Header(props: {
       <div className="flex flex-wrap items-center gap-3">
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} view={view} day={day} />
-        <SaveRoutine categories={categories} week={week} />
+        <SaveRoutine categories={categories} week={week} notes={notes} />
         <div role="group" aria-label="View" className="glass inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;

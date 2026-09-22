@@ -15,6 +15,7 @@ export function usePlanner() {
   const [loadError, setLoadError] = useState("");
   const [categories, setCategories] = useState<Categories>({});
   const [week, setWeek] = useState<Week>(() => toWeek({ typical_week: {} } as ServerState));
+  const [notes, setNotes] = useState("");
   const [defaults, setDefaults] = useState<string[]>([]);
   const [dayStart, setDayStart] = useState("06:00");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -28,6 +29,7 @@ export function usePlanner() {
       .then((s) => {
         setCategories(s.categories);
         setWeek(toWeek(s));
+        setNotes(s.notes ?? "");
         setDefaults(s.defaults);
         setDayStart(s.day_start);
         setLoad("ready");
@@ -40,10 +42,10 @@ export function usePlanner() {
 
   useEffect(reload, [reload]);
 
-  const save = useCallback((cats: Categories, w: Week) => {
+  const save = useCallback((cats: Categories, w: Week, n: string) => {
     const mine = rev.current;
     setSaveStatus("saving");
-    saveState(cats, w)
+    saveState(cats, w, n)
       .then(() => {
         if (mine === rev.current) {
           dirty.current = false;
@@ -61,9 +63,9 @@ export function usePlanner() {
   // debounced autosave after any edit
   useEffect(() => {
     if (!dirty.current) return;
-    const t = window.setTimeout(() => save(categories, week), AUTOSAVE_MS);
+    const t = window.setTimeout(() => save(categories, week, notes), AUTOSAVE_MS);
     return () => window.clearTimeout(t);
-  }, [categories, week, save]);
+  }, [categories, week, notes, save]);
 
   // warn before closing the tab with unsaved edits
   useEffect(() => {
@@ -109,11 +111,16 @@ export function usePlanner() {
     );
   }, []);
 
-  const retrySave = useCallback(() => save(categories, week), [save, categories, week]);
+  const updateNotes = useCallback((text: string) => {
+    touch();
+    setNotes(text);
+  }, []);
+
+  const retrySave = useCallback(() => save(categories, week, notes), [save, categories, week, notes]);
 
   return {
     load, loadError, reload,
-    categories, week, defaults, dayStart,
+    categories, week, notes, defaults, dayStart, updateNotes,
     updateWeek, updateCategories, removeCategory, importBlocks,
     saveStatus, saveError, retrySave,
   };

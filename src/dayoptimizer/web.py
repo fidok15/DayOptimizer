@@ -2,8 +2,8 @@
 JSON API over the user's config.local.yaml. Binds to 127.0.0.1 only.
 
 API
-  GET /api/state  -> {categories, typical_week, defaults, day_start, day_end}
-  PUT /api/state  <- {categories, typical_week}  (validated, then saved)
+  GET /api/state  -> {categories, typical_week, notes, defaults, day_start, day_end}
+  PUT /api/state  <- {categories, typical_week, notes}  (validated, then saved)
   POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
                     source calendar; the user maps calendars onto categories, nothing is saved)
   POST /api/routine <- {categories, typical_week} -> {path, text, calendars}  (save, write the LLM
@@ -53,6 +53,7 @@ def read_state() -> dict:
     return {
         "categories": merged["categories"],
         "typical_week": _local().get("typical_week") or {},
+        "notes": _local().get("notes") or "",
         "defaults": list(_defaults()["categories"]),
         "day_start": rules.get("day_start", "06:00"),
         "day_end": rules.get("day_end", "23:00"),
@@ -80,6 +81,14 @@ def write_state(payload: object) -> dict:
     local = _local()
     local.pop("categories", None)
     local.pop("typical_week", None)
+    local.pop("notes", None)
+    notes = payload.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        raise ConfigError("notes must be text.")
+    if notes and notes.strip():
+        if len(notes) > 2000:
+            raise ConfigError("Keep your notes under 2000 characters.")
+        local["notes"] = notes.strip()
     if delta:
         local["categories"] = delta
     week = {day: blocks for day, blocks in week.items() if blocks}
@@ -161,7 +170,7 @@ def save_routine_brief(payload: object) -> dict:
     """The setup page's 'Save my routine': store the week, then write the brief the LLM reads."""
     from dayoptimizer.routine import render_routine, save_routine
     state = write_state(payload)
-    text = render_routine(state["categories"], state["typical_week"])
+    text = render_routine(state["categories"], state["typical_week"], state["notes"])
     return {"path": save_routine(text), "text": text, "calendars": create_category_calendars()}
 
 

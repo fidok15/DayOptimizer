@@ -18,12 +18,12 @@ const toServerWeek = (week: Week) =>
     ]),
   );
 
-export const saveState = (categories: Categories, week: Week): Promise<ServerState> => {
+export const saveState = (categories: Categories, week: Week, notes: string): Promise<ServerState> => {
   const typical_week = toServerWeek(week);
   return fetch("/api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ categories, typical_week }),
+    body: JSON.stringify({ categories, typical_week, notes }),
   }).then(parse);
 };
 
@@ -71,5 +71,5 @@ export interface RoutineSaved {
 
 /** Save the week, write the routine brief the LLM reads, and create a Calendar-app
  * calendar for every category that lacks one. */
-export const saveRoutine = (categories: Categories, week: Week) =>
-  post<RoutineSaved>("/api/routine", { categories, typical_week: toServerWeek(week) });
+export const saveRoutine = (categories: Categories, week: Week, notes: string) =>
+  post<RoutineSaved>("/api/routine", { categories, typical_week: toServerWeek(week), notes });

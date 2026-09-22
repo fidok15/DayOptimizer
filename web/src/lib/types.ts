@@ -36,6 +36,7 @@ export type View = "day" | "week";
 export interface ServerState {
   categories: Categories;
   typical_week: Partial<Record<Weekday, Omit<Block, "id">[]>>;
+  notes: string;
   defaults: string[];
   day_start: string;
   day_end: string;
