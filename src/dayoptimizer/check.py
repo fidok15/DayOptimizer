@@ -1,17 +1,22 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from dayoptimizer.core.models import Event, GarminSummary
 from dayoptimizer.core.notify import notify
 from dayoptimizer.core.planner import PLANNER_TITLES
 
 
 def decide(now: datetime, today: str, garmin: GarminSummary | None,
-           new_foreign_events: list[Event], state: dict[str, str]) -> list[str]:
+           new_foreign_events: list[Event], state: dict[str, str],
+           morning_fallback: time | None = None) -> list[str]:
     """Pure decision function — no I/O. Returns the actions the background
-    cycle should take, in a fixed order (morning, event, stress)."""
+    cycle should take, in a fixed order (morning, event, stress).
+    The morning replan waits for last night's sleep from Garmin; without it
+    (no watch, or it has not synced yet) it runs once past morning_fallback."""
     actions: list[str] = []
 
-    if garmin is not None and garmin.sleep_seconds is not None and not state.get(f"morning:{today}"):
+    slept = garmin is not None and garmin.sleep_seconds is not None
+    late = morning_fallback is not None and now.time() >= morning_fallback
+    if (slept or late) and not state.get(f"morning:{today}"):
         actions.append("morning_replan")
 
     if new_foreign_events:
@@ -77,7 +82,9 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
         if value:
             state[key] = value
 
-    actions = decide(now, today, garmin, new_foreign_events, state)
+    fallback = (datetime.combine(today_date, rules.day_start)
+                + timedelta(minutes=rules.morning_buffer_minutes)).time()
+    actions = decide(now, today, garmin, new_foreign_events, state, fallback)
 
     performed: list[str] = []
     for action in actions:
