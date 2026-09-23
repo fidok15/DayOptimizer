@@ -373,3 +373,21 @@ def test_run_check_morning_replan_without_garmin(monkeypatch):
 
     assert performed == ["morning_replan"]
     storage.set_state.assert_called_once_with(f"morning:{TODAY}", at.isoformat())
+
+def test_run_check_event_replan_skips_yesterday(monkeypatch):
+    calendar = MagicMock()
+    storage = MagicMock()
+    yesterday = Event(id="e0", calendar="Meeting", title="Weekly",
+                      start=NOW_AFTERNOON.replace(day=2), end=NOW_AFTERNOON.replace(day=2))
+    storage.sync_events.return_value = [yesterday]
+    storage.get_state.return_value = "done"
+    plan_fn = MagicMock(return_value=([], [], []))
+    notify_mock = MagicMock()
+    monkeypatch.setattr(check, "notify", notify_mock)
+
+    performed = check.run_check(calendar, storage, _rules(), NOW_MORNING,
+                                plan_fn=plan_fn, fetch_garmin_fn=MagicMock(return_value=None))
+
+    assert performed == []
+    plan_fn.assert_not_called()
+    notify_mock.assert_not_called()
