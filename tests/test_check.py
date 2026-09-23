@@ -359,6 +359,14 @@ def test_fetch_garmin_unconfigured_falls_back_to_storage(tmp_path, monkeypatch):
     storage.save_garmin(cached)
     assert _fetch_garmin(storage, "2026-07-12") == cached  # no tokens -> cache
 
+def test_fetch_garmin_never_asks_about_a_future_day(tmp_path, monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.core import garmin
+    from dayoptimizer.core.storage import Storage
+    monkeypatch.setattr(garmin, "garmin_configured", lambda: True)
+    monkeypatch.setattr(garmin, "GarminClient", MagicMock(side_effect=AssertionError("API called")))
+    assert cli._fetch_garmin(Storage(tmp_path / "t.db"), "2999-01-01") is None
+
 def test_run_check_morning_replan_without_garmin(monkeypatch):
     calendar = MagicMock()
     storage = MagicMock()

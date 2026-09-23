@@ -23,7 +23,8 @@ def _load_config():
 
 def _fetch_garmin(storage, day: str):
     from dayoptimizer.core.garmin import GarminClient, GarminNotConfigured, garmin_configured
-    if not garmin_configured():
+    # a day that hasn't come has no data yet: don't spend Garmin's rate limit on it
+    if not garmin_configured() or day > date.today().isoformat():
         return storage.get_garmin(day)
     try:
         summary = GarminClient().fetch_summary(day)
