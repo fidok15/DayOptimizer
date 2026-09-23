@@ -67,6 +67,56 @@ activity label (`day_rules.free_time_activity`), via `config.local.yaml` /
 the onboarding interview — but the calendar names themselves must stay
 exactly as listed above.
 
+## Quick start
+
+Needs macOS and [uv](https://docs.astral.sh/uv/). Node is not needed: the web
+planner ships prebuilt.
+
+```bash
+git clone https://github.com/fidok15/DayOptimizer.git
+cd DayOptimizer
+scripts/install.sh
+```
+
+The installer syncs the Python dependencies, builds the small app bundle macOS
+needs for calendar access, and puts a `dayoptimizer` command in `~/.local/bin`
+(adding it to your PATH if needed).
+
+The first time you run `dayoptimizer` it opens a page in your browser where you
+draw your typical week: your categories, routines and habits. That page is only
+for this setup (reopen it with `dayoptimizer setup`). After that you use the
+terminal:
+
+```bash
+dayoptimizer                                  # optimize today around what's in your calendar
+dayoptimizer "meeting at 14:00 for about an hour, then gym"
+dayoptimizer "tomorrow I'm off, dentist at 10"
+dayoptimizer --help                           # every other command
+```
+
+Plain-words requests need a language model. DayOptimizer shows what it understood
+and asks before touching the calendar. It uses a local model when
+[Ollama](https://ollama.com) is running (free, nothing leaves your Mac):
+
+```bash
+brew install ollama && brew services start ollama && ollama pull qwen3:8b
+```
+
+Otherwise it uses Claude when `ANTHROPIC_API_KEY=...` is in a `.env` file in the
+DayOptimizer folder. `llm.backend` in the config forces one (`ollama`, `anthropic`,
+default `auto`). Bare `dayoptimizer` needs neither. Commands that touch
+the calendar run through DayOptimizer's app bundle automatically (see
+[macOS calendar permission](#macos-calendar-permission-tcc)).
+
+Rerun `scripts/install.sh` after `git pull`; it is safe to repeat.
+
+**Why no Docker image?** DayOptimizer reads and writes Apple Calendar through
+macOS itself (EventKit, with the calendar permission granted to its app bundle),
+runs in the background through launchd and sends macOS notifications. A Docker
+container is a Linux machine with none of those, so the planner would lose the
+calendar, which is the point of the app. The installer above is the supported
+setup.
+
 ## Install as a Claude Code plugin
 
 ```
@@ -95,6 +145,51 @@ approve it. Garmin is optional — if you have a watch, `/dayoptimizer:init`
 tells you to run `uv run dayoptimizer garmin login` in a separate terminal (it never
 asks for your Garmin password itself).
 
+### Web planner
+
+**How the week you draw is used.** When you have a typical week, the planner
+builds each day from it: every block goes into the calendar at its usual time.
+If something already sits there, a Flexible block moves to the nearest free
+time and a Fixed one is only flagged, so your own events always win. Days you
+leave empty stay empty. Each category gets its own calendar in the Calendar app
+(in its colour) when you press **Save my routine**, and the planner creates any
+that are still missing when it first writes to them. Deleting a category never
+deletes its calendar.
+
+**Your notes become rules.** The notes box is compiled into rules the planner
+enforces on its own, once, when you press Save my routine — so planning still
+needs no LLM and stays deterministic. "No lunch before 14:00" becomes a real
+constraint; "Sundays 18:00-22:00 are family time" keeps that window empty; "I
+never train two days in a row" and "gym three times a week at most" cap it.
+The dialog lists exactly what became a rule and what stayed a note (a mood like
+"I want to feel less rushed" can't be enforced, so the assistant just reads it).
+Rules live under `note_rules` in `config.local.yaml`, so you can fix or delete
+any of them by hand.
+
+**Recovery-aware training.** With Garmin connected, the planner reads the
+watch's recovery time and readiness. Because recovery time only says when the
+body is ready for the next *hard* session, a training block is kept and flagged
+"keep it easy" rather than dropped, and dropped only when it would load what
+recent hard work already tired out (legs after a long run; upper body and desk
+work are unaffected). Which region a block trains is learned from the watch's
+own history — what it actually recorded in those hours, or in the same
+category's other blocks — so nothing needs tagging and non-training blocks are
+never touched. Thresholds live in `day_rules`
+(`recovery_lighter_hours`, `recovery_skip_hours`, `respect_recovery: false` to
+ignore all of it). Without a drawn week, generic rules from
+`config.default.yaml` fill the day (meal windows, workouts, focus blocks).
+
+`dayoptimizer setup` (run automatically on first use) opens a local planner at
+`http://127.0.0.1:8765/`: add, recolour or remove categories, mark them Fixed or
+Flexible, and draw your typical week on a day or week calendar. Changes autosave
+to `~/.dayoptimizer/config.local.yaml` (categories plus a `typical_week` section).
+The server only listens on localhost. `--port N` changes the port, `--no-open`
+skips opening a browser tab. The UI's design is documented in [DESIGN.md](DESIGN.md).
+
+Developing the UI: `cd web && npm install && npm run dev` (Vite proxies `/api` to
+a running `dayoptimizer web --no-open`); `npm run build` writes the bundle into
+`src/dayoptimizer/web_static/`, which is what the Python server serves.
+
 ## Commands (Claude Code plugin)
 
 | Command | What it does |
@@ -106,9 +201,9 @@ asks for your Garmin password itself).
 
 ## CLI reference
 
-DayOptimizer also works as a standalone CLI (`dayoptimizer`, installed by
-`uv sync` via `pyproject.toml`'s `[project.scripts]`). All commands below
-must be run with `uv run` from the plugin's checkout directory — the
+DayOptimizer also works as a standalone CLI. After `scripts/install.sh` the
+`dayoptimizer` command works from anywhere, so drop the `uv run` prefix below.
+Without the installer, run the commands with `uv run` from the checkout directory — the
 `pyproject.toml`-managed virtualenv is what makes the bare `dayoptimizer`
 binary resolve at all. If Claude Code installed the plugin for you, that
 checkout lives at `~/.claude/plugins/cache/dayoptimizer/dayoptimizer`
@@ -118,6 +213,8 @@ directory" before running any of these.
 
 | Command | What it does |
 |---|---|
+| `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
+| `dayoptimizer "<your day in plain words>"` | Shows the events it understood, adds them on your OK, then replans (local Ollama or `ANTHROPIC_API_KEY`) |
 | `uv run dayoptimizer plan [--date YYYY-MM-DD] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |
 | `uv run dayoptimizer agent install [--interval SECONDS]` | Installs the launchd background agent (label `com.dayoptimizer.check`, default interval 900s / 15 min) that runs `check` periodically |
@@ -126,13 +223,14 @@ directory" before running any of these.
 | `uv run dayoptimizer garmin login` | Logs into Garmin Connect once and stores OAuth tokens (password is never persisted) |
 | `uv run dayoptimizer stats` | 14-day Garmin trends and suggested rule adjustments |
 | `uv run dayoptimizer apply --ids 3,4` | Applies pending fixed-event changes by id, after you've reviewed them |
-| `uv run dayoptimizer chat` | Terminal chat loop — a CLI alternative to the Claude Code plugin, not a local/offline one (see note below) |
+| `uv run dayoptimizer setup [--port N] [--no-open]` | Opens the typical-week setup page in the browser (see [Web planner](#web-planner)) |
+| `uv run dayoptimizer chat` | Several plain-words requests in a row, one per line |
 
-Because EventKit needs the TCC bundle (see below), `plan`, `apply`, `check`,
-and `chat` should be run through `scripts/dayoptimizer-app <command>` rather
-than the bare `dayoptimizer` binary — see next section.
+Because EventKit needs the TCC bundle (see below), the calendar commands
+(`plan`, `apply`, `check`, `sync` and plain-words requests) hand themselves to
+the bundle when started from a terminal, and print its output when done.
 
-`dayoptimizer chat` calls the Anthropic API directly (not a local model): it
+Plain-words requests and `chat` call the Anthropic API directly (not a local model): they
 requires `ANTHROPIC_API_KEY` set in your environment (or in a `.env` file in
 the plugin directory, which `dayoptimizer` loads automatically). It does not
 work offline.

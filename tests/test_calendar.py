@@ -32,3 +32,92 @@ def test_ek_to_event_maps_all_day_true():
                     datetime(2026, 8, 24, 23, 59, tzinfo=timezone.utc), None,
                     all_day=True)
     assert e.all_day is True
+
+
+class _Src:
+    def __init__(self, kind, ok):
+        self.kind, self.ok = kind, ok
+
+    def sourceType(self):
+        return self.kind
+
+
+class _Cal:
+    def __init__(self, title="", source=None):
+        self._title, self._source, self._color = title, source, None
+
+    def title(self):
+        return self._title
+
+    def setTitle_(self, t):
+        self._title = t
+
+    def color(self):
+        return self._color
+
+    def setColor_(self, c):
+        self._color = c
+
+    def setSource_(self, s):
+        self._source = s
+
+    def source(self):
+        return self._source
+
+
+class _Store:
+    def __init__(self, calendars, sources):
+        self.calendars, self._sources, self.saved = calendars, sources, []
+
+    def calendarsForEntityType_(self, _):
+        return list(self.calendars)
+
+    def defaultCalendarForNewEvents(self):
+        return self.calendars[0] if self.calendars else None
+
+    def sources(self):
+        return self._sources
+
+    def saveCalendar_commit_error_(self, cal, commit, err):
+        if cal.source().ok:
+            self.calendars.append(cal)
+            self.saved.append((cal.title(), cal.source().kind))
+            return True, None
+        return False, "not allowed"
+
+
+def _client(store):
+    from types import SimpleNamespace
+    from dayoptimizer.core.calendar import CalendarClient
+    c = CalendarClient.__new__(CalendarClient)
+    c._store = store
+    c._EventKit = SimpleNamespace(EKEntityTypeEvent=0, EKSourceTypeLocal=0, EKSourceTypeCalDAV=2,
+                                  EKCalendar=SimpleNamespace(calendarForEntityType_eventStore_=lambda t, s: _Cal()))
+    return c
+
+
+def test_ensure_calendar_skips_existing_and_falls_back_to_a_writable_account():
+    import pytest
+    google, icloud = _Src(2, False), _Src(2, True)
+    store = _Store([_Cal("🔨 Work ", google)], [google, icloud, _Src(0, True)])
+    client = _client(store)
+    assert client.ensure_calendar("Work") is False  # emoji-prefixed name counts
+    assert client.ensure_calendar("Choir", "#4f9d8a") is True
+    assert store.saved == [("Choir", 2)] and store.calendars[-1].color() is not None
+    locked = _client(_Store([], [_Src(2, False)]))
+    with pytest.raises(KeyError, match="couldn't be created"):
+        locked.ensure_calendar("Gym")
+
+
+def test_set_color_recolours_only_when_different(monkeypatch):
+    from dayoptimizer.core import calendar as cal_mod
+    monkeypatch.setattr(cal_mod, "_nscolor", lambda c: c)
+    monkeypatch.setattr(cal_mod, "_hex", lambda c: c)
+    google = _Src(2, True)
+    work = _Cal("🔨 Work ", google)
+    work.setColor_("#c2c2c2")
+    store = _Store([work], [google])
+    client = _client(store)
+    assert client.set_color("Work", "#C2C2C2") is False       # same colour: nothing saved
+    assert client.set_color("Work", "#4fb286") is True and work.color() == "#4fb286"
+    assert client.set_color("Nope", "#4fb286") is False       # no such calendar

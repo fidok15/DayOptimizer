@@ -1,6 +1,9 @@
 from __future__ import annotations
 from datetime import datetime, date, time, timedelta
 from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
+from dayoptimizer.core.constraints import (allowed_window, explain, free_windows, gap_rule,
+                                            week_rule, window_rule)
+from dayoptimizer.core.recovery import learn_region, training_advice
 from dayoptimizer.core.rules import Rules
 
 # Titles of events the planner itself creates/manages. The background watcher
@@ -68,7 +71,7 @@ def _find_slot(slots, duration, not_before):
 
 def _is_planner_managed(title: str, rules: Rules) -> bool:
     return (title in PLANNER_TITLES or title == rules.free_time_activity
-            or title.startswith("Commute:"))
+            or title.startswith("Commute:") or title in rules.routine_titles)
 
 def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
     """A block is effectively movable if its category is movable in config OR
@@ -77,6 +80,7 @@ def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
     return rules.is_movable(calendar) or _is_planner_managed(title, rules)
 
 def resolve_conflicts(events, rules, day_start, day_end):
+    midnight = datetime.combine(day_start.date(), time(0)).astimezone()
     changes: list[PlannedChange] = []
     change_index: dict[str, int] = {}  # event_id -> index in `changes`; later bumps overwrite, not stack
     ordered = sorted(events, key=lambda e: e.start)
@@ -91,6 +95,10 @@ def resolve_conflicts(events, rules, day_start, day_end):
 
     def record(change: PlannedChange) -> None:
         if change.event_id is not None and change.event_id in change_index:
+            earlier = changes[change_index[change.event_id]]
+            # bumped again down the chain: the first collision is why it moved
+            if earlier.kind == change.kind == "move" and not change.requires_approval:
+                change.reason = earlier.reason.removesuffix(" — moved earlier")
             changes[change_index[change.event_id]] = change
         else:
             if change.event_id is not None:
@@ -145,12 +153,12 @@ def resolve_conflicts(events, rules, day_start, day_end):
                 stay = conflict if mover is ev else ev
             duration = mover.end - mover.start
             others = [p for p in placed if p is not mover] + ([ev] if mover is not ev else [])
-            slots = free_slots(others, day_start, day_end)
-            new_start = _find_slot(slots, duration, not_before=stay.end)
-            moved_earlier = False
-            if new_start is None:
-                new_start = _find_slot(slots, duration, not_before=day_start)
-                moved_earlier = new_start is not None and new_start < mover.start
+            # the user's notes bind a moved block as much as a placed one
+            others += _blocked_events(rules, day_start.date(), midnight, mover.calendar)
+            # nearest free time either side: dinner 19:30 shoved to 22:30 when
+            # 18:00 is free is no plan anyone would draw
+            new_start = _nearest_start(others, mover.start, duration, day_start, day_end)
+            moved_earlier = new_start is not None and new_start < mover.start
             if new_start is None:
                 if requires_approval:
                     record(PlannedChange(
@@ -170,7 +178,7 @@ def resolve_conflicts(events, rules, day_start, day_end):
             else:
                 reason = f"collides with '{stay.title}' ({stay.calendar})"
                 if moved_earlier:
-                    reason += "; no room after the conflict — moved earlier"
+                    reason += " — moved earlier"
             record(PlannedChange(
                 kind="move", category=mover.calendar, title=mover.title,
                 reason=reason, event_id=mover.id, new_start=moved.start, new_end=moved.end,
@@ -415,8 +423,145 @@ def _dedupe_moves(changes):
     return [c for i, c in enumerate(changes)
             if not (c.kind == "move" and c.event_id is not None and last_move_at[c.event_id] != i)]
 
+def _nearest_start(events, usual, duration, lo, hi):
+    """Free start closest to `usual` for a block of `duration` inside [lo, hi]."""
+    best = None
+    for s, e in free_slots(events, lo, hi):
+        if e - s < duration:
+            continue
+        start = min(max(usual, s), e - duration)
+        if best is None or abs(start - usual) < abs(best - usual):
+            best = start
+    return best
+
+def _blocked_events(rules, day, midnight, category):
+    """Pseudo-events for the times the user's notes rule out for this category:
+    outside its allowed window, and any keep-free window that day. Feeding them
+    to the slot search makes the notes as binding as a real calendar event."""
+    earliest, latest = allowed_window(rules.note_rules, category)
+    out = []
+    if earliest > 0:
+        out.append(Event(id="rule:early", calendar="(your notes)", title="not before",
+                         start=midnight, end=midnight + timedelta(minutes=earliest)))
+    if latest < 1440:
+        out.append(Event(id="rule:late", calendar="(your notes)", title="not after",
+                         start=midnight + timedelta(minutes=latest), end=midnight + timedelta(days=1)))
+    for i, (start, end) in enumerate(free_windows(rules.note_rules, day.weekday(), category)):
+        out.append(Event(id=f"rule:free{i}", calendar="(your notes)", title="keep free",
+                         start=midnight + timedelta(minutes=start), end=midnight + timedelta(minutes=end)))
+    return out
+
+def enforce_notes(day, events, rules, now, day_start, day_end):
+    """Blocks the planner placed that now break the user's notes (a rule added
+    later, an older plan) move to the nearest allowed time. What the user put
+    on the calendar themselves, or a fixed category, is theirs to change."""
+    changes: list[PlannedChange] = []
+    midnight = datetime.combine(day, time(0)).astimezone()
+    working = list(events)
+    for ev in sorted(events, key=lambda e: e.start):
+        if ev.start < now or not (rules.is_movable(ev.calendar) and _is_planner_managed(ev.title, rules)):
+            continue
+        broken = window_rule(rules.note_rules, ev.calendar, int((ev.start - midnight).total_seconds() // 60),
+                             int((ev.end - midnight).total_seconds() // 60), day.weekday())
+        if broken is None:
+            continue
+        others = [e for e in working if e.id != ev.id] + _blocked_events(rules, day, midnight, ev.calendar)
+        new_start = _nearest_start(others, ev.start, ev.end - ev.start, max(day_start, now), day_end)
+        if new_start is None:
+            changes.append(PlannedChange(kind="note", category=ev.calendar, title=ev.title, event_id=ev.id,
+                                         reason=f"breaks {explain(broken)}, and there is no allowed time left today"))
+            continue
+        moved = Event(id=ev.id, calendar=ev.calendar, title=ev.title, start=new_start,
+                      end=new_start + (ev.end - ev.start), location=ev.location)
+        working = [moved if e.id == ev.id else e for e in working]
+        changes.append(PlannedChange(kind="move", category=ev.calendar, title=ev.title, event_id=ev.id,
+                                     new_start=moved.start, new_end=moved.end,
+                                     reason=f"{explain(broken)} — nearest allowed time"))
+    return changes
+
+def place_routine(day, events, rules, now, day_start, day_end, garmin=None, activities=(),
+                  history=None):
+    """Put the user's routine for this weekday into the day: each block at its
+    usual time when that is free. A clash moves a flexible block to the nearest
+    free time (within the planning window) and only notes a fixed one; the
+    user's own events always win. Idempotent: a block whose category and title
+    are already on the calendar that day, or whose category already fills its
+    usual time, is left alone."""
+    changes: list[PlannedChange] = []
+    midnight = datetime.combine(day, time(0)).astimezone()
+    working = list(events)
+    history = history or {}
+    placed_per_category: dict[str, int] = {}
+    seen_labels: dict[tuple[str, str], int] = {}
+    for b in rules.typical_week.get(day.weekday(), []):
+        start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
+        # the Nth block with this title is already there once the day holds N of
+        # them (a routine may repeat a title: work before and after lunch)
+        nth = seen_labels[(b.category, b.label)] = seen_labels.get((b.category, b.label), 0) + 1
+        if start < now:
+            continue  # the usual time has passed (or is under way) today
+        # rules the user wrote down: a broken limit drops the block with the reason
+        broken = (gap_rule(rules.note_rules, b.category, day, history)
+                  or week_rule(rules.note_rules, b.category, day, history,
+                               placed_per_category.get(b.category, 0)))
+        if broken is not None:
+            changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                         reason=f"skipped today — {explain(broken)}"))
+            continue
+        advice, advice_reason = "keep", ""
+        if rules.respect_recovery and garmin is not None and activities:
+            # only blocks the watch has seen workouts in count as training
+            region = learn_region(list(activities), rules.typical_week, day.weekday(), b, now=now)
+            advice, advice_reason = training_advice(
+                region, garmin, list(activities), now,
+                rules.recovery_lighter_hours, rules.recovery_skip_hours)
+        if advice == "skip":
+            changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                         reason=advice_reason))
+            continue
+        same = [e for e in working if e.calendar == b.category and e.title == b.label]
+        if len(same) >= nth or any(e.calendar == b.category and e.start < end and e.end > start
+                                   for e in working):
+            continue
+        usual = f"{start:%H:%M}-{end:%H:%M}"
+        blocked = _blocked_events(rules, day, midnight, b.category)
+        against = working + blocked
+        clash = [e for e in against if e.start < end and e.end > start]
+        if not clash:
+            new_start, reason = start, f"your routine ({usual})"
+        elif rules.is_movable(b.category):
+            search_from = max(day_start, now)
+            broken_window = window_rule(rules.note_rules, b.category, b.start, b.end, day.weekday())
+            new_start = _nearest_start(against, start, end - start, search_from, day_end)
+            if broken_window is not None:
+                reason = f"your routine has it at {usual}, but {explain(broken_window)} — nearest allowed time"
+            else:
+                reason = f"your routine has it at {usual}, but '{clash[0].title}' is there — nearest free time"
+            if new_start is None:
+                changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                             reason=f"no free time today for your usual {usual}"))
+                continue
+        else:
+            broken_window = window_rule(rules.note_rules, b.category, b.start, b.end, day.weekday())
+            why = (explain(broken_window) if broken_window is not None
+                   else f"'{clash[0].title}'")
+            changes.append(PlannedChange(kind="note", category=b.category, title=b.label,
+                                         reason=f"your usual {usual} clashes with {why}"))
+            continue
+        if advice_reason:
+            reason += f" — {advice_reason}"
+        new_end = new_start + (end - start)
+        working.append(Event(id=f"routine:{b.label}:{new_start.isoformat()}", calendar=b.category,
+                             title=b.label, start=new_start, end=new_end))
+        placed_per_category[b.category] = placed_per_category.get(b.category, 0) + 1
+        # the user drew this block themselves: creating it needs no approval
+        changes.append(PlannedChange(kind="create", category=b.category, title=b.label, reason=reason,
+                                     new_start=new_start, new_end=new_end))
+    return changes
+
 def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gym_count: int = 0,
-             next_day_events: list[Event] | None = None, is_workday: bool = True):
+             next_day_events: list[Event] | None = None, is_workday: bool = True,
+             activities: list | None = None, history: dict | None = None):
     day_start = _window_dt(day, rules.day_start)
     day_end = _window_dt(day, rules.day_end)
     changes: list[PlannedChange] = []
@@ -428,7 +573,15 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
         working = _project(working, phase_changes)
 
     run(resolve_conflicts(working, rules, day_start, day_end))
+    run(enforce_notes(day, working, rules, now, day_start, day_end))
     run(adjust_gym(working, garmin, rules, day_start, day_end, now))
+    if rules.has_routine:
+        # the user's own week replaces the generic meal/gym/sleep/filler generators
+        run(place_routine(day, working, rules, now, day_start, day_end, garmin, activities or (),
+                          history))
+        run(insert_transport(working, rules))
+        run(check_free_time(working, rules, day_start, day_end))
+        return _dedupe_moves(changes)
     run(schedule_gym(working, rules, day_start, day_end, now, garmin, week_gym_count))
     run(ensure_meals(working, rules, day, now, day_end, day_start))
     run(insert_transport(working, rules))

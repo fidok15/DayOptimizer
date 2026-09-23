@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
+from dayoptimizer.core.models import Activity, Event, GarminSummary, PlannedChange
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS garmin_daily (date TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS changes_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL, description TEXT NOT NULL, reason TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pending_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, data TEXT NOT NULL
@@ -128,6 +129,31 @@ class Storage:
         events = [_event_from_json(json.loads(r[0])) for r in rows]
         todays = [e for e in events if e.start.date().isoformat() == date_iso]
         return sorted(todays, key=lambda e: e.start)
+
+    def save_activities(self, activities: list) -> None:
+        for a in activities:
+            payload = {**asdict(a), "start": a.start.isoformat(), "end": a.end.isoformat()}
+            self._conn.execute(
+                "INSERT INTO activities(id, data) VALUES(?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET data=excluded.data", (a.id, json.dumps(payload)))
+        self._conn.commit()
+
+    def activities_since(self, start: datetime) -> list[Activity]:
+        rows = self._conn.execute("SELECT data FROM activities").fetchall()
+        out = []
+        for (data,) in rows:
+            d = json.loads(data)
+            act = Activity(**{**d, "start": datetime.fromisoformat(d["start"]),
+                              "end": datetime.fromisoformat(d["end"])})
+            if act.start >= start:
+                out.append(act)
+        return sorted(out, key=lambda a: a.start)
+
+    def events_between(self, start: datetime, end: datetime) -> list[Event]:
+        """Cached events overlapping [start, end), sorted by start."""
+        rows = self._conn.execute("SELECT data FROM events_cache").fetchall()
+        events = [_event_from_json(json.loads(r[0])) for r in rows]
+        return sorted((e for e in events if e.start < end and e.end > start), key=lambda e: e.start)
 
     def save_pending(self, change: PlannedChange) -> int:
         payload = asdict(change)

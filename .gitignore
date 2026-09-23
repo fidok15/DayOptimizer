@@ -23,3 +23,9 @@ __pycache__/
 # Agent working artifacts and logs (never published)
 .superpowers/
 *.log
+
+# graphify knowledge graph output (generated)
+graphify-out/
+
+# Browser automation screenshots/snapshots (may show private calendar data)
+.playwright-mcp/

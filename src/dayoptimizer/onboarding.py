@@ -2,11 +2,13 @@
 YAML proposal in conversation; this module is the only path that persists it."""
 from __future__ import annotations
 import os
-from typing import Annotated
+from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 _VALID_WORK_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 class ConfigError(ValueError):
@@ -17,6 +19,25 @@ class CategoryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     movable: bool
     priority: int = Field(default=5, ge=0, le=10)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    emoji: str | None = Field(default=None, min_length=1, max_length=8)
+
+
+class TemplateBlock(BaseModel):
+    """One block of the user's typical week (entered in the web planner)."""
+    model_config = ConfigDict(extra="forbid")
+    start: str = Field(pattern=_HHMM)
+    end: str = Field(pattern=r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$")
+    category: str = Field(min_length=1, max_length=40)
+    title: str = Field(default="", max_length=60)
+
+    @field_validator("end")
+    @classmethod
+    def _end_after_start(cls, value, info):
+        start = info.data.get("start")
+        if start is not None and value <= start:
+            raise ValueError(f"end ({value}) must be after start ({start})")
+        return value
 
 
 class MealWindowConfig(BaseModel):
@@ -35,6 +56,9 @@ class DayRulesConfig(BaseModel):
     deep_work_minutes: int | None = Field(default=None, ge=15, le=300)
     deep_work_blocks_per_day: int | None = Field(default=None, ge=0, le=8)
     buffer_minutes: int | None = Field(default=None, ge=0, le=120)
+    respect_recovery: bool | None = None
+    recovery_lighter_hours: int | None = Field(default=None, ge=0, le=336)
+    recovery_skip_hours: int | None = Field(default=None, ge=0, le=336)
     wind_down_minutes: int | None = Field(default=None, ge=0, le=180)
     sleep_target_hours: float | None = Field(default=None, ge=4, le=12)
     morning_buffer_minutes: int | None = Field(default=None, ge=0, le=240)
@@ -59,11 +83,16 @@ class DayRulesConfig(BaseModel):
 
 class UserConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    categories: dict[str, CategoryConfig] = {}
+    # null removes a default category from the merged config
+    categories: dict[str, CategoryConfig | None] = {}
     day_rules: DayRulesConfig = DayRulesConfig()
     transport_routes: dict[str, Annotated[int, Field(ge=0, le=600)]] = {}
     holiday_calendars: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = Field(
         default=None, max_length=10)
+    notes: str | None = Field(default=None, max_length=2000)
+    # rules compiled from `notes` (see core/constraints.py); hand-editable
+    note_rules: list[dict] | None = Field(default=None, max_length=64)
+    typical_week: dict[Weekday, Annotated[list[TemplateBlock], Field(max_length=48)]] | None = None
 
     @field_validator("holiday_calendars")
     @classmethod
@@ -85,7 +114,7 @@ def validate_config(yaml_text: str) -> UserConfig:
     if not isinstance(data, dict):
         raise ConfigError("Config must be a YAML mapping (top-level keys: "
                           "categories, day_rules, transport_routes, "
-                          "holiday_calendars).")
+                          "holiday_calendars, typical_week, notes, note_rules).")
     problems: list[str] = []
     categories = data.get("categories")
     non_string_names: list[object] = []

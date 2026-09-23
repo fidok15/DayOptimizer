@@ -22,6 +22,13 @@ day_rules:
   wind_down_minutes: 45         # screen-free time before the sleep window
   sleep_target_hours: 8.0
   morning_buffer_minutes: 90
+  # Recovery-aware training: Garmin's recovery time only says when the body is
+  # ready for the next HARD session, so a training block is eased (>= lighter)
+  # and only dropped (>= skip) when it loads what recent hard work already
+  # tired out. Which region a block trains is learned from the watch history.
+  respect_recovery: true
+  recovery_lighter_hours: 24
+  recovery_skip_hours: 48
   day_start: "06:00"           # planning window — blocks are only placed inside it
   day_end: "23:00"
   # Days when work-filler blocks (Own work) are scheduled. Holidays override.
@@ -40,5 +47,8 @@ transport_routes: {}
 holiday_calendars: ["Public Holidays", "Holidays"]
 
 llm:
-  backend: anthropic
-  model: claude-opus-4-8
+  # auto = local Ollama when it's running (free, private), else the Anthropic API
+  # when ANTHROPIC_API_KEY is set. Force one with: ollama | anthropic
+  backend: auto
+  ollama_model: qwen3:8b
+  model: claude-opus-4-8          # Anthropic model

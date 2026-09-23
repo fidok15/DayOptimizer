@@ -1,6 +1,6 @@
 {
   "name": "dayoptimizer",
-  "owner": { "name": "DayOptimizer contributors" },
+  "owner": { "name": "fidok" },
   "plugins": [
     {
       "name": "dayoptimizer",

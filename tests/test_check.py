@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 from unittest.mock import MagicMock, ANY
 from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
 from dayoptimizer.core.storage import Storage
@@ -50,6 +50,16 @@ def test_no_stress_adjust_when_state_already_set():
 def test_garmin_none_and_no_events_is_noop():
     assert check.decide(NOW_MORNING, TODAY, None, [], {}) == []
 
+def test_morning_replan_without_garmin_after_fallback_time():
+    fallback = time(7, 30)
+    assert check.decide(NOW_MORNING, TODAY, None, [], {}, fallback) == []
+    later = NOW_MORNING.replace(hour=7, minute=30)
+    assert check.decide(later, TODAY, None, [], {}, fallback) == ["morning_replan"]
+    # watch worn but not synced yet: same fallback
+    assert check.decide(later, TODAY, _garmin(), [], {}, fallback) == ["morning_replan"]
+    state = {f"morning:{TODAY}": "2026-07-03T07:30:00"}
+    assert check.decide(later, TODAY, None, [], state, fallback) == []
+
 def test_morning_and_event_replan_combine():
     garmin = _garmin(sleep_seconds=7 * 3600)
     result = check.decide(NOW_MORNING, TODAY, garmin, [_foreign_event()], {})
@@ -60,6 +70,9 @@ def test_morning_and_event_replan_combine():
 def _rules():
     r = MagicMock()
     r.is_movable.return_value = True
+    r.routine_titles = frozenset()
+    r.day_start = time(6, 0)
+    r.morning_buffer_minutes = 90
     return r
 
 def test_run_check_event_replan_calls_plan_notify_but_not_state(monkeypatch):
@@ -345,3 +358,44 @@ def test_fetch_garmin_unconfigured_falls_back_to_storage(tmp_path, monkeypatch):
     cached = GarminSummary(date="2026-07-12", sleep_seconds=7 * 3600)
     storage.save_garmin(cached)
     assert _fetch_garmin(storage, "2026-07-12") == cached  # no tokens -> cache
+
+def test_fetch_garmin_never_asks_about_a_future_day(tmp_path, monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.core import garmin
+    from dayoptimizer.core.storage import Storage
+    monkeypatch.setattr(garmin, "garmin_configured", lambda: True)
+    monkeypatch.setattr(garmin, "GarminClient", MagicMock(side_effect=AssertionError("API called")))
+    assert cli._fetch_garmin(Storage(tmp_path / "t.db"), "2999-01-01") is None
+
+def test_run_check_morning_replan_without_garmin(monkeypatch):
+    calendar = MagicMock()
+    storage = MagicMock()
+    storage.sync_events.return_value = []
+    storage.get_state.return_value = None
+    plan_fn = MagicMock(return_value=([], [], []))
+    monkeypatch.setattr(check, "notify", MagicMock())
+
+    at = NOW_MORNING.replace(hour=8)
+    performed = check.run_check(calendar, storage, _rules(), at,
+                                plan_fn=plan_fn, fetch_garmin_fn=MagicMock(return_value=None))
+
+    assert performed == ["morning_replan"]
+    storage.set_state.assert_called_once_with(f"morning:{TODAY}", at.isoformat())
+
+def test_run_check_event_replan_skips_yesterday(monkeypatch):
+    calendar = MagicMock()
+    storage = MagicMock()
+    yesterday = Event(id="e0", calendar="Meeting", title="Weekly",
+                      start=NOW_AFTERNOON.replace(day=2), end=NOW_AFTERNOON.replace(day=2))
+    storage.sync_events.return_value = [yesterday]
+    storage.get_state.return_value = "done"
+    plan_fn = MagicMock(return_value=([], [], []))
+    notify_mock = MagicMock()
+    monkeypatch.setattr(check, "notify", notify_mock)
+
+    performed = check.run_check(calendar, storage, _rules(), NOW_MORNING,
+                                plan_fn=plan_fn, fetch_garmin_fn=MagicMock(return_value=None))
+
+    assert performed == []
+    plan_fn.assert_not_called()
+    notify_mock.assert_not_called()

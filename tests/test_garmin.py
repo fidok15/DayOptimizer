@@ -1,9 +1,10 @@
+import pytest
 import stat
 from unittest.mock import MagicMock, patch
 from dayoptimizer.core import garmin as garmin_mod
 from dayoptimizer.core.garmin import build_summary, summarize
 from dayoptimizer.core.garmin import (GarminClient, GarminNotConfigured,
-                                      garmin_configured, garmin_login)
+                                      garmin_configured)
 from dayoptimizer.core.models import GarminSummary
 
 SLEEP = {"dailySleepDTO": {"sleepTimeSeconds": 23400, "sleepScores": {"overall": {"value": 71}}}}
@@ -37,24 +38,6 @@ def test_summarize_no_data():
     assert summarize(s) == "[2026-07-03] no data"
 
 
-def test_garmin_login_persists_tokens_only_with_0600(tmp_path, monkeypatch):
-    monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
-    fake_api = MagicMock()
-
-    def fake_login(token_dir):
-        (tmp_path / "garmin").mkdir(parents=True, exist_ok=True)
-        (tmp_path / "garmin" / "oauth1_token.json").write_text("{}")
-
-    fake_api.login.side_effect = fake_login
-    with patch("garminconnect.Garmin", return_value=fake_api) as ctor:
-        msg = garmin_login("user@example.com", "secret")
-    ctor.assert_called_once_with(email="user@example.com", password="secret")
-    token_file = tmp_path / "garmin" / "oauth1_token.json"
-    assert stat.S_IMODE(token_file.stat().st_mode) == 0o600
-    assert stat.S_IMODE((tmp_path / "garmin").stat().st_mode) == 0o700
-    assert "secret" not in msg
-
-
 def test_garmin_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
     assert garmin_configured() is False
@@ -71,3 +54,71 @@ def test_client_raises_not_configured_without_tokens(tmp_path, monkeypatch):
         assert False, "expected GarminNotConfigured"
     except GarminNotConfigured as exc:
         assert "dayoptimizer garmin login" in str(exc)
+
+
+class _FakeClient:
+    def dump(self, path):
+        from pathlib import Path
+        (Path(path) / "oauth.json").write_text("{}")
+
+
+class _FakeGarmin:
+    """Stands in for garminconnect.Garmin: MFA on demand, never touches the network."""
+    mfa = False
+    fail = None
+
+    def __init__(self, email=None, password=None, return_on_mfa=False, **_):
+        self.client = _FakeClient()
+
+    def login(self, tokenstore=None):
+        if _FakeGarmin.fail:
+            raise _FakeGarmin.fail
+        return ("needs_mfa", None) if _FakeGarmin.mfa else (None, None)
+
+    def resume_login(self, state, code):
+        if code != "123456":
+            import garminconnect
+            raise garminconnect.GarminConnectAuthenticationError("bad code")
+
+
+@pytest.fixture
+def fake_garmin(monkeypatch):
+    import garminconnect
+    monkeypatch.setattr(garminconnect, "Garmin", _FakeGarmin)
+    _FakeGarmin.mfa, _FakeGarmin.fail = False, None
+    return _FakeGarmin
+
+
+def test_two_step_login_saves_only_private_tokens(fake_garmin):
+    import stat
+    from dayoptimizer.core.garmin import (garmin_configured, garmin_disconnect,
+                                          garmin_finish_mfa, garmin_start_login)
+    from dayoptimizer.paths import garmin_token_dir
+    fake_garmin.mfa = True
+    needs_mfa, api = garmin_start_login("a@b.c", "secret-pw")
+    assert needs_mfa and not garmin_configured()
+    garmin_finish_mfa(api, "123456")
+    assert garmin_configured()
+    token_dir = garmin_token_dir()
+    assert stat.S_IMODE(token_dir.stat().st_mode) == 0o700
+    for f in token_dir.iterdir():
+        assert stat.S_IMODE(f.stat().st_mode) == 0o600 and "secret-pw" not in f.read_text()
+    garmin_disconnect()
+    assert not garmin_configured()
+
+
+def test_login_errors_have_codes(fake_garmin):
+    import garminconnect
+    from dayoptimizer.core.garmin import GarminLoginError, garmin_finish_mfa, garmin_start_login
+    fake_garmin.fail = garminconnect.GarminConnectAuthenticationError("401 for a@b.c")
+    with pytest.raises(GarminLoginError) as e:
+        garmin_start_login("a@b.c", "pw")
+    assert e.value.code == "auth" and e.value.__cause__ is None
+    fake_garmin.fail = garminconnect.GarminConnectTooManyRequestsError("429")
+    with pytest.raises(GarminLoginError, match="limiting"):
+        garmin_start_login("a@b.c", "pw")
+    fake_garmin.fail, fake_garmin.mfa = None, True
+    _, api = garmin_start_login("a@b.c", "pw")
+    with pytest.raises(GarminLoginError) as e:
+        garmin_finish_mfa(api, "000000")
+    assert e.value.code == "mfa"
