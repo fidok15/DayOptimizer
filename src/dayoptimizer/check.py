@@ -93,7 +93,11 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
             # change (new or rescheduled), so every distinct day among
             # new_foreign_events must be replanned now — otherwise a day's
             # events are silently dropped forever.
-            days = sorted({e.start.date() for e in new_foreign_events})
+            # The sync window starts yesterday (sleep crosses midnight), but
+            # a day that is over is never replanned.
+            days = sorted({e.start.date() for e in new_foreign_events} - {today_date - timedelta(days=1)})
+            if not days:
+                continue
             total_applied = 0
             total_errors = 0
             reasons = []
