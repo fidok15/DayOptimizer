@@ -95,6 +95,10 @@ def resolve_conflicts(events, rules, day_start, day_end):
 
     def record(change: PlannedChange) -> None:
         if change.event_id is not None and change.event_id in change_index:
+            earlier = changes[change_index[change.event_id]]
+            # bumped again down the chain: the first collision is why it moved
+            if earlier.kind == change.kind == "move" and not change.requires_approval:
+                change.reason = earlier.reason.removesuffix(" — moved earlier")
             changes[change_index[change.event_id]] = change
         else:
             if change.event_id is not None:

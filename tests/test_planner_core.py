@@ -188,3 +188,12 @@ def test_no_free_slot_anywhere_records_note():
     changes = resolve_conflicts(events, RULES, D.replace(hour=7), D.replace(hour=22))
     assert len(changes) == 1
     assert changes[0].kind == "note" and changes[0].event_id == "g"
+
+def test_block_bumped_twice_keeps_the_first_reason():
+    # free time yields to the meeting, lands on lunch, yields again: the
+    # meeting is why it moved, not lunch
+    events = [_ev("m", "Meeting", 9, 10, title="Standup"), _ev("f", "Free time", 9, 10),
+              _ev("l", "Food", 10, 11, title="Lunch")]
+    changes = resolve_conflicts(events, RULES, D.replace(hour=9), D.replace(hour=22))
+    assert [(c.event_id, c.new_start.hour) for c in changes] == [("f", 11)]
+    assert "Standup" in changes[0].reason
