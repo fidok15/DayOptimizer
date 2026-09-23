@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import time
 from pathlib import Path
 import yaml
+from dayoptimizer.core.constraints import parse_rules
 
 @dataclass
 class CategoryRule:
@@ -15,6 +16,18 @@ class MealWindow:
     start: time
     end: time
     duration_minutes: int
+
+@dataclass
+class RoutineBlock:
+    """One block of the user's typical week, in minutes since midnight (end <= 1440)."""
+    start: int
+    end: int
+    category: str
+    title: str
+
+    @property
+    def label(self) -> str:
+        return self.title or self.category
 
 _WEEKDAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _DEFAULT_WORK_DAYS = frozenset({0, 1, 2, 3, 4})
@@ -37,8 +50,22 @@ class Rules:
     gym_duration_minutes: int = 75
     day_start: time = time(6, 0)
     day_end: time = time(23, 0)
+    note_rules: list = field(default_factory=list)  # compiled from the user's notes
+    respect_recovery: bool = True
+    recovery_lighter_hours: int = 24
+    recovery_skip_hours: int = 48
     work_days: frozenset[int] = field(default_factory=lambda: _DEFAULT_WORK_DAYS)
     holiday_calendars: list[str] = field(default_factory=lambda: list(_DEFAULT_HOLIDAY_CALENDARS))
+    # weekday (0 = Monday) -> the user's routine for that day, from the setup page
+    typical_week: dict[int, list[RoutineBlock]] = field(default_factory=dict)
+
+    @property
+    def has_routine(self) -> bool:
+        return any(self.typical_week.values())
+
+    @property
+    def routine_titles(self) -> frozenset[str]:
+        return frozenset(b.label for blocks in self.typical_week.values() for b in blocks)
 
     def is_movable(self, category: str) -> bool:
         rule = self.categories.get(category)
@@ -77,6 +104,8 @@ def load_config_data(path: str | Path, user_path: str | Path | None = None) -> d
                 data[section].update(val)
             else:
                 data[section] = val
+    # a user may drop a default category by mapping it to null
+    data["categories"] = {k: v for k, v in data.get("categories", {}).items() if v is not None}
     return data
 
 def _day_window(d: dict) -> tuple[time, time]:
@@ -89,6 +118,20 @@ def _day_window(d: dict) -> tuple[time, time]:
         # in background runs, so fall back to the defaults instead of raising.
         return time(6, 0), time(23, 0)
     return day_start, day_end
+
+def _minutes(s: str) -> int:
+    h, m = s.split(":")
+    return int(h) * 60 + int(m)
+
+def _parse_typical_week(week) -> dict[int, list[RoutineBlock]]:
+    out: dict[int, list[RoutineBlock]] = {}
+    for name, blocks in (week or {}).items():
+        if name not in _WEEKDAY_NAMES or not isinstance(blocks, list):
+            continue
+        parsed = [RoutineBlock(_minutes(b["start"]), _minutes(b["end"]), b["category"], b.get("title") or "")
+                  for b in blocks if isinstance(b, dict) and {"start", "end", "category"} <= b.keys()]
+        out[_WEEKDAY_NAMES.index(name)] = sorted((b for b in parsed if b.end > b.start), key=lambda b: b.start)
+    return out
 
 def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
     data = load_config_data(path, user_path)
@@ -121,6 +164,11 @@ def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
         gym_duration_minutes=d.get("gym_duration_minutes", 75),
         day_start=day_start,
         day_end=day_end,
+        note_rules=parse_rules(data.get("note_rules")),
+        respect_recovery=d.get("respect_recovery", True),
+        recovery_lighter_hours=d.get("recovery_lighter_hours", 24),
+        recovery_skip_hours=d.get("recovery_skip_hours", 48),
         work_days=work_days,
         holiday_calendars=holiday_calendars,
+        typical_week=_parse_typical_week(data.get("typical_week")),
     )

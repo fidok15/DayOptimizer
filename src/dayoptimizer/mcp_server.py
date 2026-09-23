@@ -108,10 +108,9 @@ def get_stats() -> str:
 
 
 def list_calendars() -> str:
-    """Calendar names seen in your synced events, plus the planner's default
+    """Calendar names seen in your synced events, plus the user's planner
     categories — use this to ground onboarding in the user's real Apple
-    Calendar setup: every planner category needs a calendar with the exact
-    same name, or blocks for it are silently skipped."""
+    Calendar setup. Categories are the user's own; calendars never create them."""
     s = _storage()
     try:
         calendars = s.known_calendars()
@@ -126,9 +125,9 @@ def list_calendars() -> str:
                 "plan tool or `dayoptimizer check` at least once first.")
     return (
         f"{seen}\n\n"
-        "Planner categories must have a matching Apple Calendar calendar with "
-        "the EXACT same name (case-sensitive, no emoji/extra spaces) or blocks "
-        f"for that category are skipped. Default categories: {', '.join(categories)}."
+        "Each category's blocks go to the calendar of the same name (emoji and "
+        "stray spaces in calendar names are ignored); a missing one is created "
+        f"with its first block. Your categories: {', '.join(categories)}."
     )
 
 

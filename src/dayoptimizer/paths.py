@@ -17,6 +17,10 @@ def db_path() -> Path:
     return app_dir() / "data.db"
 
 
+def routine_path() -> Path:
+    return app_dir() / "routine.md"
+
+
 def garmin_token_dir() -> Path:
     return app_dir() / "garmin"
 

@@ -1,32 +1,31 @@
 from __future__ import annotations
 import anthropic
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import Intent, format_changes
-
-_INTENT_SYSTEM = (
-    "You are the intent parser for the DayOptimizer calendar assistant. "
-    "Turn the user's message into an intent. Calendar categories: Important, Meeting, "
-    "Work, Sleep, Gym, Food, Learn, Transport, Free time. "
-    "Return dates as ISO (YYYY-MM-DD) relative to the given 'today'."
-)
-
-_SUMMARY_SYSTEM = (
-    "You summarize the changes to the user's day plan for them. In English, "
-    "concise, bulleted, what and why. Do not invent changes outside the list."
-)
+from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
+                                      DayRequest, compile_prompt, format_changes, request_prompt)
 
 class AnthropicBackend:
     def __init__(self, model: str = "claude-opus-4-8"):
         self.model = model
         self.client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from env
 
-    def parse_intent(self, text: str, today: str) -> Intent:
+    def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
         response = self.client.messages.parse(
             model=self.model,
-            max_tokens=1024,
-            system=_INTENT_SYSTEM,
-            messages=[{"role": "user", "content": f"today: {today}\nmessage: {text}"}],
-            output_format=Intent,
+            max_tokens=2048,
+            system=_REQUEST_SYSTEM,
+            messages=[{"role": "user", "content": request_prompt(text, today, now, categories)}],
+            output_format=DayRequest,
+        )
+        return response.parsed_output
+
+    def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
+        response = self.client.messages.parse(
+            model=self.model,
+            max_tokens=2048,
+            system=_NOTES_SYSTEM,
+            messages=[{"role": "user", "content": compile_prompt(notes, categories)}],
+            output_format=CompiledNotes,
         )
         return response.parsed_output
 
