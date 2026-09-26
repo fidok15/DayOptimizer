@@ -269,6 +269,10 @@ def cmd_ask(args, rules, config):
     (here, in the terminal), show it, and on OK hand the events to `add`, which
     writes them to the calendar inside the app bundle and replans."""
     import json
+    if not rules.categories:
+        console.print("You have no categories yet, so there is nothing to file this under. "
+                      "Add some in  dayoptimizer setup  first.", markup=False, style="yellow")
+        return
     try:
         backend = make_backend(config["llm"])
         now = datetime.now()
