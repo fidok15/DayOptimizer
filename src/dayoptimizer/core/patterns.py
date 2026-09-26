@@ -35,7 +35,8 @@ def weekly_stats(history: list[GarminSummary]) -> dict:
 def render_stats(stats: dict) -> str:
     n = stats["days_with_data"]
     if n == 0:
-        return "No Garmin data recorded yet."
+        return ("No Garmin data yet. Garmin is optional: connect it in  dayoptimizer setup  "
+                "(or  dayoptimizer garmin login ) for sleep- and recovery-aware plans.")
     parts = [f"{n} day{'s' if n != 1 else ''} of data"]
     if stats["avg_sleep_hours"] is not None:
         parts.append(f"avg sleep {stats['avg_sleep_hours']}h")
