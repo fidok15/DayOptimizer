@@ -31,7 +31,7 @@ def test_suggest_sleep_late_fixed_event_does_not_delay_wake():
     good = GarminSummary(date="2026-07-03", sleep_seconds=8 * 3600, sleep_score=85)
     late_fixed = D.replace(hour=11, minute=30) + timedelta(days=1)
     c = suggest_sleep(good, RULES, late_fixed, date(2026, 7, 3))
-    assert c.new_end == (D.replace(hour=8) + timedelta(days=1))  # wake capped at 08:00
+    assert c.new_end == (D.replace(hour=6) + timedelta(days=1))  # wake capped at day_start
 
 def test_suggest_sleep_floors_wake_when_anchor_is_an_all_day_marker():
     # regression: an all-day event (e.g. a multi-week vacation marker) has
@@ -197,3 +197,14 @@ def test_block_bumped_twice_keeps_the_first_reason():
     changes = resolve_conflicts(events, RULES, D.replace(hour=9), D.replace(hour=22))
     assert [(c.event_id, c.new_start.hour) for c in changes] == [("f", 11)]
     assert "Standup" in changes[0].reason
+
+def test_default_wake_is_day_start_local_on_the_night_clocks_change(monkeypatch):
+    import time as _time
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    _time.tzset()
+    try:
+        c = suggest_sleep(None, RULES, None, date(2026, 10, 24))  # DST ends 25 Oct
+        assert c.new_end.hour == 6 and c.new_end.utcoffset().total_seconds() == 3600
+    finally:
+        monkeypatch.undo()
+        _time.tzset()

@@ -51,4 +51,4 @@ llm:
   # when ANTHROPIC_API_KEY is set. Force one with: ollama | anthropic
   backend: auto
   ollama_model: qwen3:8b
-  model: claude-opus-4-8          # Anthropic model
+  model: claude-sonnet-5          # Anthropic model

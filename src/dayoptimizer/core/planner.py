@@ -45,7 +45,10 @@ def suggest_sleep(garmin, rules, tomorrow_first_fixed, day):
     if causes:
         need_hours += 0.5
         reason = " and ".join(causes) + " — adding 30 min of recovery"
-    default_wake = datetime.combine(day, time(8, 0)).astimezone() + timedelta(days=1)
+    # wake when the user's day starts: waking later would put the morning's
+    # planned blocks inside the sleep window. Combine with the next day BEFORE
+    # astimezone: that day may have another UTC offset (DST)
+    default_wake = datetime.combine(day + timedelta(days=1), rules.day_start).astimezone()
     if tomorrow_first_fixed is not None:
         # a late first event must not push wake-up past the default — sleeping
         # in just because the morning is empty defeats a stable rhythm
@@ -315,10 +318,12 @@ def fill_day(events, rules, day_start, day_end, now, is_workday: bool = True):
     start_from = max(day_start, now)
     working = list(events)
 
-    def place(duration, category, title, reason, latest=False):
+    def place(duration, category, title, reason, latest=False, at_end=False):
         slots = free_slots(_pad(working, buf), start_from, day_end)
         candidates = [(max(s, start_from), e) for s, e in slots
-                      if e - max(s, start_from) >= duration]
+                      if e - max(s, start_from) >= duration
+                      # at_end: only the slot that runs into the end of the day (bedtime)
+                      and (not at_end or e >= day_end - buf)]
         if not candidates:
             return None
         if latest:
@@ -359,7 +364,7 @@ def fill_day(events, rules, day_start, day_end, now, is_workday: bool = True):
     if "Wind-down" not in titles:
         place(timedelta(minutes=rules.wind_down_minutes), "Free time",
               "Wind-down",
-              "no screens or exertion right before the sleep window", latest=True)
+              "no screens or exertion right before the sleep window", latest=True, at_end=True)
     for _ in range(rules.deep_work_blocks_per_day - titles.count("Deep work")):
         place(timedelta(minutes=rules.deep_work_minutes), "Learn", "Deep work",
               "focus block in a free slot")
@@ -569,6 +574,9 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
 
     def run(phase_changes):
         nonlocal working
+        # categories are the user's: never create a block in one they don't have
+        phase_changes = [c for c in phase_changes
+                         if c.kind != "create" or c.category in rules.categories]
         changes.extend(phase_changes)
         working = _project(working, phase_changes)
 

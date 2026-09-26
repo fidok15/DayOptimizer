@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from dayoptimizer.core.models import Event, GarminSummary
 from dayoptimizer.core.planner import ensure_meals, adjust_gym, insert_transport, check_free_time, plan_day
@@ -192,8 +192,8 @@ def test_plan_day_is_workday_default_true_unchanged():
 def test_plan_day_respects_configured_day_start():
     # symmetric to the day_end test: nothing starts before day_start. No Sleep
     # exemption needed here — suggest_sleep anchors bedtime to the wake time
-    # (default 08:00 next day minus the sleep target), which lands around
-    # midnight, well after a 09:00 day_start on the planned day.
+    # (next day's day_start minus the sleep target), which lands in the
+    # evening, well after a 09:00 day_start on the planned day.
     import dataclasses
     from datetime import time
     late_day = dataclasses.replace(RULES, day_start=time(9, 0))
@@ -202,3 +202,23 @@ def test_plan_day_respects_configured_day_start():
     floor = D.replace(hour=9)
     offenders = [c for c in changes if c.new_start is not None and c.new_start < floor]
     assert not offenders, offenders
+
+
+def test_wind_down_sits_right_before_sleep_or_not_at_all():
+    for evening_busy in (False, True):
+        events = [_ev("w", "Work", 9, 12)] + ([_ev("m", "Meeting", 18, 21)] if evening_busy else [])
+        changes = plan_day(date(2026, 7, 3), events, None, RULES, now=D.replace(hour=7),
+                           week_gym_count=RULES.gym_per_week)  # no workout that evening
+        sleep = next(c for c in changes if c.title == "Sleep")
+        wind_down = [c for c in changes if c.title == "Wind-down"]
+        # a packed evening leaves no room right before bed: then none, never one at 15:00
+        assert len(wind_down) == (0 if evening_busy else 1)
+        for wd in wind_down:
+            assert sleep.new_start - wd.new_end <= timedelta(minutes=RULES.buffer_minutes)
+
+
+def test_plan_never_creates_blocks_in_categories_the_user_does_not_have():
+    import dataclasses
+    only_work = dataclasses.replace(RULES, categories={"Work": RULES.categories["Work"]})
+    changes = plan_day(date(2026, 7, 3), [], None, only_work, now=D.replace(hour=6))
+    assert {c.category for c in changes if c.kind == "create"} <= {"Work"}

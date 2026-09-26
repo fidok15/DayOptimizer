@@ -6,16 +6,22 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from rich.console import Console
+from rich.markdown import Markdown
 from dayoptimizer import paths
-from dayoptimizer.apply import apply_changes
+from dayoptimizer.apply import _missing, apply_changes
 from dayoptimizer.core.calendar import CalendarClient
 from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import load_config_data, load_rules
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend, resolve_day
+from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend, pin_day, resolve_day
 
 console = Console()
+
+NO_ACCESS_HELP = ("DayOptimizer can't read your calendar: macOS access was denied. Turn on DayOptimizer in "
+                  "System Settings → Privacy & Security → Calendars (open it with:  open "
+                  "\"x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars\" ), "
+                  "then run the command again.")
 
 def _load_config():
     cfg_path = Path(__file__).parent.parent.parent / "config.default.yaml"
@@ -65,6 +71,8 @@ def _fetch_activities(storage, now):
     return storage.activities_since(since)
 
 def _confirm(change):
+    if not sys.stdin.isatty():
+        return False  # nobody to ask (app bundle, background run): park it as pending
     prompt = f"Fixed-event change: {change.category}: {change.title} — {change.reason}. Approve? [y/N] "
     try:
         answer = console.input(prompt, markup=False)
@@ -169,7 +177,7 @@ def _print_pending(storage):
 def cmd_plan(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
         return
     storage = Storage(paths.db_path())
     start_day = date.fromisoformat(args.date) if args.date else date.today()
@@ -187,7 +195,7 @@ def cmd_plan(args, rules, config):
 def cmd_apply(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
         return
     storage = Storage(paths.db_path())
     ids = [int(x) for x in args.ids.split(",") if x.strip()]
@@ -203,25 +211,37 @@ def cmd_apply(args, rules, config):
             elif c.kind == "create":
                 calendar.create_event(c.category, c.title, c.new_start, c.new_end)
         except KeyError:
-            storage.log_change(
-                f"[error] apply #{pid} {c.kind} {c.category}: {c.title}",
-                f"calendar '{c.category}' not found — create or rename a calendar "
-                "with this name in the Calendar app")
-            console.print(f"#{pid} failed: calendar '{c.category}' not found — "
-                          "create it and re-run the plan", markup=False)
+            storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", _missing(c))
+            console.print(f"#{pid} failed: {_missing(c)}", markup=False)
+            continue
+        except RuntimeError as exc:
+            storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", str(exc))
+            console.print(f"#{pid} failed: {exc}", markup=False)
             continue
         storage.log_change(f"[applied #{pid}] {c.kind} {c.category}: {c.title}", c.reason)
         applied += 1
     # failed rows are removed as well: they cannot succeed until the user
     # creates the calendar, and a later replan regenerates the proposal
     storage.delete_pending([pid for pid, _ in pending])
-    console.print(f"Applied {applied} of {len(pending)} pending change(s).")
+    missing = sorted(set(ids) - {pid for pid, _ in pending})
+    if missing:
+        console.print(f"No pending change {', '.join(f'#{i}' for i in missing)} — already applied, "
+                      "or replaced by a newer plan. Run  dayoptimizer plan  to see what's pending.")
+    if pending:
+        console.print(f"Applied {applied} of {len(pending)} pending change(s).")
 
 def cmd_check(args, rules, config):
     from dayoptimizer.check import run_check
+    from dayoptimizer.core.notify import notify
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        storage = Storage(paths.db_path())
+        key = f"no_access:{date.today().isoformat()}"
+        if not storage.get_state(key):  # the agent runs every few minutes: once a day is enough
+            notify("DayOptimizer", "No calendar access, so your day isn't being adjusted. "
+                                   "Allow DayOptimizer in System Settings, Privacy & Security, Calendars.")
+            storage.set_state(key, "1")
         return
     storage = Storage(paths.db_path())
     actions = run_check(calendar, storage, rules, datetime.now().astimezone())
@@ -261,6 +281,10 @@ def cmd_ask(args, rules, config):
     (here, in the terminal), show it, and on OK hand the events to `add`, which
     writes them to the calendar inside the app bundle and replans."""
     import json
+    if not rules.categories:
+        console.print("You have no categories yet, so there is nothing to file this under. "
+                      "Add some in  dayoptimizer setup  first.", markup=False, style="yellow")
+        return
     try:
         backend = make_backend(config["llm"])
         now = datetime.now()
@@ -273,7 +297,7 @@ def cmd_ask(args, rules, config):
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    to_create, problems = events_to_create(req, rules.categories, now.date())
+    to_create, problems = events_to_create(pin_day(args.text, req), rules.categories, now.date())
     for p in problems:
         console.print(p, markup=False, style="yellow")
     if not to_create:
@@ -310,7 +334,7 @@ def cmd_add(args, rules, config):
         return
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
         return
     storage = Storage(paths.db_path())
     days = set()
@@ -334,7 +358,8 @@ def cmd_add(args, rules, config):
         changes, applied, errors = _run_plan(day, calendar, storage, rules)
         if len(days) > 1:
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
-        console.print(summarize(changes), markup=False)
+        # the model answers in Markdown: render it rather than printing ** and #
+        console.print(Markdown(summarize(changes)))
         _print_errors(errors)
     _print_pending(storage)
 
@@ -389,6 +414,7 @@ def cmd_sync(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
+        print(NO_ACCESS_HELP)
         return
     start = datetime.combine(date.fromisoformat(args.start), time(0, 0)).astimezone()
     end = start + timedelta(days=args.days)
@@ -404,6 +430,7 @@ def cmd_calendars(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
+        print(NO_ACCESS_HELP)
         return
     created, recolored = [], []
     for name, cat in config["categories"].items():
@@ -449,10 +476,40 @@ def _first_run() -> bool:
     except Exception:
         return False
 
+def _iso_date(value: str) -> str:
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{value}' is not a date, use YYYY-MM-DD (e.g. 2026-09-28)")
+    return value
+
+def _positive(value: str) -> int:
+    if not value.isdigit() or int(value) < 1:
+        raise argparse.ArgumentTypeError(f"'{value}' must be a whole number of at least 1")
+    return int(value)
+
+def _ids(value: str) -> str:
+    if not re.fullmatch(r"\s*\d+\s*(,\s*\d+\s*)*,?\s*", value):
+        raise argparse.ArgumentTypeError(f"'{value}' should be pending ids like 3,4")
+    return value
+
+_TAKES_WORDS = {"ask", "add", "agent", "garmin"}  # subcommands with positional arguments
+
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
-    rules, config = _load_config()
+    try:
+        rules, config = _load_config()
+    except Exception as exc:
+        raw = list(sys.argv[1:] if argv is None else argv)
+        if raw[:1] in (["setup"], ["web"]):
+            rules = config = None  # the planner shows the problem and lets the user fix it
+        else:
+            console.print(f"Your settings in {paths.user_config_path()} can't be read "
+                          f"({type(exc).__name__}: {' '.join(str(exc).split())}).\nFix or delete that file, "
+                          "or run  dayoptimizer setup  to draw your week again.",
+                          markup=False, style="red")
+            raise SystemExit(1)
     parser = argparse.ArgumentParser(
         prog="dayoptimizer",
         description='dayoptimizer                optimize today around your calendar\n'
@@ -461,11 +518,11 @@ def main(argv: list[str] | None = None):
         formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", metavar="command")
     p_plan = sub.add_parser("plan", help="replan the day (or several days)")
-    p_plan.add_argument("--date", default=None, help="start date (YYYY-MM-DD, defaults to today)")
-    p_plan.add_argument("--week", nargs="?", const=7, type=int, default=None,
+    p_plan.add_argument("--date", default=None, type=_iso_date, help="start date (YYYY-MM-DD, defaults to today)")
+    p_plan.add_argument("--week", nargs="?", const=7, type=_positive, default=None,
                         help="plan N days from the start date (default 7)")
     p_apply = sub.add_parser("apply", help="apply pending approval-required changes")
-    p_apply.add_argument("--ids", required=True, help="comma-separated pending ids")
+    p_apply.add_argument("--ids", required=True, type=_ids, help="comma-separated pending ids")
     sub.add_parser("chat", help="keep telling DayOptimizer about your day, one line at a time")
     p_ask = sub.add_parser("ask", help='add what you say to the calendar and replan (same as dayoptimizer "...")')
     p_ask.add_argument("text")
@@ -476,7 +533,7 @@ def main(argv: list[str] | None = None):
     p_agent = sub.add_parser("agent", help="manage the background agent (launchd)")
     agent_sub = p_agent.add_subparsers(dest="agent_command", required=True)
     p_agent_install = agent_sub.add_parser("install", help="install and start the agent")
-    p_agent_install.add_argument("--interval", type=int, default=900,
+    p_agent_install.add_argument("--interval", type=_positive, default=900,
                                  help="run interval in seconds (default 900)")
     agent_sub.add_parser("uninstall", help="stop and remove the agent")
     agent_sub.add_parser("status", help="agent status")
@@ -486,8 +543,8 @@ def main(argv: list[str] | None = None):
     p_cals = sub.add_parser("calendars", help="create a calendar in the Calendar app for each category")
     p_cals.add_argument("--read", action="store_true", help="only report each category calendar's colour")
     p_sync = sub.add_parser("sync", help="copy calendar events into the local cache")
-    p_sync.add_argument("--from", dest="start", required=True, help="first day (YYYY-MM-DD)")
-    p_sync.add_argument("--days", type=int, default=7)
+    p_sync.add_argument("--from", dest="start", required=True, type=_iso_date, help="first day (YYYY-MM-DD)")
+    p_sync.add_argument("--days", type=_positive, default=7)
     p_web = sub.add_parser("setup", aliases=["web"],
                            help="describe your typical week in the browser (first run)")
     p_web.add_argument("--port", type=int, default=8765)
@@ -500,7 +557,10 @@ def main(argv: list[str] | None = None):
             argv = ["setup"]
         else:
             argv = ["plan"]
-    elif not first.startswith("-") and first not in sub.choices:
+    elif not first.startswith("-") and (
+            first not in sub.choices
+            # "plan is to hit the gym at 18": a command that takes no words, followed by words
+            or (first not in _TAKES_WORDS and len(argv) > 1 and not argv[1].startswith("-"))):
         argv = ["ask", " ".join(argv)]  # plain words: dayoptimizer "gym at 18"
     args = parser.parse_args(argv)
     if args.command in CALENDAR_COMMANDS and not _in_bundle() and sys.platform == "darwin":

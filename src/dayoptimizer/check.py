@@ -71,8 +71,9 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     # event_replan on the next cycle, which is a no-op (plan_day is
     # deterministic and the plan already reflects the move) and settles.
     changed_events = storage.sync_events(events, window_start, window_end)
-    new_foreign_events = [e for e in changed_events
-                          if _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
+    # all-day markers (vacation, holiday) never anchor a plan, so they never trigger one
+    new_foreign_events = [e for e in changed_events if not e.all_day
+                          and _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
 
     garmin = fetch_garmin_fn(storage, today)
 
@@ -95,7 +96,7 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
             # events are silently dropped forever.
             # The sync window starts yesterday (sleep crosses midnight), but
             # a day that is over is never replanned.
-            days = sorted({e.start.date() for e in new_foreign_events} - {today_date - timedelta(days=1)})
+            days = sorted(d for d in {e.start.date() for e in new_foreign_events} if d >= today_date)
             if not days:
                 continue
             total_applied = 0

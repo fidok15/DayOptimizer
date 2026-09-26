@@ -37,4 +37,4 @@ holiday_calendars: ["Public Holidays", "Holidays"]
 
 llm:
   backend: anthropic
-  model: claude-opus-4-8
+  model: claude-sonnet-5

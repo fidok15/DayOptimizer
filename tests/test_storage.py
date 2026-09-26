@@ -187,3 +187,12 @@ def test_delete_pending_empty_ids_deletes_nothing(tmp_path):
                                  reason="r", event_id="e1"))
     s.delete_pending([])
     assert len(s.get_pending()) == 1
+
+def test_damaged_db_is_set_aside_and_recreated(tmp_path):
+    db = tmp_path / "t.db"
+    db.write_text("not a database")
+    s = Storage(db)
+    s.save_garmin(GarminSummary(date="2026-07-03", sleep_score=70))
+    assert s.get_garmin("2026-07-03").sleep_score == 70
+    assert len(list(tmp_path.glob("t.db.corrupt-*"))) == 1
+    assert db.stat().st_mode & 0o777 == 0o600

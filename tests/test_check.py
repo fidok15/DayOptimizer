@@ -399,3 +399,18 @@ def test_run_check_event_replan_skips_yesterday(monkeypatch):
     assert performed == []
     plan_fn.assert_not_called()
     notify_mock.assert_not_called()
+
+def test_run_check_never_replans_a_past_day_or_an_all_day_marker(monkeypatch):
+    storage = MagicMock()
+    vacation = Event(id="v1", calendar="Personal", title="Vacation", all_day=True,
+                     start=NOW_MORNING.replace(day=NOW_MORNING.day - 2), end=NOW_MORNING)
+    started_earlier = Event(id="p1", calendar="Meeting", title="Offsite",
+                            start=NOW_MORNING.replace(day=NOW_MORNING.day - 2),
+                            end=NOW_MORNING.replace(day=NOW_MORNING.day - 2, hour=12))
+    storage.sync_events.return_value = [vacation, started_earlier]
+    storage.get_state.return_value = None
+    plan_fn = MagicMock(return_value=([], [], []))
+    monkeypatch.setattr(check, "notify", MagicMock())
+    check.run_check(MagicMock(), storage, _rules(), NOW_MORNING,
+                    plan_fn=plan_fn, fetch_garmin_fn=MagicMock(return_value=None))
+    plan_fn.assert_not_called()
