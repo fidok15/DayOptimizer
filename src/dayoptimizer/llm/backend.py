@@ -135,6 +135,34 @@ def request_prompt(text: str, today: str, now: str, categories: list[str]) -> st
     return f"{context}now: {now}\ncategories: {', '.join(categories)}\nmessage: {text}"
 
 
+# Day words are a closed vocabulary, and small local models map them wrongly
+# (qwen3:8b: "w środę" -> saturday). Word starts, so any Polish inflection matches.
+_DAY_WORDS = [
+    (r"\bpojutrz|\bday after tomorrow\b", "day_after_tomorrow"),
+    (r"\bjutr|\btomorrow\b", "tomorrow"),
+    (r"\bdziś\b|\bdzis\b|\bdzisiaj|\btoday\b|\btonight\b", "today"),
+    (r"\bponiedzia|\bmonday", "monday"),
+    (r"\bwtor|\btuesday", "tuesday"),
+    (r"\bśrod|\bsrod|\bwednesday", "wednesday"),
+    (r"\bczwart|\bthursday", "thursday"),
+    (r"\bpiąt|\bpiatek|\bfriday", "friday"),
+    (r"\bsobot|\bsaturday", "saturday"),
+    (r"\bniedziel|\bsunday", "sunday"),
+]
+
+
+def pin_day(text: str, req: "DayRequest") -> "DayRequest":
+    """When the message names exactly one day, that day is every event's day:
+    trust the words over the model. Several days (or none): the model decides."""
+    import re
+    low = text.lower()
+    said = {day for pattern, day in _DAY_WORDS if re.search(pattern, low)}
+    if len(said) != 1:
+        return req
+    day = said.pop()
+    return req.model_copy(update={"events": [e.model_copy(update={"day": day}) for e in req.events]})
+
+
 class LLMUnavailable(RuntimeError):
     """No usable LLM; the message tells the user how to get one."""
 
@@ -149,7 +177,7 @@ def make_backend(llm_config: dict) -> LLMBackend:
         return OllamaBackend(model=local)
     if choice in ("anthropic", "auto") and os.environ.get("ANTHROPIC_API_KEY"):
         from dayoptimizer.llm.anthropic_backend import AnthropicBackend
-        return AnthropicBackend(model=llm_config.get("model", "claude-opus-4-8"))
+        return AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5"))
     raise LLMUnavailable(
         "Requests in plain words need a language model. Either run one locally for free:\n"
         f"  brew install ollama && brew services start ollama && ollama pull {local}\n"

@@ -63,9 +63,12 @@ try:
     main()
 except SystemExit:
     pass
-except Exception:
+except Exception as exc:
     import traceback
     traceback.print_exc()
+    from dayoptimizer.core.notify import notify
+    notify("DayOptimizer", f"Background check failed ({{type(exc).__name__}}). "
+                           "Details in ~/.dayoptimizer/check.log")
 finally:
     log.flush()
 '''

@@ -244,3 +244,16 @@ def test_cmd_plan_prints_aggregated_write_errors(monkeypatch, capsys):
     # deduped and aggregated into one line naming both missing calendars
     assert "Missing calendars: Food, Gym" in out
     assert out.count("calendar 'Food' not found") == 0  # raw message not repeated per-line
+
+def test_refused_calendar_save_is_reported_not_raised():
+    cal, store = MagicMock(), MagicMock()
+    cal.move_event.side_effect = RuntimeError("Save failed: read-only calendar")
+    applied, errors = apply_changes([_move(), _move()], cal, store, confirm=lambda c: True)
+    assert applied == []
+    assert len(errors) == 2 and "read-only" in errors[0]
+
+def test_vanished_event_is_not_blamed_on_a_missing_calendar():
+    cal, store = MagicMock(), MagicMock()
+    cal.move_event.side_effect = KeyError("Event g1 not found")
+    _, errors = apply_changes([_move()], cal, store, confirm=lambda c: True)
+    assert "no longer in the calendar" in errors[0]

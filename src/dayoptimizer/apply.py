@@ -2,6 +2,14 @@ from __future__ import annotations
 from typing import Callable
 from dayoptimizer.core.models import PlannedChange
 
+def _missing(c: PlannedChange) -> str:
+    """Why a KeyError from the calendar happened, with the fix."""
+    if c.kind == "move":  # the event was deleted or changed outside DayOptimizer
+        return f"'{c.title}' is no longer in the calendar — run the plan again"
+    # no calendar named after this category (typical on first run)
+    return (f"calendar '{c.category}' not found — create or rename a calendar "
+            "with this name in the Calendar app")
+
 def apply_changes(changes, calendar, storage, confirm: Callable[[PlannedChange], bool]):
     """Returns (applied, errors): errors is a list of human-readable messages
     for changes whose calendar write failed (typically a missing calendar on
@@ -23,10 +31,13 @@ def apply_changes(changes, calendar, storage, confirm: Callable[[PlannedChange],
             elif c.kind == "create":
                 calendar.create_event(c.category, c.title, c.new_start, c.new_end)
         except KeyError:
-            # no calendar named after this category (typical on first run) —
             # skip this change but keep applying the rest of the plan
-            msg = (f"calendar '{c.category}' not found — create or rename a calendar "
-                   "with this name in the Calendar app")
+            msg = _missing(c)
+            storage.log_change(f"[error] {c.kind} {c.category}: {c.title}", msg)
+            errors.append(msg)
+            continue
+        except RuntimeError as exc:  # EventKit refused the save (read-only calendar, sync conflict)
+            msg = f"couldn't save '{c.title}' to the calendar: {exc}"
             storage.log_change(f"[error] {c.kind} {c.category}: {c.title}", msg)
             errors.append(msg)
             continue

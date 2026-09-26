@@ -117,7 +117,7 @@ def test_http_import_rejects_bad_date(server):
 def test_http_import_without_bundle_says_how_to_set_up(server):
     status, body = _request(server, "POST", {"week_start": "2026-09-21"},
                             {"Content-Type": "application/json"}, "/api/import")
-    assert status == 502 and body["code"] == "setup" and "setup-bundle.sh" in body["error"]
+    assert status == 502 and body["code"] == "setup" and "install.sh" in body["error"]
 
 
 def test_http_garmin_mfa_flow(server, monkeypatch):

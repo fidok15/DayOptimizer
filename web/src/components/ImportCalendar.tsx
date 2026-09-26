@@ -127,7 +127,11 @@ export default function ImportCalendar(props: {
               </p>
             </div>
 
-            {!found ? (
+            {categoryNames.length === 0 ? (
+              <p role="status" className="rounded-[12px] border border-line bg-white/[0.04] p-2.5 text-xs leading-snug text-ink">
+                Add your categories in the sidebar first (e.g. Work, Gym). Then each calendar can be put into one of them.
+              </p>
+            ) : !found ? (
               <>
                 {failure && (
                   <div role="alert" className="flex gap-2 rounded-[12px] border border-[#ff8a80]/30 bg-[#ff8a80]/10 p-2.5 text-xs leading-snug text-ink">
@@ -136,7 +140,7 @@ export default function ImportCalendar(props: {
                       {failure.code === "setup" ? "Calendar access isn't set up yet. Run this once in the DayOptimizer folder, then try again:" : failure.message}
                       {failure.code === "setup" && (
                         <code className="mt-1.5 block rounded-md bg-black/30 px-2 py-1 font-mono text-[11px] text-ink">
-                          ./scripts/setup-bundle.sh
+                          scripts/install.sh
                         </code>
                       )}
                     </p>

@@ -5,7 +5,7 @@ from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_S
                                       DayRequest, compile_prompt, format_changes, request_prompt)
 
 class AnthropicBackend:
-    def __init__(self, model: str = "claude-opus-4-8"):
+    def __init__(self, model: str = "claude-sonnet-5"):
         self.model = model
         self.client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from env
 

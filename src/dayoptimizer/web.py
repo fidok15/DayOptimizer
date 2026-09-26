@@ -145,7 +145,7 @@ def import_week(payload: object) -> dict:
     from dayoptimizer.mcp_server import _bundle_run
     bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle, os.X_OK):
-        raise ApiError("setup", "Calendar access isn't set up yet. Run scripts/setup-bundle.sh "
+        raise ApiError("setup", "Calendar access isn't set up yet. Run scripts/install.sh "
                                     "from the DayOptimizer folder once, then try again.")
     out = _bundle_run(["sync", "--from", week_start.isoformat(), "--days", "7"])
     if "NO_ACCESS" in out:
@@ -398,7 +398,9 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 return self._json(200, read_state())
             except (OSError, yaml.YAMLError) as exc:
-                return self._json(500, {"error": f"Could not read config: {exc}"})
+                return self._json(500, {"error": f"Can't read your settings in {paths.user_config_path()} "
+                                                 f"({' '.join(str(exc).split())}). Fix or delete that "
+                                                 "file, then press Retry."})
         if self.path.split("?")[0] == "/api/garmin":
             return self._json(200, garmin_status())
         if self.path.split("?")[0] == "/api/calendar-colors":
@@ -416,7 +418,8 @@ class Handler(SimpleHTTPRequestHandler):
                 or self.headers.get("Content-Type", "").split(";")[0] != "application/json"
                 or (origin is not None and origin != f"http://{self.headers.get('Host')}")):
             return self._json(403, {"error": "forbidden"})
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self.headers.get("Content-Length", "")
+        length = int(length) if length.isdigit() else 0
         if not 0 < length <= MAX_BODY:
             return self._json(413, {"error": "body too large or empty"})
         try:
@@ -427,6 +430,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(422, {"error": str(exc)})
         except ApiError as exc:
             return self._json(exc.status, {"error": str(exc), "code": exc.code})
+        except Exception as exc:  # never drop the connection: the page shows this message
+            return self._json(500, {"error": f"Something went wrong ({type(exc).__name__}). "
+                                             "Try again; if it keeps failing, restart `dayoptimizer setup`."})
 
     def do_PUT(self):
         if self.path != "/api/state":
@@ -446,6 +452,13 @@ class Handler(SimpleHTTPRequestHandler):
         if action is None:
             return self._json(404, {"error": "not found"})
         return self._write(action)
+
+    def end_headers(self):
+        # the page itself must be revalidated, or after an update the browser keeps
+        # running the old app; assets/ are content-hashed and may stay cached
+        if not self.path.startswith(("/api/", "/assets/")):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
 
     def log_message(self, format, *args):
         pass  # keep the terminal quiet

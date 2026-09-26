@@ -28,7 +28,7 @@ def test_format_changes_readable():
 
 def test_parse_request_sends_user_categories():
     backend = AnthropicBackend.__new__(AnthropicBackend)
-    backend.model = "claude-opus-4-8"
+    backend.model = "claude-sonnet-5"
     backend.client = MagicMock()
     fake = MagicMock()
     fake.parsed_output = DayRequest()
@@ -42,7 +42,7 @@ def test_parse_request_sends_user_categories():
 
 def test_summarize_changes_uses_messages_create():
     backend = AnthropicBackend.__new__(AnthropicBackend)
-    backend.model = "claude-opus-4-8"
+    backend.model = "claude-sonnet-5"
     backend.client = MagicMock()
     block = MagicMock()
     block.type = "text"
@@ -61,7 +61,7 @@ def test_summarize_changes_uses_messages_create():
 
 def test_summarize_changes_falls_back_on_api_error():
     backend = AnthropicBackend.__new__(AnthropicBackend)
-    backend.model = "claude-opus-4-8"
+    backend.model = "claude-sonnet-5"
     backend.client = MagicMock()
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     backend.client.messages.create.side_effect = anthropic.APIConnectionError(request=request)
@@ -89,3 +89,13 @@ def test_format_changes_requires_approval_flag():
 
 def test_format_changes_empty_list():
     assert format_changes([]) == "No changes — the plan is consistent."
+
+
+def test_one_named_day_overrides_the_model():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, pin_day
+    wrong = DayRequest(events=[NewEvent(title="x", category="Gym", day="saturday", start_time="14:00")])
+    for text, day in [("spotkanie w środę o 14", "wednesday"), ("jutro o 10", "tomorrow"),
+                      ("pojutrze basen", "day_after_tomorrow"), ("gym on Friday", "friday")]:
+        assert pin_day(text, wrong).events[0].day == day
+    # two days named: the model keeps its choice
+    assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"
