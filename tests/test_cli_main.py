@@ -122,3 +122,9 @@ def test_ask_without_any_llm_explains(monkeypatch, capsys):
     cli.cmd_ask(type("A", (), {"text": "x"})(), RULES, {"llm": {"backend": "auto"}})
     out = capsys.readouterr().out
     assert "ollama pull" in out and "ANTHROPIC_API_KEY" in out
+
+
+def test_words_after_a_command_name_are_a_day_description(routed, monkeypatch):
+    monkeypatch.setattr(cli, "cmd_ask", lambda args, *a: routed.append(("ask", args.text)))
+    cli.main(["plan", "is", "gym", "at", "18"])
+    assert routed == [("ask", "plan is gym at 18")]
