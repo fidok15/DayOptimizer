@@ -89,3 +89,13 @@ def test_format_changes_requires_approval_flag():
 
 def test_format_changes_empty_list():
     assert format_changes([]) == "No changes — the plan is consistent."
+
+
+def test_one_named_day_overrides_the_model():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, pin_day
+    wrong = DayRequest(events=[NewEvent(title="x", category="Gym", day="saturday", start_time="14:00")])
+    for text, day in [("spotkanie w środę o 14", "wednesday"), ("jutro o 10", "tomorrow"),
+                      ("pojutrze basen", "day_after_tomorrow"), ("gym on Friday", "friday")]:
+        assert pin_day(text, wrong).events[0].day == day
+    # two days named: the model keeps its choice
+    assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"

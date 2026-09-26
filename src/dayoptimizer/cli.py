@@ -14,7 +14,7 @@ from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import load_config_data, load_rules
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend, resolve_day
+from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend, pin_day, resolve_day
 
 console = Console()
 
@@ -297,7 +297,7 @@ def cmd_ask(args, rules, config):
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    to_create, problems = events_to_create(req, rules.categories, now.date())
+    to_create, problems = events_to_create(pin_day(args.text, req), rules.categories, now.date())
     for p in problems:
         console.print(p, markup=False, style="yellow")
     if not to_create:
