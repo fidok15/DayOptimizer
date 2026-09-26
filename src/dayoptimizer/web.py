@@ -145,7 +145,7 @@ def import_week(payload: object) -> dict:
     from dayoptimizer.mcp_server import _bundle_run
     bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle, os.X_OK):
-        raise ApiError("setup", "Calendar access isn't set up yet. Run scripts/setup-bundle.sh "
+        raise ApiError("setup", "Calendar access isn't set up yet. Run scripts/install.sh "
                                     "from the DayOptimizer folder once, then try again.")
     out = _bundle_run(["sync", "--from", week_start.isoformat(), "--days", "7"])
     if "NO_ACCESS" in out:
@@ -452,6 +452,13 @@ class Handler(SimpleHTTPRequestHandler):
         if action is None:
             return self._json(404, {"error": "not found"})
         return self._write(action)
+
+    def end_headers(self):
+        # the page itself must be revalidated, or after an update the browser keeps
+        # running the old app; assets/ are content-hashed and may stay cached
+        if not self.path.startswith(("/api/", "/assets/")):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
 
     def log_message(self, format, *args):
         pass  # keep the terminal quiet
