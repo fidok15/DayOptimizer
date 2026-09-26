@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 from dayoptimizer.core.models import Activity, GarminSummary
@@ -144,7 +145,9 @@ class GarminClient:
         def _try(fn, *args):
             try:
                 return fn(*args)
-            except Exception:
+            except Exception as exc:  # one missing metric shouldn't lose the rest
+                print(f"Garmin {getattr(fn, '__name__', 'metric')} unavailable: {type(exc).__name__}",
+                      file=sys.stderr)
                 return None
         sleep = _try(self._api.get_sleep_data, date)
         battery = _try(self._api.get_body_battery, date)

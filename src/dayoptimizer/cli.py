@@ -210,6 +210,10 @@ def cmd_apply(args, rules, config):
             console.print(f"#{pid} failed: calendar '{c.category}' not found — "
                           "create it and re-run the plan", markup=False)
             continue
+        except RuntimeError as exc:
+            storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", str(exc))
+            console.print(f"#{pid} failed: {exc}", markup=False)
+            continue
         storage.log_change(f"[applied #{pid}] {c.kind} {c.category}: {c.title}", c.reason)
         applied += 1
     # failed rows are removed as well: they cannot succeed until the user
@@ -469,7 +473,18 @@ def _ids(value: str) -> str:
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
-    rules, config = _load_config()
+    try:
+        rules, config = _load_config()
+    except Exception as exc:
+        raw = list(sys.argv[1:] if argv is None else argv)
+        if raw[:1] in (["setup"], ["web"]):
+            rules = config = None  # the planner shows the problem and lets the user fix it
+        else:
+            console.print(f"Your settings in {paths.user_config_path()} can't be read "
+                          f"({type(exc).__name__}: {' '.join(str(exc).split())}).\nFix or delete that file, "
+                          "or run  dayoptimizer setup  to draw your week again.",
+                          markup=False, style="red")
+            raise SystemExit(1)
     parser = argparse.ArgumentParser(
         prog="dayoptimizer",
         description='dayoptimizer                optimize today around your calendar\n'

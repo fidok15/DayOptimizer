@@ -30,6 +30,11 @@ def apply_changes(changes, calendar, storage, confirm: Callable[[PlannedChange],
             storage.log_change(f"[error] {c.kind} {c.category}: {c.title}", msg)
             errors.append(msg)
             continue
+        except RuntimeError as exc:  # EventKit refused the save (read-only calendar, sync conflict)
+            msg = f"couldn't save '{c.title}' to the calendar: {exc}"
+            storage.log_change(f"[error] {c.kind} {c.category}: {c.title}", msg)
+            errors.append(msg)
+            continue
         when = f" → {c.new_start:%H:%M}" if c.new_start is not None else ""
         storage.log_change(f"[{c.kind}] {c.category}: {c.title}{when}", c.reason)
         applied.append(c)
