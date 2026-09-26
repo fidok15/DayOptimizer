@@ -1,16 +1,19 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Check, Trash } from "@phosphor-icons/react";
-import type { Block, Categories } from "../../lib/types";
+import { WEEKDAYS, type Block, type Categories, type Weekday } from "../../lib/types";
 import { categoryColor } from "../../lib/colors";
 import { DAY_MIN, durationLabel, fromMin, toMin } from "../../lib/time";
-import { clamp, normalizeRange } from "./geometry";
+import { DAY_NAME, clamp, normalizeRange } from "./geometry";
 
 interface Props {
   block: Block;
+  day: Weekday;
   categories: Categories;
   onUpdate: (patch: Partial<Omit<Block, "id">>) => void;
   onDelete: () => void;
+  /** Move the block to another day, same times. */
+  onMoveDay: (d: Weekday) => void;
   /** returnFocus: put focus back on the block (keyboard close). */
   onClose: (returnFocus: boolean) => void;
 }
@@ -21,7 +24,7 @@ const M = 12;
 const endToInput = (end: string) => (end === "24:00" ? "00:00" : end);
 const endFromInput = (v: string) => (v === "00:00" ? DAY_MIN : toMin(v));
 
-export default function Editor({ block, categories, onUpdate, onDelete, onClose }: Props) {
+export default function Editor({ block, day, categories, onUpdate, onDelete, onMoveDay, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const uidBase = useId();
@@ -49,7 +52,7 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
     if (left + W > vw - M) left = r.left - 10 - W;
     if (left < M) left = clamp(r.right - W - 8, M, vw - W - M);
     setPos({ left: clamp(left, M, Math.max(M, vw - W - M)), top: clamp(r.top, M, Math.max(M, vh - pop.offsetHeight - M)) });
-  }, [block.id, sheet]);
+  }, [block.id, day, sheet]);
 
   // A resize could push the popover off-screen; closing is simpler and safe (edits are already applied).
   // (Not for the mobile sheet: the on-screen keyboard fires resize while typing.)
@@ -161,6 +164,18 @@ export default function Editor({ block, categories, onUpdate, onDelete, onClose 
           onKeyDown={(ev) => ev.key === "Enter" && onClose(true)}
           className={inputCls}
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${uidBase}-day`} className={labelCls}>Day</label>
+        <select
+          id={`${uidBase}-day`}
+          value={day}
+          onChange={(ev) => onMoveDay(ev.target.value as Weekday)}
+          className={`${inputCls} [&>option]:bg-[#141826]`}
+        >
+          {WEEKDAYS.map((d) => <option key={d} value={d}>{DAY_NAME[d]}</option>)}
+        </select>
       </div>
 
       <div className="flex flex-col gap-1.5">

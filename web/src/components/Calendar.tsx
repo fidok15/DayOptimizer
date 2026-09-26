@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { CalendarPlus, Tag } from "@phosphor-icons/react";
+import { CalendarPlus, Plus, Tag } from "@phosphor-icons/react";
 import { WEEKDAYS, WEEKDAY_LABEL, type Block, type Categories, type View, type Week, type Weekday } from "../lib/types";
 import { categoryColor } from "../lib/colors";
 import { durationLabel, fromMin, sceneHour, toMin, uid } from "../lib/time";
 import DayColumn from "./calendar/DayColumn";
 import Editor from "./calendar/Editor";
 import Toolbar from "./calendar/Toolbar";
-import { DRAFT_ID, GRID_H, HOUR_PX, PX_PER_MIN, SURFACE, todayKey } from "./calendar/geometry";
+import { DAY_NAME, DRAFT_ID, GRID_H, HOUR_PX, PX_PER_MIN, SURFACE, todayKey } from "./calendar/geometry";
 import { useGridDrag, type Preview } from "./calendar/useGridDrag";
 
 interface Props {
@@ -139,25 +139,34 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
     onChange((w) => ({ ...w, [d]: w[d].filter((b) => b.id !== block.id) }));
     setEditing(null);
   };
+  const moveEdited = (to: Weekday) => {
+    if (!edited || to === edited.day) return;
+    const { day: from, block } = edited;
+    onChange((w) => ({ ...w, [from]: w[from].filter((b) => b.id !== block.id), [to]: [...w[to], block] }));
+    if (view === "day") onDayChange(to);
+  };
 
   const days = view === "week" ? WEEKDAYS : [day];
   const weekEmpty = WEEKDAYS.every((d) => week[d].length === 0) && !preview;
   const draftColor = newCat ? categoryColor(newCat, categories[newCat]?.color) : "#f4b860";
 
-  const addFirstBlock = () => {
+  /** Keyboard-reachable way to add a block: the first free hour from 09:00 on `d`. */
+  const addBlock = (d: Weekday) => {
     if (!newCat) return;
     const id = uid();
+    const busy = (h: number) => week[d].some((b) => toMin(b.start) < (h + 1) * 60 && toMin(b.end) > h * 60);
+    const hour = [...Array(24).keys()].map((i) => (i + 9) % 24).find((h) => !busy(h)) ?? 9;
     const el = scrollRef.current;
-    if (el) el.scrollTop = Math.max(0, 8 * HOUR_PX);
-    onChange((w) => ({ ...w, [today]: [...w[today], { id, start: "09:00", end: "10:00", category: newCat, title: "" }] }));
-    if (view === "day") onDayChange(today);
+    if (el) el.scrollTop = Math.max(0, (hour - 1) * HOUR_PX);
+    onChange((w) => ({ ...w, [d]: [...w[d], { id, start: fromMin(hour * 60), end: fromMin(hour * 60 + 60), category: newCat, title: "" }] }));
+    if (view === "day") onDayChange(d);
     setFreshId(id);
     setEditing(id);
   };
 
   return (
     <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-[20px] p-4 md:p-5">
-      <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} />
+      <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} onAdd={hasCats ? () => addBlock(day) : undefined} />
 
       <div className="relative">
       <motion.div
@@ -186,9 +195,20 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
                       {WEEKDAY_LABEL[d]}
                       {d === today && <span className="sr-only"> (today)</span>}
                     </span>
-                    <span className="font-mono text-[11px] text-ink-dim">
+                    <span className="flex items-center gap-1 font-mono text-[11px] text-ink-dim">
                       <span className="sr-only">Planned: </span>
                       {dayTotal(week[d])}
+                      {hasCats && (
+                        <button
+                          type="button"
+                          aria-label={`Add block on ${DAY_NAME[d]}`}
+                          title={`Add block on ${DAY_NAME[d]}`}
+                          onClick={() => addBlock(d)}
+                          className="grid size-5 place-items-center rounded-full text-ink-dim transition hover:bg-white/10 hover:text-ink"
+                        >
+                          <Plus weight="bold" size={12} />
+                        </button>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -253,7 +273,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
             {hasCats && (
               <button
                 type="button"
-                onClick={addFirstBlock}
+                onClick={() => addBlock(view === "day" ? day : today)}
                 className="mt-1 flex min-h-9 items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-night transition active:scale-[0.98]"
               >
                 <CalendarPlus weight="bold" size={16} /> Add first block
@@ -270,9 +290,11 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
             <Editor
               key={edited.block.id}
               block={edited.block}
+              day={edited.day}
               categories={categories}
               onUpdate={updateEdited}
               onDelete={deleteEdited}
+              onMoveDay={moveEdited}
               onClose={closeEditor}
             />
           )}
