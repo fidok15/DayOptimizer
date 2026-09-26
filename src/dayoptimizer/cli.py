@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from rich.console import Console
+from rich.markdown import Markdown
 from dayoptimizer import paths
 from dayoptimizer.apply import _missing, apply_changes
 from dayoptimizer.core.calendar import CalendarClient
@@ -334,7 +335,8 @@ def cmd_add(args, rules, config):
         changes, applied, errors = _run_plan(day, calendar, storage, rules)
         if len(days) > 1:
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
-        console.print(summarize(changes), markup=False)
+        # the model answers in Markdown: render it rather than printing ** and #
+        console.print(Markdown(summarize(changes)))
         _print_errors(errors)
     _print_pending(storage)
 
