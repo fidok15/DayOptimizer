@@ -45,7 +45,8 @@ def suggest_sleep(garmin, rules, tomorrow_first_fixed, day):
     if causes:
         need_hours += 0.5
         reason = " and ".join(causes) + " — adding 30 min of recovery"
-    default_wake = datetime.combine(day, time(8, 0)).astimezone() + timedelta(days=1)
+    # combine with the next day BEFORE astimezone: that day may have another UTC offset (DST)
+    default_wake = datetime.combine(day + timedelta(days=1), time(8, 0)).astimezone()
     if tomorrow_first_fixed is not None:
         # a late first event must not push wake-up past the default — sleeping
         # in just because the morning is empty defeats a stable rhythm

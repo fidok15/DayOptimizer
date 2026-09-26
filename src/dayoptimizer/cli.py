@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from rich.console import Console
 from dayoptimizer import paths
-from dayoptimizer.apply import apply_changes
+from dayoptimizer.apply import _missing, apply_changes
 from dayoptimizer.core.calendar import CalendarClient
 from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.planner import plan_day
@@ -203,12 +203,8 @@ def cmd_apply(args, rules, config):
             elif c.kind == "create":
                 calendar.create_event(c.category, c.title, c.new_start, c.new_end)
         except KeyError:
-            storage.log_change(
-                f"[error] apply #{pid} {c.kind} {c.category}: {c.title}",
-                f"calendar '{c.category}' not found — create or rename a calendar "
-                "with this name in the Calendar app")
-            console.print(f"#{pid} failed: calendar '{c.category}' not found — "
-                          "create it and re-run the plan", markup=False)
+            storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", _missing(c))
+            console.print(f"#{pid} failed: {_missing(c)}", markup=False)
             continue
         except RuntimeError as exc:
             storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", str(exc))
@@ -470,6 +466,8 @@ def _ids(value: str) -> str:
         raise argparse.ArgumentTypeError(f"'{value}' should be pending ids like 3,4")
     return value
 
+_TAKES_WORDS = {"ask", "add", "agent", "garmin"}  # subcommands with positional arguments
+
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -532,7 +530,10 @@ def main(argv: list[str] | None = None):
             argv = ["setup"]
         else:
             argv = ["plan"]
-    elif not first.startswith("-") and first not in sub.choices:
+    elif not first.startswith("-") and (
+            first not in sub.choices
+            # "plan is to hit the gym at 18": a command that takes no words, followed by words
+            or (first not in _TAKES_WORDS and len(argv) > 1 and not argv[1].startswith("-"))):
         argv = ["ask", " ".join(argv)]  # plain words: dayoptimizer "gym at 18"
     args = parser.parse_args(argv)
     if args.command in CALENDAR_COMMANDS and not _in_bundle() and sys.platform == "darwin":

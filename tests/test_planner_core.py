@@ -197,3 +197,14 @@ def test_block_bumped_twice_keeps_the_first_reason():
     changes = resolve_conflicts(events, RULES, D.replace(hour=9), D.replace(hour=22))
     assert [(c.event_id, c.new_start.hour) for c in changes] == [("f", 11)]
     assert "Standup" in changes[0].reason
+
+def test_default_wake_is_8_local_on_the_night_clocks_change(monkeypatch):
+    import time as _time
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    _time.tzset()
+    try:
+        c = suggest_sleep(None, RULES, None, date(2026, 10, 24))  # DST ends 25 Oct
+        assert c.new_end.hour == 8 and c.new_end.utcoffset().total_seconds() == 3600
+    finally:
+        monkeypatch.undo()
+        _time.tzset()
