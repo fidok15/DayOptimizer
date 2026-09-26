@@ -449,6 +449,23 @@ def _first_run() -> bool:
     except Exception:
         return False
 
+def _iso_date(value: str) -> str:
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{value}' is not a date, use YYYY-MM-DD (e.g. 2026-09-28)")
+    return value
+
+def _positive(value: str) -> int:
+    if not value.isdigit() or int(value) < 1:
+        raise argparse.ArgumentTypeError(f"'{value}' must be a whole number of at least 1")
+    return int(value)
+
+def _ids(value: str) -> str:
+    if not re.fullmatch(r"\s*\d+\s*(,\s*\d+\s*)*,?\s*", value):
+        raise argparse.ArgumentTypeError(f"'{value}' should be pending ids like 3,4")
+    return value
+
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -461,11 +478,11 @@ def main(argv: list[str] | None = None):
         formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", metavar="command")
     p_plan = sub.add_parser("plan", help="replan the day (or several days)")
-    p_plan.add_argument("--date", default=None, help="start date (YYYY-MM-DD, defaults to today)")
-    p_plan.add_argument("--week", nargs="?", const=7, type=int, default=None,
+    p_plan.add_argument("--date", default=None, type=_iso_date, help="start date (YYYY-MM-DD, defaults to today)")
+    p_plan.add_argument("--week", nargs="?", const=7, type=_positive, default=None,
                         help="plan N days from the start date (default 7)")
     p_apply = sub.add_parser("apply", help="apply pending approval-required changes")
-    p_apply.add_argument("--ids", required=True, help="comma-separated pending ids")
+    p_apply.add_argument("--ids", required=True, type=_ids, help="comma-separated pending ids")
     sub.add_parser("chat", help="keep telling DayOptimizer about your day, one line at a time")
     p_ask = sub.add_parser("ask", help='add what you say to the calendar and replan (same as dayoptimizer "...")')
     p_ask.add_argument("text")
@@ -476,7 +493,7 @@ def main(argv: list[str] | None = None):
     p_agent = sub.add_parser("agent", help="manage the background agent (launchd)")
     agent_sub = p_agent.add_subparsers(dest="agent_command", required=True)
     p_agent_install = agent_sub.add_parser("install", help="install and start the agent")
-    p_agent_install.add_argument("--interval", type=int, default=900,
+    p_agent_install.add_argument("--interval", type=_positive, default=900,
                                  help="run interval in seconds (default 900)")
     agent_sub.add_parser("uninstall", help="stop and remove the agent")
     agent_sub.add_parser("status", help="agent status")
@@ -486,8 +503,8 @@ def main(argv: list[str] | None = None):
     p_cals = sub.add_parser("calendars", help="create a calendar in the Calendar app for each category")
     p_cals.add_argument("--read", action="store_true", help="only report each category calendar's colour")
     p_sync = sub.add_parser("sync", help="copy calendar events into the local cache")
-    p_sync.add_argument("--from", dest="start", required=True, help="first day (YYYY-MM-DD)")
-    p_sync.add_argument("--days", type=int, default=7)
+    p_sync.add_argument("--from", dest="start", required=True, type=_iso_date, help="first day (YYYY-MM-DD)")
+    p_sync.add_argument("--days", type=_positive, default=7)
     p_web = sub.add_parser("setup", aliases=["web"],
                            help="describe your typical week in the browser (first run)")
     p_web.add_argument("--port", type=int, default=8765)
