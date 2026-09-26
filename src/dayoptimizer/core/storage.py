@@ -35,6 +35,8 @@ class Storage:
         try:
             self._open(path)
         except sqlite3.DatabaseError:
+            if not path.is_file():
+                raise  # nothing damaged: e.g. the folder is missing, not ours to hide
             # only a cache and a log: set the broken file aside and start fresh
             aside = path.with_name(f"{path.name}.corrupt-{datetime.now():%Y%m%d%H%M%S}")
             path.rename(aside)

@@ -144,6 +144,7 @@ def test_background_check_without_access_notifies_once_a_day(monkeypatch):
     sent = []
     monkeypatch.setattr(cli, "CalendarClient", lambda: type("C", (), {"request_access": lambda self: False})())
     monkeypatch.setattr(notify_mod, "notify", lambda title, msg: sent.append(msg))
+    cli.paths.ensure_private_dir()
     for _ in range(3):
         cli.cmd_check(None, None, None)
     assert len(sent) == 1 and "Calendars" in sent[0]
