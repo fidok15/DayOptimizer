@@ -1,6 +1,8 @@
 from __future__ import annotations
 import json
+import os
 import sqlite3
+import sys
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -29,8 +31,22 @@ def _event_from_json(payload: dict) -> Event:
 
 class Storage:
     def __init__(self, db_path: str | Path):
-        self._conn = sqlite3.connect(str(db_path))
+        path = Path(db_path)
+        try:
+            self._open(path)
+        except sqlite3.DatabaseError:
+            # only a cache and a log: set the broken file aside and start fresh
+            aside = path.with_name(f"{path.name}.corrupt-{datetime.now():%Y%m%d%H%M%S}")
+            path.rename(aside)
+            print(f"The local cache {path} was damaged; moved it to {aside.name} and started a new one.",
+                  file=sys.stderr)
+            self._open(path)
+
+    def _open(self, path: Path) -> None:
+        self._conn = sqlite3.connect(str(path))
         self._conn.executescript(_SCHEMA)
+        if path.exists():
+            os.chmod(path, 0o600)  # health data and calendar cache
 
     def save_garmin(self, summary: GarminSummary) -> None:
         self._conn.execute(

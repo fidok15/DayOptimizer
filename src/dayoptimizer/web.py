@@ -398,7 +398,9 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 return self._json(200, read_state())
             except (OSError, yaml.YAMLError) as exc:
-                return self._json(500, {"error": f"Could not read config: {exc}"})
+                return self._json(500, {"error": f"Can't read your settings in {paths.user_config_path()} "
+                                                 f"({' '.join(str(exc).split())}). Fix or delete that "
+                                                 "file, then press Retry."})
         if self.path.split("?")[0] == "/api/garmin":
             return self._json(200, garmin_status())
         if self.path.split("?")[0] == "/api/calendar-colors":
@@ -416,7 +418,8 @@ class Handler(SimpleHTTPRequestHandler):
                 or self.headers.get("Content-Type", "").split(";")[0] != "application/json"
                 or (origin is not None and origin != f"http://{self.headers.get('Host')}")):
             return self._json(403, {"error": "forbidden"})
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self.headers.get("Content-Length", "")
+        length = int(length) if length.isdigit() else 0
         if not 0 < length <= MAX_BODY:
             return self._json(413, {"error": "body too large or empty"})
         try:
@@ -427,6 +430,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(422, {"error": str(exc)})
         except ApiError as exc:
             return self._json(exc.status, {"error": str(exc), "code": exc.code})
+        except Exception as exc:  # never drop the connection: the page shows this message
+            return self._json(500, {"error": f"Something went wrong ({type(exc).__name__}). "
+                                             "Try again; if it keeps failing, restart `dayoptimizer setup`."})
 
     def do_PUT(self):
         if self.path != "/api/state":
