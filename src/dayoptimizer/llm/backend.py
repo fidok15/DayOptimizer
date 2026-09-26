@@ -149,7 +149,7 @@ def make_backend(llm_config: dict) -> LLMBackend:
         return OllamaBackend(model=local)
     if choice in ("anthropic", "auto") and os.environ.get("ANTHROPIC_API_KEY"):
         from dayoptimizer.llm.anthropic_backend import AnthropicBackend
-        return AnthropicBackend(model=llm_config.get("model", "claude-opus-5-5"))
+        return AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5"))
     raise LLMUnavailable(
         "Requests in plain words need a language model. Either run one locally for free:\n"
         f"  brew install ollama && brew services start ollama && ollama pull {local}\n"

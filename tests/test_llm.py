@@ -28,7 +28,7 @@ def test_format_changes_readable():
 
 def test_parse_request_sends_user_categories():
     backend = AnthropicBackend.__new__(AnthropicBackend)
-    backend.model = "claude-opus-5-5"
+    backend.model = "claude-sonnet-5"
     backend.client = MagicMock()
     fake = MagicMock()
     fake.parsed_output = DayRequest()
@@ -42,7 +42,7 @@ def test_parse_request_sends_user_categories():
 
 def test_summarize_changes_uses_messages_create():
     backend = AnthropicBackend.__new__(AnthropicBackend)
-    backend.model = "claude-opus-5-5"
+    backend.model = "claude-sonnet-5"
     backend.client = MagicMock()
     block = MagicMock()
     block.type = "text"
@@ -61,7 +61,7 @@ def test_summarize_changes_uses_messages_create():
 
 def test_summarize_changes_falls_back_on_api_error():
     backend = AnthropicBackend.__new__(AnthropicBackend)
-    backend.model = "claude-opus-5-5"
+    backend.model = "claude-sonnet-5"
     backend.client = MagicMock()
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     backend.client.messages.create.side_effect = anthropic.APIConnectionError(request=request)
