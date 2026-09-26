@@ -66,6 +66,8 @@ def _fetch_activities(storage, now):
     return storage.activities_since(since)
 
 def _confirm(change):
+    if not sys.stdin.isatty():
+        return False  # nobody to ask (app bundle, background run): park it as pending
     prompt = f"Fixed-event change: {change.category}: {change.title} — {change.reason}. Approve? [y/N] "
     try:
         answer = console.input(prompt, markup=False)
@@ -216,7 +218,12 @@ def cmd_apply(args, rules, config):
     # failed rows are removed as well: they cannot succeed until the user
     # creates the calendar, and a later replan regenerates the proposal
     storage.delete_pending([pid for pid, _ in pending])
-    console.print(f"Applied {applied} of {len(pending)} pending change(s).")
+    missing = sorted(set(ids) - {pid for pid, _ in pending})
+    if missing:
+        console.print(f"No pending change {', '.join(f'#{i}' for i in missing)} — already applied, "
+                      "or replaced by a newer plan. Run  dayoptimizer plan  to see what's pending.")
+    if pending:
+        console.print(f"Applied {applied} of {len(pending)} pending change(s).")
 
 def cmd_check(args, rules, config):
     from dayoptimizer.check import run_check
