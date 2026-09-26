@@ -215,3 +215,10 @@ def test_wind_down_sits_right_before_sleep_or_not_at_all():
         assert len(wind_down) == (0 if evening_busy else 1)
         for wd in wind_down:
             assert sleep.new_start - wd.new_end <= timedelta(minutes=RULES.buffer_minutes)
+
+
+def test_plan_never_creates_blocks_in_categories_the_user_does_not_have():
+    import dataclasses
+    only_work = dataclasses.replace(RULES, categories={"Work": RULES.categories["Work"]})
+    changes = plan_day(date(2026, 7, 3), [], None, only_work, now=D.replace(hour=6))
+    assert {c.category for c in changes if c.kind == "create"} <= {"Work"}

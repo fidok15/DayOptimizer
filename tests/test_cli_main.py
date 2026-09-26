@@ -128,3 +128,12 @@ def test_words_after_a_command_name_are_a_day_description(routed, monkeypatch):
     monkeypatch.setattr(cli, "cmd_ask", lambda args, *a: routed.append(("ask", args.text)))
     cli.main(["plan", "is", "gym", "at", "18"])
     assert routed == [("ask", "plan is gym at 18")]
+
+
+def test_ask_without_categories_says_how_to_add_them(monkeypatch, capsys):
+    import dataclasses
+    from dayoptimizer.cli import _load_config
+    rules, config = _load_config()
+    monkeypatch.setattr(cli, "make_backend", lambda *a: (_ for _ in ()).throw(AssertionError("LLM called")))
+    cli.cmd_ask(type("A", (), {"text": "gym at 18"})(), dataclasses.replace(rules, categories={}), config)
+    assert "dayoptimizer setup" in capsys.readouterr().out

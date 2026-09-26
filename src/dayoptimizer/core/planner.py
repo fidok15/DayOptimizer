@@ -574,6 +574,9 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
 
     def run(phase_changes):
         nonlocal working
+        # categories are the user's: never create a block in one they don't have
+        phase_changes = [c for c in phase_changes
+                         if c.kind != "create" or c.category in rules.categories]
         changes.extend(phase_changes)
         working = _project(working, phase_changes)
 
