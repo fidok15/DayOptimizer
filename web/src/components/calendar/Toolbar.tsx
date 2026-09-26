@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy, CursorClick, Eraser, X } from "@phosphor-icons/react";
+import { Check, Copy, CursorClick, Eraser, Plus, X } from "@phosphor-icons/react";
 import { WEEKDAYS, WEEKDAY_LABEL, type View, type Week, type Weekday } from "../../lib/types";
 import { uid } from "../../lib/time";
 import { DAY_NAME, todayKey } from "./geometry";
@@ -11,6 +11,8 @@ interface Props {
   week: Week;
   onDayChange: (d: Weekday) => void;
   onChange: (fn: (w: Week) => Week) => void;
+  /** Add a block on the shown day (keyboard alternative to drawing). */
+  onAdd?: () => void;
 }
 
 const HINT_KEY = "dayoptimizer.weekHintDismissed";
@@ -33,7 +35,7 @@ const PICKS: [string, Weekday[]][] = [
   ["All", [...WEEKDAYS]],
 ];
 
-export default function Toolbar({ view, day, week, onDayChange, onChange }: Props) {
+export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd }: Props) {
   const [hintHidden, setHintHidden] = useState(readHint);
   if (view === "week") {
     if (hintHidden) return null;
@@ -64,13 +66,12 @@ export default function Toolbar({ view, day, week, onDayChange, onChange }: Prop
   const today = todayKey();
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div role="tablist" aria-label="Day" className="flex flex-wrap gap-1.5">
+      <div role="group" aria-label="Day" className="flex flex-wrap gap-1.5">
         {WEEKDAYS.map((d) => (
           <button
             key={d}
             type="button"
-            role="tab"
-            aria-selected={d === day}
+            aria-pressed={d === day}
             aria-label={DAY_NAME[d]}
             onClick={() => onDayChange(d)}
             className={`min-h-8 rounded-full px-3 py-1.5 text-sm transition active:scale-[0.98] ${
@@ -83,6 +84,11 @@ export default function Toolbar({ view, day, week, onDayChange, onChange }: Prop
         ))}
       </div>
       <div className="flex items-center gap-2">
+        {onAdd && (
+          <button type="button" onClick={onAdd} className={ghost}>
+            <Plus weight="bold" size={16} /> Add block
+          </button>
+        )}
         <CopyDay day={day} disabled={week[day].length === 0} onChange={onChange} />
         <ClearDay key={day} day={day} disabled={week[day].length === 0} onChange={onChange} />
       </div>
