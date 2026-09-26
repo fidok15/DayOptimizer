@@ -137,3 +137,13 @@ def test_ask_without_categories_says_how_to_add_them(monkeypatch, capsys):
     monkeypatch.setattr(cli, "make_backend", lambda *a: (_ for _ in ()).throw(AssertionError("LLM called")))
     cli.cmd_ask(type("A", (), {"text": "gym at 18"})(), dataclasses.replace(rules, categories={}), config)
     assert "dayoptimizer setup" in capsys.readouterr().out
+
+
+def test_background_check_without_access_notifies_once_a_day(monkeypatch):
+    from dayoptimizer.core import notify as notify_mod
+    sent = []
+    monkeypatch.setattr(cli, "CalendarClient", lambda: type("C", (), {"request_access": lambda self: False})())
+    monkeypatch.setattr(notify_mod, "notify", lambda title, msg: sent.append(msg))
+    for _ in range(3):
+        cli.cmd_check(None, None, None)
+    assert len(sent) == 1 and "Calendars" in sent[0]

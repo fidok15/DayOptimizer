@@ -18,6 +18,11 @@ from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backen
 
 console = Console()
 
+NO_ACCESS_HELP = ("DayOptimizer can't read your calendar: macOS access was denied. Turn on DayOptimizer in "
+                  "System Settings → Privacy & Security → Calendars (open it with:  open "
+                  "\"x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars\" ), "
+                  "then run the command again.")
+
 def _load_config():
     cfg_path = Path(__file__).parent.parent.parent / "config.default.yaml"
     return load_rules(cfg_path), load_config_data(cfg_path)
@@ -172,7 +177,7 @@ def _print_pending(storage):
 def cmd_plan(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
         return
     storage = Storage(paths.db_path())
     start_day = date.fromisoformat(args.date) if args.date else date.today()
@@ -190,7 +195,7 @@ def cmd_plan(args, rules, config):
 def cmd_apply(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
         return
     storage = Storage(paths.db_path())
     ids = [int(x) for x in args.ids.split(",") if x.strip()]
@@ -227,9 +232,16 @@ def cmd_apply(args, rules, config):
 
 def cmd_check(args, rules, config):
     from dayoptimizer.check import run_check
+    from dayoptimizer.core.notify import notify
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        storage = Storage(paths.db_path())
+        key = f"no_access:{date.today().isoformat()}"
+        if not storage.get_state(key):  # the agent runs every few minutes: once a day is enough
+            notify("DayOptimizer", "No calendar access, so your day isn't being adjusted. "
+                                   "Allow DayOptimizer in System Settings, Privacy & Security, Calendars.")
+            storage.set_state(key, "1")
         return
     storage = Storage(paths.db_path())
     actions = run_check(calendar, storage, rules, datetime.now().astimezone())
@@ -322,7 +334,7 @@ def cmd_add(args, rules, config):
         return
     calendar = CalendarClient()
     if not calendar.request_access():
-        console.print("[red]No calendar access. Enable it in System Settings → Privacy & Security → Calendars.[/red]")
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
         return
     storage = Storage(paths.db_path())
     days = set()
@@ -402,6 +414,7 @@ def cmd_sync(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
+        print(NO_ACCESS_HELP)
         return
     start = datetime.combine(date.fromisoformat(args.start), time(0, 0)).astimezone()
     end = start + timedelta(days=args.days)
@@ -417,6 +430,7 @@ def cmd_calendars(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
+        print(NO_ACCESS_HELP)
         return
     created, recolored = [], []
     for name, cat in config["categories"].items():
