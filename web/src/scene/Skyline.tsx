@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { sceneHour } from "../lib/time";
 import { CITY_W, generateCity, litShare, mulberry32, renderLayer } from "./city";
 import { makeBoat, drawBoats, drawWalkers, makeWalker, type Boat, type Walker } from "./boats";
+import { drawFlocks, makeFlock, type Flock } from "./birds";
 import { BLOSSOM_MARGIN, drawPetals, grainPattern, makePetals, renderBlossoms } from "./blossom";
 import { GROUND } from "./layout";
 import { css, hex, mix, palette, smooth, type Palette, type RGB } from "./sky";
@@ -32,8 +33,6 @@ const WHITE: RGB = [255, 255, 255];
 
 interface Star { x: number; y: number; r: number; phase: number; speed: number }
 interface Cloud { x: number; y: number; s: number; speed: number; puffs: { dx: number; dy: number; r: number }[] }
-interface Bird { dx: number; dy: number; phase: number }
-interface Flock { t0: number; x0: number; dir: number; y: number; speed: number; size: number; flap: number; birds: Bird[] }
 interface Plane { t0: number; x0: number; dir: number; y: number; speed: number }
 interface Shoot { t0: number; x: number; y: number; vx: number; vy: number }
 
@@ -175,7 +174,7 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
     }
     if (t >= next.flock) {
       next.flock = t + between(12, 25);
-      if (d < 0.35) flocks.push(makeFlock(t));
+      if (d < 0.35) flocks.push(makeFlock(t, W, H));
     }
     if (t >= next.plane) {
       next.plane = t + between(26, 36);
@@ -199,18 +198,6 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
         shoot = { t0: t, x: W * between(0.15, 0.85), y: H * between(0.05, 0.3), vx: dir * between(380, 520), vy: between(140, 220) };
       }
     }
-  }
-
-  function makeFlock(t: number): Flock {
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    const z = between(0.55, 1.25); // depth: nearer flocks are bigger and faster
-    const n = 5 + Math.floor(Math.random() * 5);
-    const birds: Bird[] = Array.from({ length: n }, (_, i) => {
-      const k = Math.ceil(i / 2);
-      const side = i % 2 ? 1 : -1;
-      return { dx: -dir * k * 15 * z + between(-3, 3), dy: side * k * 7 * z + between(-3, 3), phase: Math.random() * 6.28 };
-    });
-    return { t0: t, dir, x0: dir > 0 ? -80 : W + 80, y: H * between(0.12, 0.42), speed: 28 + 36 * z, size: 5.5 * z, flap: between(7, 9.5), birds };
   }
 
   function drawSky(t: number) {
@@ -312,30 +299,7 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
 
   function drawLife(t: number) {
     const ink = css(mix(pal.top, hex("#0a0e18"), 0.7), 0.8);
-    ctx.strokeStyle = ink;
-    ctx.lineCap = "round";
-    for (let i = flocks.length - 1; i >= 0; i--) {
-      const f = flocks[i];
-      const lead = f.x0 + f.dir * f.speed * (t - f.t0);
-      if (lead < -200 || lead > W + 200) {
-        if ((t - f.t0) * f.speed > W + 400) flocks.splice(i, 1);
-        continue;
-      }
-      ctx.lineWidth = Math.max(1, f.size * 0.22);
-      ctx.beginPath();
-      for (const b of f.birds) {
-        const s = f.size;
-        const x = lead + b.dx;
-        const y = f.y + b.dy + Math.sin(t * 1.3 + b.phase) * 2.5;
-        const wing = Math.sin(t * f.flap + b.phase);
-        const tipY = y - wing * s * 0.6;
-        const ctrlY = y - s * 0.3 - wing * s * 0.2;
-        ctx.moveTo(x - s, tipY);
-        ctx.quadraticCurveTo(x - s * 0.4, ctrlY, x, y);
-        ctx.quadraticCurveTo(x + s * 0.4, ctrlY, x + s, tipY);
-      }
-      ctx.stroke();
-    }
+    drawFlocks(ctx, flocks, t, W, ink);
 
     for (let i = planes.length - 1; i >= 0; i--) {
       const p = planes[i];

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { drawFlocks, makeFlock, type Flock } from "./birds";
 import { sceneHour } from "../lib/time";
 import Skyline from "./Skyline";
 
@@ -68,6 +69,55 @@ export default function Painted() {
           style={{ opacity: mix.t }}
         />
       )}
+      <Birds />
     </>
   );
+}
+
+/** Flocks crossing the painted sky by day. Nothing is drawn with reduced motion. */
+function Birds() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let W = 0;
+    let H = 0;
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const flocks: Flock[] = [];
+    let next = 0;
+    let raf = 0;
+    const loop = (now: number) => {
+      const t = now / 1000;
+      const h = sceneHour();
+      if (t >= next) {
+        next = t + 10 + Math.random() * 15;
+        if (h >= 6 && h < 20 && flocks.length < 3) flocks.push(makeFlock(t, W, H));
+      }
+      ctx.clearRect(0, 0, W, H);
+      drawFlocks(ctx, flocks, t, W, "rgb(28 24 32 / 0.75)");
+      raf = requestAnimationFrame(loop);
+    };
+    const onVisibility = () => {
+      cancelAnimationFrame(raf);
+      if (!document.hidden) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    window.addEventListener("resize", resize);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none fixed inset-0 -z-10 h-full w-full" />;
 }
