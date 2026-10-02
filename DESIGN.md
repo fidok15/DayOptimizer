@@ -16,6 +16,18 @@ It is an app, not a landing page. Layout stays predictable where people work
 
 ## The scene (background)
 
+**Painted mode (preferred).** Four hand-painted illustrations in `web/public/scene/`
+(`dawn.webp`, `day.webp`, `sunset.webp`, `night.webp`), all with the same composition:
+a low view from a park up at a downtown skyline, blossoming trees framing both sides,
+a gap of open sky in the middle. Painterly, visible brush texture, cinematic grading
+(warm orange-violet sunset, cool moonlit blue night). `web/src/scene/Painted.tsx`
+crossfades between the two images around the current hour (keys: night until 05:30,
+dawn 07:00, day 10:00 to 16:30, sunset 19:00, night from 21:00), re-evaluated every
+30 s with a 30 s linear fade. If any image is missing, the procedural scene below is
+used instead, so a fresh clone works without them.
+
+**Procedural mode (fallback).**
+
 An illustrated riverside downtown at the user's local time: tall skyscrapers, a
 river with reflections, an arched footbridge and a park in the foreground. It is
 drawn on a `<canvas>` fixed behind the UI.

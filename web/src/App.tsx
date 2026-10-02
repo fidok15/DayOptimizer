@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { MotionConfig, motion } from "motion/react";
-import Skyline from "./scene/Skyline";
+import Painted from "./scene/Painted";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import Calendar from "./components/Calendar";
@@ -24,7 +24,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <Skyline />
+      <Painted />
       <div className="relative mx-auto flex min-h-[100dvh] max-w-[1400px] flex-col overflow-x-clip gap-5 px-4 py-5 md:px-8 md:py-8">
         <motion.div {...rise(0)} className="relative z-50">
           <Header
