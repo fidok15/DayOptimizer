@@ -110,7 +110,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
   };
 
   const inputCls =
-    "w-full rounded-[10px] border border-white/20 bg-white/[0.06] px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-dim/70 focus:border-accent";
+    "w-full rounded-[10px] border border-ink/20 bg-ink/[0.06] px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-dim/70 focus:border-accent";
   const labelCls = "text-xs font-medium text-ink-dim";
 
   return (
@@ -123,7 +123,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: "spring", stiffness: 400, damping: 32 }}
       className={`glass-strong scroll-thin fixed z-50 flex max-h-[calc(100dvh-24px)] flex-col gap-4 overflow-y-auto p-4 shadow-2xl ${
-        sheet ? "inset-x-0 bottom-0 rounded-t-[20px] pb-6" : "rounded-[20px]"
+        sheet ? "inset-x-0 bottom-0 rounded-t-[20px] pb-6" : "rounded-2xl"
       }`}
       style={sheet ? undefined : { width: W, left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
     >
@@ -139,7 +139,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
                 aria-pressed={active}
                 onClick={() => onUpdate({ category: name })}
                 className={`flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[13px] transition active:scale-[0.98] ${
-                  active ? "border-transparent bg-white/15 font-medium text-ink ring-2 ring-accent" : "border-white/20 text-ink hover:bg-white/10"
+                  active ? "border-transparent bg-ink/15 font-medium text-ink ring-2 ring-accent" : "border-ink/20 text-ink hover:bg-ink/10"
                 }`}
               >
                 <span className="size-2.5 rounded-full" style={{ background: categoryColor(name, cat.color) }} />
@@ -172,7 +172,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
           id={`${uidBase}-day`}
           value={day}
           onChange={(ev) => onMoveDay(ev.target.value as Weekday)}
-          className={`${inputCls} [&>option]:bg-[#141826]`}
+          className={`${inputCls} [&>option]:bg-white`}
         >
           {WEEKDAYS.map((d) => <option key={d} value={d}>{DAY_NAME[d]}</option>)}
         </select>
@@ -217,14 +217,14 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         <button
           type="button"
           onClick={onDelete}
-          className="flex min-h-8 items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-sm text-ink transition hover:border-[#f5988f]/60 hover:text-[#f5988f] active:scale-[0.98]"
+          className="flex min-h-8 items-center gap-1.5 rounded-full border border-ink/20 px-3 py-1.5 text-sm text-ink transition hover:border-[#f5988f]/60 hover:text-[#f5988f] active:scale-[0.98]"
         >
           <Trash weight="bold" size={16} /> Delete
         </button>
         <button
           type="button"
           onClick={() => onClose(true)}
-          className="flex min-h-8 items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-night transition active:scale-[0.98]"
+          className="flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-4 py-1.5 text-sm font-medium text-white transition active:scale-[0.98]"
         >
           <Check weight="bold" size={16} /> Done
         </button>

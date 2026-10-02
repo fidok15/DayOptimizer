@@ -1,11 +1,11 @@
 import { ArrowClockwise, WarningCircle } from "@phosphor-icons/react";
 
-const pulse = "rounded-[10px] bg-white/[0.07] animate-pulse motion-reduce:animate-none";
+const pulse = "rounded-[10px] bg-ink/[0.07] animate-pulse motion-reduce:animate-none";
 
 export function LoadingSkeleton() {
   return (
     <div className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[18rem_1fr]" aria-busy="true" aria-label="Loading planner">
-      <div className="glass order-2 flex flex-col gap-3 rounded-[20px] p-3 lg:order-none">
+      <div className="glass order-2 flex flex-col gap-3 rounded-2xl p-3 lg:order-none">
         <div className={`${pulse} h-4 w-24`} />
         <div className={`${pulse} h-3 w-full`} />
         <div className={`${pulse} h-9`} />
@@ -18,7 +18,7 @@ export function LoadingSkeleton() {
           </div>
         ))}
       </div>
-      <div className="glass min-h-[28rem] rounded-[20px] p-4 lg:min-h-[32rem]">
+      <div className="glass min-h-[28rem] rounded-2xl p-4 lg:min-h-[32rem]">
         <div className={`${pulse} h-full min-h-[26rem]`} />
       </div>
     </div>
@@ -27,17 +27,17 @@ export function LoadingSkeleton() {
 
 export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div role="alert" className="glass mx-auto flex max-w-md flex-col items-center gap-2.5 rounded-[20px] p-6 text-center">
-      <WarningCircle size={28} weight="bold" className="text-[#ff8a80]" aria-hidden />
+    <div role="alert" className="glass mx-auto flex max-w-md flex-col items-center gap-2.5 rounded-2xl p-6 text-center">
+      <WarningCircle size={28} weight="bold" className="text-[#d14a3f]" aria-hidden />
       <h2 className="text-lg font-semibold tracking-tight">Can't reach the planner server</h2>
-      {message && <p className="rounded-[10px] bg-white/5 px-3 py-1.5 font-mono text-xs break-words text-ink-dim">{message}</p>}
+      {message && <p className="rounded-[10px] bg-ink/5 px-3 py-1.5 font-mono text-xs break-words text-ink-dim">{message}</p>}
       <p className="text-sm text-ink">
         Is <code className="font-mono text-accent">dayoptimizer web</code> still running? Start it, then retry.
       </p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1 inline-flex min-h-9 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-night transition active:scale-[0.98]"
+        className="mt-1 inline-flex min-h-9 items-center gap-2 rounded-lg bg-dusk px-4 text-sm font-semibold text-white transition active:scale-[0.98]"
       >
         <ArrowClockwise size={16} weight="bold" aria-hidden />
         Retry

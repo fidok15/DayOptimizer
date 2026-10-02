@@ -8,7 +8,7 @@ import { WEEKDAYS, type Categories, type Category, type Week } from "../lib/type
 
 const FIXED_TIP = "Fixed: changes need your approval";
 const FLEX_TIP = "Flexible: the planner may move it";
-const ghost = "border border-line hover:bg-white/5 transition active:scale-[0.98]";
+const ghost = "border border-line hover:bg-ink/5 transition active:scale-[0.98]";
 
 function MovableToggle({ movable, onToggle, name }: { movable: boolean; onToggle: () => void; name?: string }) {
   return (
@@ -70,7 +70,7 @@ function EmojiPicker({ value, onPick }: { value: string; onPick: (e: string) => 
                   aria-label={`Icon ${e}`}
                   aria-pressed={e === value}
                   onClick={() => choose(e)}
-                  className={`grid size-7 place-items-center rounded-md text-base transition hover:bg-white/10 active:scale-[0.95] ${e === value ? "bg-white/15 ring-1 ring-accent" : ""}`}
+                  className={`grid size-7 place-items-center rounded-md text-base transition hover:bg-ink/10 active:scale-[0.95] ${e === value ? "bg-ink/15 ring-1 ring-accent" : ""}`}
                 >
                   {e}
                 </button>
@@ -85,7 +85,7 @@ function EmojiPicker({ value, onPick }: { value: string; onPick: (e: string) => 
                   const g = firstGrapheme(e.target.value);
                   if (g) choose(g);
                 }}
-                className="h-8 min-w-0 flex-1 rounded-md border border-line bg-white/5 px-2 text-sm outline-none placeholder:text-ink-dim focus:border-accent"
+                className="h-8 min-w-0 flex-1 rounded-md border border-line bg-ink/5 px-2 text-sm outline-none placeholder:text-ink-dim focus:border-accent"
               />
               {value && (
                 <button type="button" onClick={() => choose("")} className={`h-8 shrink-0 rounded-md px-2 text-xs text-ink-dim ${ghost}`}>
@@ -110,9 +110,9 @@ function Swatch({ name, color, onPick }: { name: string; color: string; onPick: 
         aria-label={`Change colour of ${name}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="grid h-8 w-6 place-items-center rounded-full transition hover:bg-white/10 active:scale-[0.98]"
+        className="grid h-8 w-6 place-items-center rounded-full transition hover:bg-ink/10 active:scale-[0.98]"
       >
-        <span className="size-3.5 rounded-full ring-1 ring-white/20" style={{ background: color }} />
+        <span className="size-3.5 rounded-full ring-1 ring-ink/20" style={{ background: color }} />
       </button>
       <AnimatePresence>
         {open && (
@@ -136,7 +136,7 @@ function Swatch({ name, color, onPick }: { name: string; color: string; onPick: 
             ))}
             <label
               title="Any colour"
-              className={`relative grid size-6 cursor-pointer place-items-center overflow-hidden rounded-full ring-1 ring-white/25 transition active:scale-[0.98] ${SWATCHES.includes(color) ? "" : "ring-2 ring-ink"}`}
+              className={`relative grid size-6 cursor-pointer place-items-center overflow-hidden rounded-full ring-1 ring-ink/25 transition active:scale-[0.98] ${SWATCHES.includes(color) ? "" : "ring-2 ring-ink"}`}
               style={{ background: SWATCHES.includes(color) ? "conic-gradient(#e0625a, #d4b44a, #4fb286, #4a9ec2, #6c6fd1, #c77dcb, #e0625a)" : color }}
             >
               <input
@@ -173,7 +173,7 @@ function Row(props: {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      className="group rounded-[10px] px-1 py-0.5 hover:bg-white/[0.04]"
+      className="group rounded-[10px] px-1 py-0.5 hover:bg-ink/[0.04]"
     >
       <div className="flex items-center gap-1">
         <Swatch name={name} color={categoryColor(name, cat.color)} onPick={(color) => onPatch({ color })} />
@@ -203,7 +203,7 @@ function Row(props: {
           aria-label={`Delete ${name}`}
           title={`Delete ${name}`}
           onClick={() => (blocks ? setConfirming(true) : onRemove())}
-          className="grid h-8 w-7 shrink-0 place-items-center overflow-hidden rounded-full text-ink-dim transition-all hover:bg-white/10 hover:text-[#ff8a80] active:scale-[0.98] [@media(hover:hover)]:w-0 [@media(hover:hover)]:group-focus-within:w-7 [@media(hover:hover)]:group-hover:w-7"
+          className="grid h-8 w-7 shrink-0 place-items-center overflow-hidden rounded-full text-ink-dim transition-all hover:bg-ink/10 hover:text-[#d14a3f] active:scale-[0.98] [@media(hover:hover)]:w-0 [@media(hover:hover)]:group-focus-within:w-7 [@media(hover:hover)]:group-hover:w-7"
         >
           <Trash size={16} weight="bold" aria-hidden />
         </button>
@@ -215,7 +215,7 @@ function Row(props: {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             role="alert"
-            className="mb-1 mt-1 rounded-[10px] border border-line bg-white/5 p-2.5 text-sm"
+            className="mb-1 mt-1 rounded-[10px] border border-line bg-ink/5 p-2.5 text-sm"
           >
             <p>
               Delete {name} and its {blocks} {blocks === 1 ? "block" : "blocks"}?
@@ -224,7 +224,7 @@ function Row(props: {
               <button
                 type="button"
                 onClick={onRemove}
-                className="min-h-8 rounded-full bg-accent px-3.5 text-xs font-semibold text-night transition active:scale-[0.98]"
+                className="min-h-8 rounded-lg bg-dusk px-3.5 text-xs font-semibold text-white transition active:scale-[0.98]"
               >
                 Delete
               </button>
@@ -274,20 +274,20 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
           placeholder="New category"
           aria-invalid={!!error}
           aria-describedby={error ? "new-category-error" : undefined}
-          className="h-9 min-w-0 flex-1 rounded-[10px] border border-line bg-white/5 px-3 text-sm outline-none transition placeholder:text-ink-dim focus:border-accent"
+          className="h-9 min-w-0 flex-1 rounded-[10px] border border-line bg-ink/5 px-3 text-sm outline-none transition placeholder:text-ink-dim focus:border-accent"
         />
         <EmojiPicker value={emoji} onPick={setEmoji} />
         <MovableToggle movable={movable} onToggle={() => setMovable((m) => !m)} />
         <button
           type="submit"
-          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-accent px-3 text-sm font-semibold text-night transition active:scale-[0.98]"
+          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-sm font-semibold text-white transition active:scale-[0.98]"
         >
           <Plus size={16} weight="bold" aria-hidden />
           Add
         </button>
       </div>
       {error && (
-        <p id="new-category-error" className="text-xs text-[#ff8a80]">
+        <p id="new-category-error" className="text-xs text-[#d14a3f]">
           {error}
         </p>
       )}
@@ -324,7 +324,7 @@ export default function Sidebar(props: {
   const patch = (name: string, p: Partial<Category>) => onChange((c) => (c[name] ? { ...c, [name]: { ...c[name], ...p } } : c));
 
   return (
-    <aside className="glass flex flex-col gap-4 rounded-[20px] p-3 lg:sticky lg:top-5 lg:max-h-[calc(100dvh-2.5rem)]">
+    <aside className="glass flex flex-col gap-4 rounded-2xl p-3 lg:sticky lg:top-5 lg:max-h-[calc(100dvh-2.5rem)]">
       <section className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="px-1">
           <h2 className="text-[15px] font-semibold tracking-tight">Categories</h2>
@@ -381,7 +381,7 @@ export default function Sidebar(props: {
                   <span className="w-24 min-w-0 shrink-0 truncate" title={name}>
                     {name}
                   </span>
-                  <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/[0.06]" aria-hidden>
+                  <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-ink/[0.06]" aria-hidden>
                     <span className="block h-full rounded-full" style={{ width: `${(min / max) * 100}%`, background: color }} />
                   </span>
                   <span className="w-14 shrink-0 text-right font-mono text-xs text-ink tabular-nums">{durationLabel(min)}</span>

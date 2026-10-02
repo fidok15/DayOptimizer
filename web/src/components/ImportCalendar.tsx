@@ -17,7 +17,7 @@ const lastMondayISO = () => {
 const ghost =
   "inline-flex min-h-8 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98]";
 const primary =
-  "inline-flex min-h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-sm font-semibold text-night transition active:scale-[0.98] disabled:opacity-40";
+  "inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3.5 py-1.5 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-40";
 
 type Failure = { message: string; code: string };
 
@@ -100,7 +100,7 @@ export default function ImportCalendar(props: {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="glass-btn inline-flex min-h-10 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-white/20 active:scale-[0.98]"
+        className="glass-btn inline-flex min-h-10 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-ink/20 active:scale-[0.98]"
       >
         <CalendarPlus size={16} weight="bold" aria-hidden />
         Import
@@ -115,7 +115,7 @@ export default function ImportCalendar(props: {
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 400, damping: 32 }}
             style={{ transformOrigin: "top right" }}
-            className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 rounded-[20px] p-4 shadow-2xl"
+            className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 rounded-2xl p-4 shadow-2xl"
           >
             <div>
               <h2 className="text-[15px] font-semibold tracking-tight">
@@ -128,18 +128,18 @@ export default function ImportCalendar(props: {
             </div>
 
             {categoryNames.length === 0 ? (
-              <p role="status" className="rounded-[12px] border border-line bg-white/[0.04] p-2.5 text-xs leading-snug text-ink">
+              <p role="status" className="rounded-[12px] border border-line bg-ink/[0.04] p-2.5 text-xs leading-snug text-ink">
                 Add your categories in the sidebar first (e.g. Work, Gym). Then each calendar can be put into one of them.
               </p>
             ) : !found ? (
               <>
                 {failure && (
-                  <div role="alert" className="flex gap-2 rounded-[12px] border border-[#ff8a80]/30 bg-[#ff8a80]/10 p-2.5 text-xs leading-snug text-ink">
-                    <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-[#ff8a80]" aria-hidden />
+                  <div role="alert" className="flex gap-2 rounded-[12px] border border-[#d14a3f]/30 bg-[#d14a3f]/10 p-2.5 text-xs leading-snug text-ink">
+                    <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-[#d14a3f]" aria-hidden />
                     <p className="min-w-0 break-words">
                       {failure.code === "setup" ? "Calendar access isn't set up yet. Run this once in the DayOptimizer folder, then try again:" : failure.message}
                       {failure.code === "setup" && (
-                        <code className="mt-1.5 block rounded-md bg-black/30 px-2 py-1 font-mono text-[11px] text-ink">
+                        <code className="mt-1.5 block rounded-md bg-linen px-2 py-1 font-mono text-[11px] text-ink">
                           scripts/install.sh
                         </code>
                       )}
@@ -184,7 +184,7 @@ export default function ImportCalendar(props: {
                           aria-label={`Category for ${cal}`}
                           value={mapping[cal] ?? ""}
                           onChange={(e) => setMapping((m) => ({ ...m, [cal]: e.target.value }))}
-                          className="h-8 w-36 shrink-0 rounded-[10px] border border-line bg-night px-2 text-sm text-ink outline-none focus:border-accent"
+                          className="h-8 w-36 shrink-0 rounded-[10px] border border-line bg-linen px-2 text-sm text-ink outline-none focus:border-accent"
                         >
                           <option value="">Skip</option>
                           {categoryNames.map((c) => (

@@ -108,48 +108,45 @@ redrawn every 30 s. There is no animation and no parallax.
 
 ## Tokens
 
+Light editorial theme from `city.md` (painted hero art, frosted parchment UI).
+
 | Token | Value | Use |
 |---|---|---|
-| `--glass` | `rgb(11 14 26 / .94)` | Panels: nearly opaque smoke glass, so text never competes with the scene |
-| `--glass-strong` | `rgb(13 17 30 / .97)` | Popovers, reduced-transparency fallback |
-| `--line` | `rgb(255 255 255 / .13)` | 1 px borders, hour lines |
-| `--ink` | `#f3f1ec` | Primary text |
-| `--ink-dim` | `#c9ccd9` | Secondary text (AA on `--glass` over the brightest sky) |
-| `--accent` | `#f4b860` | The single UI accent (sunrise amber): primary action outline, focus ring |
+| `--glass` | `rgb(254 255 252 / .86)` | Panels: frosted parchment over the painting |
+| `--glass-strong` | `rgb(254 255 252 / .97)` | Popovers, dialogs, reduced-transparency fallback |
+| `--line` | `#dee2de` | Mist: 1 px hairline borders, hour lines |
+| `--ink` | `#2c2c2c` | Graphite: primary text |
+| `--ink-dim` | `#646464` | Ash: secondary text |
+| `--accent` | `#41a1cf` | Signal blue: outlines, links, focus ring, today, now line. Never a fill |
+| `--dusk` | `#1f1f29` | The only filled button colour (primary actions, active Day/Week, today chip) |
+| `--linen` | `#f9faf7` | Inputs and code wells |
+| `--font-display` | Fraunces Variable | Headline serif, weight 400, `-0.02em` tracking |
 
-Panels always use dark smoke glass with light text. The sky behind them goes from
-bright noon blue to night navy, so a fixed dark glass is the only option that stays
-readable at every hour.
-
-The "theme" is the clock: the scene is the light/dark switch. On top of the blur,
-panels get a 1 px `white/10` inner border and an inset top highlight. With
+Panels are frosted parchment with a white hairline edge and the city.md content-card
+shadow (`0 1px 1px` + `0 4px 5px` at 8 % black). The calendar grid is solid white paper,
+so block text contrast (`readableText`) is computed against white. The hero headline
+and intro stay white on the painting, over a soft dark blur. Hover and tint surfaces
+use `ink/N` instead of `white/N`. Errors use `#d14a3f`. With
 `prefers-reduced-transparency`, panels fall back to `--glass-strong`.
 
 **Header controls** (time badge, Garmin, Import, Save my routine, Day/Week) use
-`.glass-btn`, an Apple-style frosted pill modelled on the floating nav pill of
-painted editorial sites: a white sheen gradient (`white/16` to `white/4`) over a
-dark tint (`rgb(12 14 26 / .38)`), `blur(20px) saturate(180%)`, a 1 px `white/28`
-edge, an inset top highlight and a small drop shadow. The scene shows through, but
-the dark tint keeps white text readable over the bright day and sunset skies. A
-pure white glass was tried and lost contrast there. Hover lifts the fill to
-`white/20`. The active Day/Week segment is a white pill with dark text, like a
-macOS segmented control. "Save my routine" is outlined: `--accent` border and text,
-no fill. With `prefers-reduced-transparency`, `.glass-btn` falls back to
-`--glass-strong`. Panels keep the dark smoke glass.
+`.glass-btn`, the city.md frosted nav pill: `white/62` fill, `blur(20px) saturate(180%)`,
+a 1 px `white/75` edge and a `0 2px 6px` shadow, dark text. The active Day/Week segment
+is a dusk pill with white text. "Save my routine" is outlined in signal blue.
 
 **Category colours** are data, not decoration. Each category has one colour,
-chosen from 10 swatches picked to stay apart on dark glass:
+chosen from 10 swatches (originally picked for dark glass, still distinct on white):
 `#e0625a #5b8def #4a9ec2 #6c6fd1 #e07b53 #8a94a6 #4fb286 #c77dcb #6fc3b2 #d4b44a`.
 
 ## Type
 
 - Geist Variable (self-hosted via `@fontsource-variable`) for the UI, Geist Mono for times and totals.
-- Headline: `text-3xl md:text-5xl tracking-tight leading-[1.1]`, max 2 lines.
+- Headline: Fraunces 400, `text-4xl md:text-5xl tracking-[-0.02em] leading-[1.1]`, white, max 2 lines.
 - Body: `text-sm`. Time labels: `text-[11px] font-mono`.
 
 ## Shape
 
-Panels have a 20 px radius, blocks and inputs 10 px, toggles and chips are full pill.
+Panels have a 16 px radius, blocks and inputs 10 px, filled buttons 8 px, header controls and chips are full pill.
 The same rule applies everywhere.
 
 ## Motion

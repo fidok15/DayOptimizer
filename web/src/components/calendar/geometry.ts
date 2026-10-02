@@ -6,7 +6,7 @@ export const PX_PER_MIN = HOUR_PX / 60;
 export const GRID_H = 24 * HOUR_PX;
 export const DRAFT_ID = "__draft__";
 /** Opaque grid surface: the scene must never show through the hour cells. */
-export const SURFACE = "rgb(15 19 34)";
+export const SURFACE = "#ffffff";
 
 export const DAY_NAME: Record<Weekday, string> = {
   mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday",
@@ -52,12 +52,13 @@ export function layoutLanes(blocks: Block[]): Map<string, Lane> {
   return out;
 }
 
-const NIGHT = [12, 16, 30];
-/** Relative luminance of `hex` drawn at `alpha` over the night colour. */
+// blocks sit on the white paper surface
+const BASE = [255, 255, 255];
+/** Relative luminance of `hex` drawn at `alpha` over the white surface. */
 const luminance = (hex: string, alpha = 1) => {
   const n = parseInt(hex.slice(1, 7), 16);
   const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => {
-    const c = (alpha * v + (1 - alpha) * NIGHT[i]) / 255;
+    const c = (alpha * v + (1 - alpha) * BASE[i]) / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   });
   return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];

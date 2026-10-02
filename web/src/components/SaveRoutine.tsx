@@ -29,7 +29,7 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
         onClick={save}
         disabled={empty || busy}
         title={empty ? "Draw at least one block first" : "Save and hand your routine to DayOptimizer"}
-        className="inline-flex min-h-10 items-center gap-1.5 glass-btn rounded-full border-accent/70! px-4 py-1.5 text-sm font-semibold text-accent transition hover:bg-white/20 active:scale-[0.98] disabled:opacity-60"
+        className="inline-flex min-h-10 items-center gap-1.5 glass-btn rounded-full border-accent/70! px-4 py-1.5 text-sm font-semibold text-accent transition hover:bg-ink/20 active:scale-[0.98] disabled:opacity-60"
       >
         <FloppyDisk size={16} weight="bold" aria-hidden />
         Save my routine
@@ -39,7 +39,7 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
         ref={dialog}
         onClick={(e) => e.target === dialog.current && dialog.current?.close()}
         aria-labelledby="routine-title"
-        className="glass-strong m-auto w-[min(34rem,calc(100vw-2rem))] rounded-[20px] p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+        className="glass-strong m-auto w-[min(34rem,calc(100vw-2rem))] rounded-2xl p-0 text-ink shadow-2xl backdrop:bg-black/25 backdrop:backdrop-blur-sm"
       >
         <div className="flex flex-col gap-4 p-5">
           <div className="flex items-start gap-3">
@@ -50,7 +50,7 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
               type="button"
               onClick={() => dialog.current?.close()}
               aria-label="Close"
-              className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-white/10 hover:text-ink"
+              className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-ink/10 hover:text-ink"
             >
               <X size={16} weight="bold" />
             </button>
@@ -63,8 +63,8 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
             </p>
           )}
           {error && (
-            <p role="alert" className="flex gap-2 rounded-[12px] border border-[#ff8a80]/30 bg-[#ff8a80]/10 p-2.5 text-sm">
-              <WarningCircle size={18} weight="bold" className="shrink-0 text-[#ff8a80]" aria-hidden />
+            <p role="alert" className="flex gap-2 rounded-[12px] border border-[#d14a3f]/30 bg-[#d14a3f]/10 p-2.5 text-sm">
+              <WarningCircle size={18} weight="bold" className="shrink-0 text-[#d14a3f]" aria-hidden />
               {error}
             </p>
           )}
@@ -98,7 +98,7 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
                 </p>
               ) : (
                 result.notes.rules.length > 0 && (
-                  <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-white/[0.03] p-3">
+                  <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-ink/[0.03] p-3">
                     <p className="flex items-center gap-2 text-sm font-medium">
                       <Gavel size={18} weight="bold" className="shrink-0 text-accent" aria-hidden />
                       Rules I'll follow on my own
@@ -119,7 +119,7 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
                 )
               )}
               {result.notes.not_compiled.length > 0 && (
-                <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-white/[0.03] p-3">
+                <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-ink/[0.03] p-3">
                   <p className="flex items-center gap-2 text-sm font-medium">
                     <NotePencil size={18} weight="bold" className="shrink-0 text-ink-dim" aria-hidden />
                     Kept as a note, not a rule
@@ -134,10 +134,10 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
                   </p>
                 </div>
               )}
-              <pre className="scroll-thin max-h-72 overflow-auto rounded-[12px] border border-line bg-black/30 p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+              <pre className="scroll-thin max-h-72 overflow-auto rounded-[12px] border border-line bg-linen p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
                 {result.text}
               </pre>
-              <div className="flex items-start gap-2 rounded-[12px] border border-line bg-white/[0.03] p-3 text-sm leading-snug">
+              <div className="flex items-start gap-2 rounded-[12px] border border-line bg-ink/[0.03] p-3 text-sm leading-snug">
                 <Terminal size={18} weight="bold" className="mt-px shrink-0 text-accent" aria-hidden />
                 <p>
                   You're set. Close this tab and use the terminal:{" "}

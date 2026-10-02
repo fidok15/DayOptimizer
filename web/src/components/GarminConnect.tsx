@@ -5,9 +5,9 @@ import { ApiError, garminDisconnect, garminLogin, garminMfa, garminStatus } from
 type Step = "form" | "mfa" | "connected";
 
 const field =
-  "h-10 w-full rounded-[10px] border border-line bg-white/5 px-3 text-sm text-ink outline-none transition placeholder:text-ink-dim focus:border-accent";
+  "h-10 w-full rounded-[10px] border border-line bg-ink/5 px-3 text-sm text-ink outline-none transition placeholder:text-ink-dim focus:border-accent";
 const primary =
-  "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-accent px-4 text-sm font-semibold text-night transition active:scale-[0.98] disabled:opacity-50";
+  "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-dusk px-4 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-50";
 const ghost =
   "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-line px-4 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98]";
 
@@ -103,13 +103,13 @@ export default function GarminConnect() {
       <button
         type="button"
         onClick={open}
-        className="glass-btn inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-white/20 active:scale-[0.98]"
+        className="glass-btn inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-ink/20 active:scale-[0.98]"
       >
         <Watch size={16} weight="bold" aria-hidden />
         Garmin
         {connected !== null && (
           <span
-            className={`size-2 rounded-full ${connected ? "bg-[#4fb286]" : "bg-white/25"}`}
+            className={`size-2 rounded-full ${connected ? "bg-[#4fb286]" : "bg-ink/25"}`}
             title={connected ? "Connected" : "Not connected"}
             aria-label={connected ? "connected" : "not connected"}
           />
@@ -121,7 +121,7 @@ export default function GarminConnect() {
         onClose={onClosed}
         onClick={(e) => e.target === dialog.current && close()}
         aria-labelledby="garmin-title"
-        className="glass-strong m-auto w-[min(28rem,calc(100vw-2rem))] rounded-[20px] p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+        className="glass-strong m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl p-0 text-ink shadow-2xl backdrop:bg-black/25 backdrop:backdrop-blur-sm"
       >
         <div className="flex flex-col gap-4 p-5">
           <div className="flex items-start gap-3">
@@ -142,7 +142,7 @@ export default function GarminConnect() {
               type="button"
               onClick={close}
               aria-label="Close"
-              className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-white/10 hover:text-ink"
+              className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-ink/10 hover:text-ink"
             >
               <X size={16} weight="bold" />
             </button>
@@ -150,15 +150,15 @@ export default function GarminConnect() {
 
           <ul className="flex flex-wrap gap-1.5" aria-label="Data DayOptimizer reads">
             {FEEDS.map((f) => (
-              <li key={f} className="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-ink">
+              <li key={f} className="rounded-full bg-ink/[0.06] px-2.5 py-1 text-xs text-ink">
                 {f}
               </li>
             ))}
           </ul>
 
           {error && (
-            <p role="alert" className="flex gap-2 rounded-[12px] border border-[#ff8a80]/30 bg-[#ff8a80]/10 p-2.5 text-sm leading-snug">
-              <WarningCircle size={18} weight="bold" className="shrink-0 text-[#ff8a80]" aria-hidden />
+            <p role="alert" className="flex gap-2 rounded-[12px] border border-[#d14a3f]/30 bg-[#d14a3f]/10 p-2.5 text-sm leading-snug">
+              <WarningCircle size={18} weight="bold" className="shrink-0 text-[#d14a3f]" aria-hidden />
               {error}
             </p>
           )}
@@ -199,7 +199,7 @@ export default function GarminConnect() {
                 </span>
               </label>
 
-              <ul className="flex flex-col gap-2 rounded-[12px] border border-line bg-white/[0.03] p-3 text-xs leading-snug text-ink-dim">
+              <ul className="flex flex-col gap-2 rounded-[12px] border border-line bg-ink/[0.03] p-3 text-xs leading-snug text-ink-dim">
                 <li className="flex gap-2">
                   <LockKey size={16} weight="bold" className="shrink-0 text-accent" aria-hidden />
                   Your password goes from this Mac straight to Garmin's sign-in. DayOptimizer never saves it.

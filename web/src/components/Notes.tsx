@@ -8,7 +8,7 @@ export default function Notes({ notes, onChange }: { notes: string; onChange: (t
   const left = MAX - notes.length;
 
   return (
-    <section className="glass flex flex-col gap-2 rounded-[20px] p-4">
+    <section className="glass flex flex-col gap-2 rounded-2xl p-4">
       <div className="flex items-start gap-2">
         <NotePencil size={18} weight="bold" className="mt-0.5 shrink-0 text-accent" aria-hidden />
         <div className="min-w-0">
@@ -27,7 +27,7 @@ export default function Notes({ notes, onChange }: { notes: string; onChange: (t
         rows={4}
         onChange={(e) => onChange(e.target.value)}
         placeholder={"e.g. I don't eat before 11.\nNo hard training two days in a row.\nKeep Sunday evenings free for family.\nDeep work goes in the morning, meetings after 14:00."}
-        className="scroll-thin w-full resize-y rounded-[12px] border border-line bg-white/5 p-3 text-sm leading-relaxed text-ink outline-none transition placeholder:text-ink-dim focus:border-accent"
+        className="scroll-thin w-full resize-y rounded-[12px] border border-line bg-ink/5 p-3 text-sm leading-relaxed text-ink outline-none transition placeholder:text-ink-dim focus:border-accent"
       />
       <p className="self-end font-mono text-xs text-ink-dim tabular-nums" aria-live="polite">
         {left < 200 ? `${left} characters left` : ""}

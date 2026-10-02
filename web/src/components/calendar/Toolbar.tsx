@@ -27,7 +27,7 @@ const readHint = () => {
 const ghost =
   "flex min-h-8 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
 const primary =
-  "flex min-h-8 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-night transition active:scale-[0.98] disabled:opacity-40";
+  "flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3 py-1.5 text-sm font-medium text-white transition active:scale-[0.98] disabled:opacity-40";
 
 const PICKS: [string, Weekday[]][] = [
   ["Weekdays", ["mon", "tue", "wed", "thu", "fri"]],
@@ -40,7 +40,7 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
   if (view === "week") {
     if (hintHidden) return null;
     return (
-      <div className="flex items-center gap-3 rounded-[14px] border border-line bg-white/[0.04] py-1 pl-3 pr-1 text-sm text-ink">
+      <div className="flex items-center gap-3 rounded-[14px] border border-line bg-ink/[0.04] py-1 pl-3 pr-1 text-sm text-ink">
         <CursorClick weight="bold" size={18} className="shrink-0 text-accent" />
         <p className="flex-1">
           Drag on a day to add a block. Drag to move, pull the bottom edge to resize.
@@ -56,7 +56,7 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
               /* storage blocked: the hint just comes back next time */
             }
           }}
-          className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-white/10 hover:text-ink active:scale-[0.96]"
+          className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-ink/10 hover:text-ink active:scale-[0.96]"
         >
           <X weight="bold" size={16} />
         </button>
@@ -75,7 +75,7 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
             aria-label={DAY_NAME[d]}
             onClick={() => onDayChange(d)}
             className={`min-h-8 rounded-full px-3 py-1.5 text-sm transition active:scale-[0.98] ${
-              d === day ? "bg-accent font-medium text-night" : "text-ink hover:bg-white/10"
+              d === day ? "bg-dusk font-medium text-white" : "text-ink hover:bg-ink/10"
             }`}
           >
             {WEEKDAY_LABEL[d]}
@@ -155,7 +155,7 @@ function CopyDay({ day, disabled, onChange }: { day: Weekday; disabled: boolean;
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 400, damping: 32 }}
             style={{ transformOrigin: "top right" }}
-            className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-64 flex-col gap-3 rounded-[20px] p-4 shadow-2xl"
+            className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-64 flex-col gap-3 rounded-2xl p-4 shadow-2xl"
           >
             <p className="text-xs text-ink-dim">
               Copy {DAY_NAME[day]} to these days. Their blocks will be replaced.
@@ -177,7 +177,7 @@ function CopyDay({ day, disabled, onChange }: { day: Weekday; disabled: boolean;
                 <label
                   key={d}
                   className={`flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-sm ${
-                    d === day ? "opacity-40" : "cursor-pointer hover:bg-white/5"
+                    d === day ? "opacity-40" : "cursor-pointer hover:bg-ink/5"
                   }`}
                 >
                   <input

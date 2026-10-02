@@ -63,13 +63,13 @@ export default function Header(props: {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
-            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 text-3xl leading-[1.1] font-semibold tracking-tight [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-5xl"
+            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 font-display text-4xl leading-[1.1] font-normal tracking-[-0.02em] text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-5xl"
           >
             {line}
           </motion.h1>
         </AnimatePresence>
-        <p className="mt-2 max-w-[60ch] text-[15px] text-ink [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
-          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar. Done? Hit <span className="font-semibold text-accent">Save my routine</span>.
+        <p className="mt-2 max-w-[60ch] text-[15px] leading-normal text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
+          Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar. Done? Hit <span className="font-semibold text-white underline decoration-accent decoration-2 underline-offset-4">Save my routine</span>.
         </p>
       </div>
 
@@ -87,13 +87,13 @@ export default function Header(props: {
                 aria-pressed={active}
                 onClick={() => onViewChange(id)}
                 className={`relative inline-flex items-center gap-1.5 rounded-full min-h-8 px-3.5 py-1.5 text-sm font-medium transition active:scale-[0.98] ${
-                  active ? "text-night [text-shadow:none]" : "text-ink hover:text-white"
+                  active ? "text-white" : "text-ink-dim hover:text-ink"
                 }`}
               >
                 {active && (
                   <motion.span
                     layoutId="view-pill"
-                    className="absolute inset-0 rounded-full bg-white/90 shadow-[0_1px_3px_rgb(0_0_0/0.25)]"
+                    className="absolute inset-0 rounded-full bg-dusk"
                     transition={{ type: "spring", stiffness: 400, damping: 32 }}
                   />
                 )}
@@ -119,15 +119,15 @@ export default function Header(props: {
               </motion.span>
             )}
             {saveStatus === "error" && (
-              <motion.span key="error" {...fade} className={`${pill} min-w-0 border-[#ff8a80]/40 py-1 pr-1 text-ink`}>
-                <WarningCircle size={16} weight="bold" className="shrink-0 text-[#ff8a80]" aria-hidden />
+              <motion.span key="error" {...fade} className={`${pill} min-w-0 border-[#d14a3f]/40 py-1 pr-1 text-ink`}>
+                <WarningCircle size={16} weight="bold" className="shrink-0 text-[#d14a3f]" aria-hidden />
                 <span className="max-w-[16rem] truncate" title={saveError}>
                   {saveError || "Couldn't save"}
                 </span>
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="ml-1 inline-flex min-h-7 shrink-0 items-center gap-1 rounded-full bg-accent px-3 text-xs font-semibold text-night transition active:scale-[0.98]"
+                  className="ml-1 inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-xs font-semibold text-white transition active:scale-[0.98]"
                 >
                   <ArrowClockwise size={14} weight="bold" aria-hidden />
                   Retry

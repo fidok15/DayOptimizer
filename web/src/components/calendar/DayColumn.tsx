@@ -23,7 +23,7 @@ interface Props {
   onOpen: (id: string, day: Weekday) => void;
 }
 
-const TINT = { today: "bg-accent/[0.05]", weekend: "bg-white/[0.025]" };
+const TINT = { today: "bg-accent/[0.05]", weekend: "bg-ink/[0.025]" };
 
 function DayColumn({ day, tint, canCreate, blocks, categories, draft, draftColor, draggingId, freshId, nowMin, drag, onOpen }: Props) {
   const lanes = useMemo(() => layoutLanes(blocks), [blocks]);
@@ -45,7 +45,7 @@ function DayColumn({ day, tint, canCreate, blocks, categories, draft, draftColor
       {canCreate && hover !== null && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-[2px] z-0 hidden rounded-[10px] border border-dashed border-white/25 bg-white/[0.04] px-2 py-1 font-mono text-[11px] text-ink-dim pointer-fine:block"
+          className="pointer-events-none absolute inset-x-[2px] z-0 hidden rounded-[10px] border border-dashed border-ink/25 bg-ink/[0.04] px-2 py-1 font-mono text-[11px] text-ink-dim pointer-fine:block"
           style={{ top: hover * PX_PER_MIN + 1, height: 60 * PX_PER_MIN - 2 }}
         >
           + {fromMin(hover)}

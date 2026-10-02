@@ -41,7 +41,7 @@ function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, o
       onClick={() => {
         if (!drag.takeSuppressClick()) onOpen(b.id, day);
       }}
-      className={`absolute z-[1] overflow-hidden rounded-[10px] text-left transition-[filter,box-shadow] hover:z-10 hover:brightness-110 hover:ring-2 hover:ring-white/40 focus-visible:z-10 focus-visible:outline-offset-1 ${
+      className={`absolute z-[1] overflow-hidden rounded-[10px] text-left transition-[filter,box-shadow] hover:z-10 hover:brightness-110 hover:ring-2 hover:ring-ink/40 focus-visible:z-10 focus-visible:outline-offset-1 ${
         dragging ? "z-20 cursor-grabbing shadow-lg" : "cursor-grab"
       }`}
       style={{

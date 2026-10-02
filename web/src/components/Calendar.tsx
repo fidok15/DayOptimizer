@@ -165,7 +165,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
   };
 
   return (
-    <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-[20px] p-4 md:p-5">
+    <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-2xl p-4 md:p-5">
       <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} onAdd={hasCats ? () => addBlock(day) : undefined} />
 
       <div className="relative">
@@ -189,7 +189,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
                   >
                     <span
                       className={`rounded-full px-2 text-sm font-medium ${
-                        d === today ? "bg-accent text-night" : "text-ink"
+                        d === today ? "bg-dusk text-white" : "text-ink"
                       }`}
                     >
                       {WEEKDAY_LABEL[d]}
@@ -204,7 +204,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
                           aria-label={`Add block on ${DAY_NAME[d]}`}
                           title={`Add block on ${DAY_NAME[d]}`}
                           onClick={() => addBlock(d)}
-                          className="grid size-5 place-items-center rounded-full text-ink-dim transition hover:bg-white/10 hover:text-ink"
+                          className="grid size-5 place-items-center rounded-full text-ink-dim transition hover:bg-ink/10 hover:text-ink"
                         >
                           <Plus weight="bold" size={12} />
                         </button>
@@ -260,7 +260,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
 
       {(!hasCats || (weekEmpty && !editing)) && (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center p-4">
-          <div className="glass-strong pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-[20px] px-6 py-6 text-center shadow-2xl">
+          <div className="glass-strong pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl px-6 py-6 text-center shadow-2xl">
             <span className="grid size-11 place-items-center rounded-full bg-accent/15 text-accent">
               {hasCats ? <CalendarPlus weight="bold" size={22} /> : <Tag weight="bold" size={22} />}
             </span>
@@ -274,7 +274,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
               <button
                 type="button"
                 onClick={() => addBlock(view === "day" ? day : today)}
-                className="mt-1 flex min-h-9 items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-night transition active:scale-[0.98]"
+                className="mt-1 flex min-h-9 items-center gap-1.5 rounded-lg bg-dusk px-4 py-2 text-sm font-medium text-white transition active:scale-[0.98]"
               >
                 <CalendarPlus weight="bold" size={16} /> Add first block
               </button>

@@ -1,21 +1,28 @@
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/fraunces";
 
 @theme {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
-  --color-ink: #f3f1ec;
-  --color-ink-dim: #c9ccd9;
-  --color-accent: #f4b860;
-  --color-line: rgb(255 255 255 / 0.13);
+  /* editorial display serif (city.md: ppmondwest, Fraunces as substitute), weight 400 only */
+  --font-display: "Fraunces Variable", ui-serif, Georgia, serif;
+  /* city.md palette: warm neutrals, one blue for outlines, dusk as the only filled button */
+  --color-ink: #2c2c2c;
+  --color-ink-dim: #646464;
+  --color-accent: #41a1cf;
+  --color-line: #dee2de;
+  --color-dusk: #1f1f29;
+  --color-linen: #f9faf7;
   --color-night: #0c101e;
 }
 
 :root {
-  --glass: rgb(11 14 26 / 0.94);
-  --glass-strong: rgb(13 17 30 / 0.97);
-  color-scheme: dark;
+  /* frosted parchment panels over the painting */
+  --glass: rgb(254 255 252 / 0.86);
+  --glass-strong: rgb(254 255 252 / 0.97);
+  color-scheme: light;
 }
 
 /* only html paints the fallback: a body background would cover the -z scene canvas */
@@ -26,10 +33,10 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 /* Smoke-glass panel (web frosted-glass approximation). */
 .glass {
   background: var(--glass);
-  backdrop-filter: blur(24px) saturate(120%);
-  -webkit-backdrop-filter: blur(24px) saturate(120%);
-  border: 1px solid var(--color-line);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 24px 60px -20px rgb(4 6 16 / 0.6);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.08), 0 4px 5px rgb(0 0 0 / 0.08);
 }
 .glass-strong {
   background: var(--glass-strong);
@@ -44,19 +51,17 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* thin scrollbars inside panels */
-.scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.18) transparent; }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(0 0 0 / 0.18) transparent; }
 
 
 
-/* Apple-style frosted control: translucent white over the painting, heavy blur, hairline white edge, top highlight. */
+/* Frosted nav pill (city.md): translucent white over the painting, heavy blur, hairline white edge. */
 .glass-btn {
-  /* white sheen over a dark tint: stays readable on bright skies (sunset, day) */
-  background: linear-gradient(rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.04)), rgb(12 14 26 / 0.38);
+  background: rgb(255 255 255 / 0.62);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgb(255 255 255 / 0.28);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 2px 6px rgb(0 0 0 / 0.15);
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  border: 1px solid rgb(255 255 255 / 0.75);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.15);
 }
 @media (prefers-reduced-transparency: reduce) {
   .glass-btn { background: var(--glass-strong); backdrop-filter: none; -webkit-backdrop-filter: none; }
