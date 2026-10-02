@@ -16,17 +16,31 @@ It is an app, not a landing page. Layout stays predictable where people work
 
 ## The scene (background)
 
-**Painted mode (preferred).** Four hand-painted illustrations in `web/public/scene/`
-(`dawn.webp`, `day.webp`, `sunset.webp`, `night.webp`), all with the same composition:
-a low view from a green park up at a downtown skyline, leafy trees framing both sides,
-a gap of open sky in the middle (birds are not painted in, they fly on top). Painterly, visible brush texture, cinematic grading
-(warm orange-violet sunset, cool moonlit blue night). `web/src/scene/Painted.tsx`
-crossfades between the two images around the current hour (keys: night until 05:30,
-dawn 07:00, day 10:00 to 16:30, sunset 19:00, night from 21:00), re-evaluated every
-30 s with a 30 s linear fade. If any image is missing, the procedural scene below is
-used instead, so a fresh clone works without them. By day (06:00 to 20:00) flocks of
-birds cross the painting on a transparent canvas (`web/src/scene/birds.ts`, shared with
-the procedural scene); none with reduced motion.
+**Painted mode (preferred).** Five hand-painted illustrations in `web/public/scene/`
+(`dawn.webp`, `day.webp`, `afternoon.webp`, `sunset.webp`, `night.webp`), all with the
+same composition: a low view across a park pond up at a downtown skyline, willow
+branches and cherry blossoms framing both sides, towers mirrored in the water, ducks
+and a frog in the foreground. Painterly, visible brush texture, cinematic grading
+(pastel misty dawn, clear blue day, golden afternoon, orange-violet sunset, cool
+moonlit blue night). Sources are 2760×1536 JPEGs, converted with
+`cwebp -q 80 -resize 2560 0` (about 220 KB each).
+
+`web/src/scene/Painted.tsx` crossfades between the two images around the current
+hour, re-evaluated every 30 s with a 30 s linear fade:
+
+| Time | Wallpaper |
+|---|---|
+| 21:00 to 05:30 | night |
+| 05:30 to 06:30 | night fades to dawn |
+| 06:30 to 09:30 | dawn fades to day |
+| 09:30 to 13:30 | day |
+| 13:30 to 16:30 | day fades to afternoon |
+| 16:30 to 19:30 | afternoon fades to sunset |
+| 19:30 to 21:00 | sunset fades to night |
+
+The painted background is static: no drift, no parallax, no birds. Only the clock
+changes it. If any image is missing, the procedural scene below is used instead,
+so a fresh clone works without them.
 
 **Procedural mode (fallback).**
 
@@ -101,7 +115,7 @@ redrawn every 30 s. There is no animation and no parallax.
 | `--line` | `rgb(255 255 255 / .13)` | 1 px borders, hour lines |
 | `--ink` | `#f3f1ec` | Primary text |
 | `--ink-dim` | `#c9ccd9` | Secondary text (AA on `--glass` over the brightest sky) |
-| `--accent` | `#f4b860` | The single UI accent (sunrise amber): primary buttons, focus ring, active toggle |
+| `--accent` | `#f4b860` | The single UI accent (sunrise amber): primary action outline, focus ring |
 
 Panels always use dark smoke glass with light text. The sky behind them goes from
 bright noon blue to night navy, so a fixed dark glass is the only option that stays
@@ -110,6 +124,18 @@ readable at every hour.
 The "theme" is the clock: the scene is the light/dark switch. On top of the blur,
 panels get a 1 px `white/10` inner border and an inset top highlight. With
 `prefers-reduced-transparency`, panels fall back to `--glass-strong`.
+
+**Header controls** (time badge, Garmin, Import, Save my routine, Day/Week) use
+`.glass-btn`, an Apple-style frosted pill modelled on the floating nav pill of
+painted editorial sites: a white sheen gradient (`white/16` to `white/4`) over a
+dark tint (`rgb(12 14 26 / .38)`), `blur(20px) saturate(180%)`, a 1 px `white/28`
+edge, an inset top highlight and a small drop shadow. The scene shows through, but
+the dark tint keeps white text readable over the bright day and sunset skies. A
+pure white glass was tried and lost contrast there. Hover lifts the fill to
+`white/20`. The active Day/Week segment is a white pill with dark text, like a
+macOS segmented control. "Save my routine" is outlined: `--accent` border and text,
+no fill. With `prefers-reduced-transparency`, `.glass-btn` falls back to
+`--glass-strong`. Panels keep the dark smoke glass.
 
 **Category colours** are data, not decoration. Each category has one colour,
 chosen from 10 swatches picked to stay apart on dark glass:
