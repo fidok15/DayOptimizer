@@ -5,6 +5,7 @@ import EventKit. Reads come from the SQLite cache (kept fresh by the launchd
 `check` agent); writes go through the TCC-approved app bundle.
 """
 from __future__ import annotations
+import fcntl
 import os
 import subprocess
 from datetime import date as date_type
@@ -42,22 +43,26 @@ def _bundle_run(args: list[str]) -> str:
     if not os.access(bundle_exe, os.X_OK):
         return ("DayOptimizer's calendar bundle is not set up — run "
                 "scripts/setup-bundle.sh in the plugin directory first.")
-    (home / "cli_args").write_text("\n".join(args) + "\n")
-    log = home / "cli.log"
-    # remove the previous log so a silent launch failure fails loudly below
-    # instead of replaying the old run's output as if it were current
-    log.unlink(missing_ok=True)
-    try:
-        subprocess.run(
-            ["open", "-W", "-a", str(home / "DayOptimizer.app"),
-             "--args", str(home / "cli_runner.py")],
-            check=False, capture_output=True, timeout=300)
-    except subprocess.TimeoutExpired:
-        return "Calendar operation timed out after 300s."
-    if not log.exists():
-        return ("Calendar run produced no output — the app bundle may have failed "
-                "to launch. Rerun scripts/setup-bundle.sh if this persists.")
-    return log.read_text()
+    # cli_args/cli.log are shared: one run at a time, across threads (web server)
+    # and processes (MCP server, CLI), or a run reads another run's args or log
+    with open(home / "cli.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        (home / "cli_args").write_text("\n".join(args) + "\n")
+        log = home / "cli.log"
+        # remove the previous log so a silent launch failure fails loudly below
+        # instead of replaying the old run's output as if it were current
+        log.unlink(missing_ok=True)
+        try:
+            subprocess.run(
+                ["open", "-W", "-a", str(home / "DayOptimizer.app"),
+                 "--args", str(home / "cli_runner.py")],
+                check=False, capture_output=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            return "Calendar operation timed out after 300s."
+        if not log.exists():
+            return ("Calendar run produced no output — the app bundle may have failed "
+                    "to launch. Rerun scripts/setup-bundle.sh if this persists.")
+        return log.read_text()
 
 
 def get_events(date: str) -> str:

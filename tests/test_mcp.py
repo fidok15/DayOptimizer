@@ -91,6 +91,28 @@ def test_bundle_run_reports_timeout(app_home):
     assert "timed out" in out
 
 
+def test_bundle_run_serializes_concurrent_runs(app_home):
+    # two callers at once (web page load + import) must each get their own
+    # run's output, not the other's args or log
+    import threading, time
+    _make_bundle(app_home)
+
+    def fake_run(*_a, **_k):
+        args = (app_home / "cli_args").read_text()
+        time.sleep(0.05)  # the other caller would overwrite cli_args here
+        (app_home / "cli.log").write_text(args)
+
+    out = {}
+    with patch.object(mcp_server.subprocess, "run", side_effect=fake_run):
+        threads = [threading.Thread(target=lambda n=n: out.update({n: mcp_server._bundle_run([n])}))
+                   for n in ("first", "second")]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    assert out == {"first": "first\n", "second": "second\n"}
+
+
 def test_plan_validates_and_calls_bundle(app_home):
     with patch.object(mcp_server, "_bundle_run", return_value="3 changes") as br:
         out = mcp_server.plan("2026-07-12", days=2)
