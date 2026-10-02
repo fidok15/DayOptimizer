@@ -45,3 +45,16 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 /* thin scrollbars inside panels */
 .scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.18) transparent; }
 
+
+/* Painted background: slow Ken Burns breathing, pointer parallax eases in via translate. */
+.painted-drift {
+  transition: translate 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: painted-drift 90s ease-in-out infinite alternate;
+}
+@keyframes painted-drift {
+  from { transform: scale(1) translate(0, 0); }
+  to { transform: scale(1.05) translate(-1%, -0.6%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .painted-drift { animation: none; transition: none; }
+}

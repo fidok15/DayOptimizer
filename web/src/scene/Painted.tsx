@@ -9,10 +9,11 @@ import Skyline from "./Skyline";
 const KEYS = [
   { h: 0, src: "night" },
   { h: 5.5, src: "night" },
-  { h: 7, src: "dawn" },
-  { h: 10, src: "day" },
-  { h: 16.5, src: "day" },
-  { h: 19, src: "sunset" },
+  { h: 6.5, src: "dawn" },
+  { h: 9.5, src: "day" },
+  { h: 13.5, src: "day" },
+  { h: 16.5, src: "afternoon" },
+  { h: 19.5, src: "sunset" },
   { h: 21, src: "night" },
 ];
 const NAMES = [...new Set(KEYS.map((k) => k.src))];
@@ -54,9 +55,11 @@ export default function Painted() {
 
   if (ready === false) return <Skyline />;
   if (ready === null) return <div aria-hidden className="fixed inset-0 -z-10 bg-[#0b0e1a]" />;
-  const layer = "pointer-events-none fixed inset-0 -z-10 h-full w-full object-cover";
+  const layer = "absolute inset-0 h-full w-full object-cover";
   return (
     <>
+      {/* oversized wrapper: slow drift + pointer parallax without showing the edges */}
+      <div aria-hidden className="painted-drift pointer-events-none fixed -inset-[4%] -z-10" style={{ translate: "var(--px, 0) var(--py, 0)" }}>
       <img src={url(mix.a)} alt="" aria-hidden className={layer} />
       {mix.b !== mix.a && (
         // keyed by image, so a new top layer starts at its own opacity instead of fading from the old one
@@ -69,9 +72,26 @@ export default function Painted() {
           style={{ opacity: mix.t }}
         />
       )}
+      </div>
+      <Parallax />
       <Birds />
     </>
   );
+}
+
+/** Nudges the painted scene against the pointer through --px/--py on <html>. */
+function Parallax() {
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const root = document.documentElement.style;
+    const onMove = (e: PointerEvent) => {
+      root.setProperty("--px", `${(0.5 - e.clientX / window.innerWidth) * 24}px`);
+      root.setProperty("--py", `${(0.5 - e.clientY / window.innerHeight) * 14}px`);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
+  return null;
 }
 
 /** Flocks crossing the painted sky by day. Nothing is drawn with reduced motion. */
