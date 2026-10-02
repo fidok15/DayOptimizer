@@ -6,7 +6,7 @@ export const PX_PER_MIN = HOUR_PX / 60;
 export const GRID_H = 24 * HOUR_PX;
 export const DRAFT_ID = "__draft__";
 /** Opaque grid surface: the scene must never show through the hour cells. */
-export const SURFACE = "#ffffff";
+export const SURFACE = "var(--surface)";
 
 export const DAY_NAME: Record<Weekday, string> = {
   mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday",
@@ -52,10 +52,10 @@ export function layoutLanes(blocks: Block[]): Map<string, Lane> {
   return out;
 }
 
-// blocks sit on the white paper surface
-const BASE = [255, 255, 255];
-/** Relative luminance of `hex` drawn at `alpha` over the white surface. */
-const luminance = (hex: string, alpha = 1) => {
+// blocks sit on the grid surface: white paper (light) or night (dark)
+const BASES = { light: [255, 255, 255], dark: [15, 19, 34] };
+/** Relative luminance of `hex` drawn at `alpha` over the grid surface. */
+const luminance = (hex: string, alpha = 1, BASE = BASES.light) => {
   const n = parseInt(hex.slice(1, 7), 16);
   const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => {
     const c = (alpha * v + (1 - alpha) * BASE[i]) / 255;
@@ -65,8 +65,8 @@ const luminance = (hex: string, alpha = 1) => {
 };
 
 /** Near-white or night text, whichever contrasts more with the block colour (drawn at 85%). */
-export const readableText = (hex: string): string => {
-  const l = luminance(hex, 0.85);
+export const readableText = (hex: string, theme: "light" | "dark" = "light"): string => {
+  const l = luminance(hex, 0.85, BASES[theme]);
   const onWhite = 1.05 / (l + 0.05);
   const onNight = (l + 0.05) / (luminance("#0c101e") + 0.05);
   return onWhite >= onNight ? "#fbfaf7" : "#0c101e";

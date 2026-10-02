@@ -108,7 +108,17 @@ redrawn every 30 s. There is no animation and no parallax.
 
 ## Tokens
 
-Light editorial theme from `city.md` (painted hero art, frosted parchment UI).
+Two themes, switched by the sun/moon button in the header (`web/src/lib/theme.ts`).
+The choice is saved in `localStorage` (`dayoptimizer-theme`); without one the system
+preference wins. An inline script in `index.html` sets `data-theme` on `<html>` before
+first paint, so there is no flash. Components only use tokens; `:root[data-theme="dark"]`
+in `index.css` swaps them. Both themes share the same transparency and blur (panels
+`.86` / `blur(24px) saturate(140%)`, header pills `.62` / `blur(20px) saturate(180%)`).
+
+- **Light** (default): editorial theme from `city.md`, painted hero art with frosted parchment UI. Values below.
+- **Dark**: the original smoke glass. Ink `#f3f1ec` / `#c9ccd9`, amber accent and fills `#f4b860` with night text, hairlines `white/13`, grid surface `rgb(15 19 34)`, Geist semibold headline.
+
+Light theme tokens:
 
 | Token | Value | Use |
 |---|---|---|

@@ -7,7 +7,7 @@ type Step = "form" | "mfa" | "connected";
 const field =
   "h-10 w-full rounded-[10px] border border-line bg-ink/5 px-3 text-sm text-ink outline-none transition placeholder:text-ink-dim focus:border-accent";
 const primary =
-  "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-dusk px-4 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-50";
+  "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-dusk px-4 text-sm font-semibold text-on-dusk transition active:scale-[0.98] disabled:opacity-50";
 const ghost =
   "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-line px-4 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98]";
 
@@ -157,8 +157,8 @@ export default function GarminConnect() {
           </ul>
 
           {error && (
-            <p role="alert" className="flex gap-2 rounded-[12px] border border-[#d14a3f]/30 bg-[#d14a3f]/10 p-2.5 text-sm leading-snug">
-              <WarningCircle size={18} weight="bold" className="shrink-0 text-[#d14a3f]" aria-hidden />
+            <p role="alert" className="flex gap-2 rounded-[12px] border border-danger/30 bg-danger/10 p-2.5 text-sm leading-snug">
+              <WarningCircle size={18} weight="bold" className="shrink-0 text-danger" aria-hidden />
               {error}
             </p>
           )}

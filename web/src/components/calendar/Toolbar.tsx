@@ -27,7 +27,7 @@ const readHint = () => {
 const ghost =
   "flex min-h-8 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
 const primary =
-  "flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3 py-1.5 text-sm font-medium text-white transition active:scale-[0.98] disabled:opacity-40";
+  "flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3 py-1.5 text-sm font-medium text-on-dusk transition active:scale-[0.98] disabled:opacity-40";
 
 const PICKS: [string, Weekday[]][] = [
   ["Weekdays", ["mon", "tue", "wed", "thu", "fri"]],
@@ -75,7 +75,7 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
             aria-label={DAY_NAME[d]}
             onClick={() => onDayChange(d)}
             className={`min-h-8 rounded-full px-3 py-1.5 text-sm transition active:scale-[0.98] ${
-              d === day ? "bg-dusk font-medium text-white" : "text-ink hover:bg-ink/10"
+              d === day ? "bg-dusk font-medium text-on-dusk" : "text-ink hover:bg-ink/10"
             }`}
           >
             {WEEKDAY_LABEL[d]}

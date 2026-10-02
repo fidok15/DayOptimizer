@@ -17,7 +17,7 @@ const lastMondayISO = () => {
 const ghost =
   "inline-flex min-h-8 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98]";
 const primary =
-  "inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3.5 py-1.5 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-40";
+  "inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3.5 py-1.5 text-sm font-semibold text-on-dusk transition active:scale-[0.98] disabled:opacity-40";
 
 type Failure = { message: string; code: string };
 
@@ -134,8 +134,8 @@ export default function ImportCalendar(props: {
             ) : !found ? (
               <>
                 {failure && (
-                  <div role="alert" className="flex gap-2 rounded-[12px] border border-[#d14a3f]/30 bg-[#d14a3f]/10 p-2.5 text-xs leading-snug text-ink">
-                    <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-[#d14a3f]" aria-hidden />
+                  <div role="alert" className="flex gap-2 rounded-[12px] border border-danger/30 bg-danger/10 p-2.5 text-xs leading-snug text-ink">
+                    <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-danger" aria-hidden />
                     <p className="min-w-0 break-words">
                       {failure.code === "setup" ? "Calendar access isn't set up yet. Run this once in the DayOptimizer folder, then try again:" : failure.message}
                       {failure.code === "setup" && (

@@ -172,7 +172,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
           id={`${uidBase}-day`}
           value={day}
           onChange={(ev) => onMoveDay(ev.target.value as Weekday)}
-          className={`${inputCls} [&>option]:bg-white`}
+          className={`${inputCls} [&>option]:bg-[var(--surface)]`}
         >
           {WEEKDAYS.map((d) => <option key={d} value={d}>{DAY_NAME[d]}</option>)}
         </select>
@@ -224,7 +224,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         <button
           type="button"
           onClick={() => onClose(true)}
-          className="flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-4 py-1.5 text-sm font-medium text-white transition active:scale-[0.98]"
+          className="flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-4 py-1.5 text-sm font-medium text-on-dusk transition active:scale-[0.98]"
         >
           <Check weight="bold" size={16} /> Done
         </button>

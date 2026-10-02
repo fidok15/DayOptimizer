@@ -63,8 +63,8 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
             </p>
           )}
           {error && (
-            <p role="alert" className="flex gap-2 rounded-[12px] border border-[#d14a3f]/30 bg-[#d14a3f]/10 p-2.5 text-sm">
-              <WarningCircle size={18} weight="bold" className="shrink-0 text-[#d14a3f]" aria-hidden />
+            <p role="alert" className="flex gap-2 rounded-[12px] border border-danger/30 bg-danger/10 p-2.5 text-sm">
+              <WarningCircle size={18} weight="bold" className="shrink-0 text-danger" aria-hidden />
               {error}
             </p>
           )}

@@ -26,8 +26,8 @@ const GRID_BG = {
   height: GRID_H,
   backgroundColor: SURFACE,
   backgroundImage: `repeating-linear-gradient(to bottom,
-    rgb(255 255 255 / 0.11) 0 1px, transparent 1px ${HOUR_PX / 2}px,
-    rgb(255 255 255 / 0.045) ${HOUR_PX / 2}px ${HOUR_PX / 2 + 1}px, transparent ${HOUR_PX / 2 + 1}px ${HOUR_PX}px)`,
+    var(--grid-hour) 0 1px, transparent 1px ${HOUR_PX / 2}px,
+    var(--grid-half) ${HOUR_PX / 2}px ${HOUR_PX / 2 + 1}px, transparent ${HOUR_PX / 2 + 1}px ${HOUR_PX}px)`,
 };
 
 const dayTotal = (blocks: Block[]) => {
@@ -189,7 +189,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
                   >
                     <span
                       className={`rounded-full px-2 text-sm font-medium ${
-                        d === today ? "bg-dusk text-white" : "text-ink"
+                        d === today ? "bg-dusk text-on-dusk" : "text-ink"
                       }`}
                     >
                       {WEEKDAY_LABEL[d]}
@@ -274,7 +274,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
               <button
                 type="button"
                 onClick={() => addBlock(view === "day" ? day : today)}
-                className="mt-1 flex min-h-9 items-center gap-1.5 rounded-lg bg-dusk px-4 py-2 text-sm font-medium text-white transition active:scale-[0.98]"
+                className="mt-1 flex min-h-9 items-center gap-1.5 rounded-lg bg-dusk px-4 py-2 text-sm font-medium text-on-dusk transition active:scale-[0.98]"
               >
                 <CalendarPlus weight="bold" size={16} /> Add first block
               </button>

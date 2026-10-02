@@ -203,7 +203,7 @@ function Row(props: {
           aria-label={`Delete ${name}`}
           title={`Delete ${name}`}
           onClick={() => (blocks ? setConfirming(true) : onRemove())}
-          className="grid h-8 w-7 shrink-0 place-items-center overflow-hidden rounded-full text-ink-dim transition-all hover:bg-ink/10 hover:text-[#d14a3f] active:scale-[0.98] [@media(hover:hover)]:w-0 [@media(hover:hover)]:group-focus-within:w-7 [@media(hover:hover)]:group-hover:w-7"
+          className="grid h-8 w-7 shrink-0 place-items-center overflow-hidden rounded-full text-ink-dim transition-all hover:bg-ink/10 hover:text-danger active:scale-[0.98] [@media(hover:hover)]:w-0 [@media(hover:hover)]:group-focus-within:w-7 [@media(hover:hover)]:group-hover:w-7"
         >
           <Trash size={16} weight="bold" aria-hidden />
         </button>
@@ -224,7 +224,7 @@ function Row(props: {
               <button
                 type="button"
                 onClick={onRemove}
-                className="min-h-8 rounded-lg bg-dusk px-3.5 text-xs font-semibold text-white transition active:scale-[0.98]"
+                className="min-h-8 rounded-lg bg-dusk px-3.5 text-xs font-semibold text-on-dusk transition active:scale-[0.98]"
               >
                 Delete
               </button>
@@ -280,14 +280,14 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
         <MovableToggle movable={movable} onToggle={() => setMovable((m) => !m)} />
         <button
           type="submit"
-          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-sm font-semibold text-white transition active:scale-[0.98]"
+          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-sm font-semibold text-on-dusk transition active:scale-[0.98]"
         >
           <Plus size={16} weight="bold" aria-hidden />
           Add
         </button>
       </div>
       {error && (
-        <p id="new-category-error" className="text-xs text-[#d14a3f]">
+        <p id="new-category-error" className="text-xs text-danger">
           {error}
         </p>
       )}

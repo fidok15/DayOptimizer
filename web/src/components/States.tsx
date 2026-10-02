@@ -28,7 +28,7 @@ export function LoadingSkeleton() {
 export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div role="alert" className="glass mx-auto flex max-w-md flex-col items-center gap-2.5 rounded-2xl p-6 text-center">
-      <WarningCircle size={28} weight="bold" className="text-[#d14a3f]" aria-hidden />
+      <WarningCircle size={28} weight="bold" className="text-danger" aria-hidden />
       <h2 className="text-lg font-semibold tracking-tight">Can't reach the planner server</h2>
       {message && <p className="rounded-[10px] bg-ink/5 px-3 py-1.5 font-mono text-xs break-words text-ink-dim">{message}</p>}
       <p className="text-sm text-ink">
@@ -37,7 +37,7 @@ export function LoadError({ message, onRetry }: { message: string; onRetry: () =
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1 inline-flex min-h-9 items-center gap-2 rounded-lg bg-dusk px-4 text-sm font-semibold text-white transition active:scale-[0.98]"
+        className="mt-1 inline-flex min-h-9 items-center gap-2 rounded-lg bg-dusk px-4 text-sm font-semibold text-on-dusk transition active:scale-[0.98]"
       >
         <ArrowClockwise size={16} weight="bold" aria-hidden />
         Retry

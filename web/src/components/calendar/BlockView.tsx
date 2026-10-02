@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type { Block, Weekday } from "../../lib/types";
 import { toMin } from "../../lib/time";
 import { DAY_NAME, PX_PER_MIN, readableText, type Lane } from "./geometry";
+import { useTheme } from "../../lib/theme";
 import type { DragHandlers } from "./useGridDrag";
 
 export const SPRING = { type: "spring", stiffness: 400, damping: 32 } as const;
@@ -25,7 +26,7 @@ function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, o
   const label = `${emoji ? `${emoji} ` : ""}${b.title || b.category}`;
   const compact = dur < 45;
   const time = `${b.start} - ${b.end}`;
-  const ink = readableText(color);
+  const ink = readableText(color, useTheme());
 
   return (
     <motion.button

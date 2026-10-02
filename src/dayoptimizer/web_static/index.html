@@ -4,10 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0c101e" />
+    <script>
+      // apply the saved theme (else the system one) before first paint
+      try {
+        var t = localStorage.getItem("dayoptimizer-theme");
+      } catch (e) {}
+      document.documentElement.dataset.theme =
+        t === "dark" || t === "light" ? t : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    </script>
     <title>DayOptimizer Planner</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌇</text></svg>" />
-    <script type="module" crossorigin src="/assets/index-Cg02NxUP.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Du4kR2dx.css">
+    <script type="module" crossorigin src="/assets/index-BBdRIFas.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DxtTQAlI.css">
   </head>
   <body>
     <div id="root"></div>

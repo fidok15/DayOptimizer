@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, Moon, Sun, WarningCircle } from "@phosphor-icons/react";
 import { greeting, lineOfTheDay } from "../lib/copy";
 import { fromMin, sceneHour } from "../lib/time";
+import { setTheme, useTheme } from "../lib/theme";
 import type { Categories, SaveStatus, View, Week, Weekday } from "../lib/types";
 import GarminConnect from "./GarminConnect";
 import ImportCalendar from "./ImportCalendar";
@@ -40,6 +41,7 @@ export default function Header(props: {
     return () => clearInterval(t);
   }, []);
   const line = lineOfTheDay();
+  const theme = useTheme();
 
   return (
     <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -77,6 +79,15 @@ export default function Header(props: {
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} view={view} day={day} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
+        <button
+          type="button"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          title={theme === "dark" ? "Light theme" : "Dark theme"}
+          className="glass-btn grid size-10 place-items-center rounded-full text-ink transition hover:bg-ink/10 active:scale-[0.98]"
+        >
+          {theme === "dark" ? <Sun size={18} weight="bold" aria-hidden /> : <Moon size={18} weight="bold" aria-hidden />}
+        </button>
         <div role="group" aria-label="View" className="glass-btn inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;
@@ -87,7 +98,7 @@ export default function Header(props: {
                 aria-pressed={active}
                 onClick={() => onViewChange(id)}
                 className={`relative inline-flex items-center gap-1.5 rounded-full min-h-8 px-3.5 py-1.5 text-sm font-medium transition active:scale-[0.98] ${
-                  active ? "text-white" : "text-ink-dim hover:text-ink"
+                  active ? "text-on-dusk" : "text-ink-dim hover:text-ink"
                 }`}
               >
                 {active && (
@@ -119,15 +130,15 @@ export default function Header(props: {
               </motion.span>
             )}
             {saveStatus === "error" && (
-              <motion.span key="error" {...fade} className={`${pill} min-w-0 border-[#d14a3f]/40 py-1 pr-1 text-ink`}>
-                <WarningCircle size={16} weight="bold" className="shrink-0 text-[#d14a3f]" aria-hidden />
+              <motion.span key="error" {...fade} className={`${pill} min-w-0 border-danger/40 py-1 pr-1 text-ink`}>
+                <WarningCircle size={16} weight="bold" className="shrink-0 text-danger" aria-hidden />
                 <span className="max-w-[16rem] truncate" title={saveError}>
                   {saveError || "Couldn't save"}
                 </span>
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="ml-1 inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-xs font-semibold text-white transition active:scale-[0.98]"
+                  className="ml-1 inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-xs font-semibold text-on-dusk transition active:scale-[0.98]"
                 >
                   <ArrowClockwise size={14} weight="bold" aria-hidden />
                   Retry
