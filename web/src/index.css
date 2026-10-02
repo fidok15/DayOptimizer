@@ -1,13 +1,10 @@
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
-@import "@fontsource-variable/fraunces";
 
 @theme {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
-  /* editorial display serif (city.md: ppmondwest, Fraunces as substitute), weight 400 only */
-  --font-display: "Fraunces Variable", ui-serif, Georgia, serif;
   /* city.md palette: warm neutrals, one blue for outlines, dusk as the only filled button */
   --color-ink: #2c2c2c;
   --color-ink-dim: #646464;
@@ -53,8 +50,7 @@
   --grid-half: rgb(255 255 255 / 0.045);
   color-scheme: dark;
 }
-/* dark headline keeps the original Geist semibold */
-:root[data-theme="dark"] .font-display { font-family: var(--font-sans); font-weight: 600; letter-spacing: -0.025em; }
+
 
 /* only html paints the fallback: a body background would cover the -z scene canvas */
 /* clip sideways overflow at the viewport, not the 1400 px column: the headline blob would get a hard edge there */

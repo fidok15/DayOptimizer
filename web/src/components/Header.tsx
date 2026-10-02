@@ -65,7 +65,7 @@ export default function Header(props: {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
-            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 font-display text-4xl leading-[1.1] font-normal tracking-[-0.02em] text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-5xl"
+            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 text-3xl leading-[1.1] font-semibold tracking-tight text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-5xl"
           >
             {line}
           </motion.h1>

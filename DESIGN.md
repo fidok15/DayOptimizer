@@ -116,7 +116,7 @@ in `index.css` swaps them. Both themes share the same transparency and blur (pan
 `.86` / `blur(24px) saturate(140%)`, header pills `.62` / `blur(20px) saturate(180%)`).
 
 - **Light** (default): editorial theme from `city.md`, painted hero art with frosted parchment UI. Values below.
-- **Dark**: the original smoke glass. Ink `#f3f1ec` / `#c9ccd9`, amber accent and fills `#f4b860` with night text, hairlines `white/13`, grid surface `rgb(15 19 34)`, Geist semibold headline.
+- **Dark**: the original smoke glass. Ink `#f3f1ec` / `#c9ccd9`, amber accent and fills `#f4b860` with night text, hairlines `white/13`, grid surface `rgb(15 19 34)`. Fonts are identical in both themes.
 
 Light theme tokens:
 
@@ -130,7 +130,6 @@ Light theme tokens:
 | `--accent` | `#41a1cf` | Signal blue: outlines, links, focus ring, today, now line. Never a fill |
 | `--dusk` | `#1f1f29` | The only filled button colour (primary actions, active Day/Week, today chip) |
 | `--linen` | `#f9faf7` | Inputs and code wells |
-| `--font-display` | Fraunces Variable | Headline serif, weight 400, `-0.02em` tracking |
 
 Panels are frosted parchment with a white hairline edge and the city.md content-card
 shadow (`0 1px 1px` + `0 4px 5px` at 8 % black). The calendar grid is solid white paper,
@@ -151,7 +150,7 @@ chosen from 10 swatches (originally picked for dark glass, still distinct on whi
 ## Type
 
 - Geist Variable (self-hosted via `@fontsource-variable`) for the UI, Geist Mono for times and totals.
-- Headline: Fraunces 400, `text-4xl md:text-5xl tracking-[-0.02em] leading-[1.1]`, white, max 2 lines.
+- Headline: Geist semibold, `text-3xl md:text-5xl tracking-tight leading-[1.1]`, white, max 2 lines. Same fonts in both themes.
 - Body: `text-sm`. Time labels: `text-[11px] font-mono`.
 
 ## Shape
