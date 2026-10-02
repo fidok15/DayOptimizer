@@ -36,7 +36,16 @@ photographic version was tried and rejected: it looked foreign next to the flat 
 | Bridge | Arched footbridge over the river, with lamps and its own reflection. |
 | Park | Foreground bank: trees, a path, benches and lamps. |
 | Life | Birds by day, a plane and shooting stars at night, boats crossing the river. |
-| Parallax | Depth follows the pointer, from far towers (least) to the park (most). |
+| Cherry blossoms | Branches hang into both top corners and frame the city, like a painted moonlit skyline seen through a tree. Grown from a fixed seed in `web/src/scene/blossom.ts`. Reach is capped (`min(30 % W, 45 % H, 380 px)`) so they never reach the planner. Five-petal flowers in three pinks (`#f7c6d4 #ec9db8 #fde4ea`) on dark bark (`#4a3434`). |
+| Moonlit grading | At night the bark goes to ink and petals cool toward the sky colour (up to 55 % toward a moonlight blue), so night reads cool blue and day reads warm. |
+| Falling petals | 18 petals drift down near the corners they fell from, swaying and spinning. Motion only. |
+| Brush grain | A static noise tile over the whole scene (`overlay`, 7 % alpha) so flat fills read as painted, not vector. |
+| Parallax | Depth follows the pointer, from far towers (least) to the blossom branches (most). |
+
+The look is borrowed from painted editorial hero art: a moonlit skyline framed by
+cherry blossom branches, visible brush texture and cinematic colour grading (cool
+blues at night, warm light by day). Only the background follows that reference;
+the panels and tokens below are unchanged.
 
 The vertical composition lives in `web/src/scene/layout.ts`.
 

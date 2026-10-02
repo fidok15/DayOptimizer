@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { sceneHour } from "../lib/time";
 import { CITY_W, generateCity, litShare, mulberry32, renderLayer } from "./city";
 import { makeBoat, drawBoats, drawWalkers, makeWalker, type Boat, type Walker } from "./boats";
+import { BLOSSOM_MARGIN, drawPetals, grainPattern, makePetals, renderBlossoms } from "./blossom";
 import { GROUND } from "./layout";
 import { css, hex, mix, palette, smooth, type Palette, type RGB } from "./sky";
 import { bridgeSpan, drawRiver, drawSprite, newRiver, newSprite, renderBank, renderPark } from "./waterfront";
@@ -26,6 +27,7 @@ const BANK_X = 22;
 const BOAT_X = 27;
 const PARK_X = 34;
 const PARK_Y = 6;
+const BLOSSOM_X = 40; // the branches hang closest to the viewer
 const WHITE: RGB = [255, 255, 255];
 
 interface Star { x: number; y: number; r: number; phase: number; speed: number }
@@ -68,6 +70,9 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
   const bank = newSprite();
   const park = newSprite();
   const river = newRiver();
+  const blossoms = document.createElement("canvas");
+  const petals = makePetals(18);
+  const grain = grainPattern(ctx);
 
   let W = 0;
   let H = 0;
@@ -133,6 +138,7 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
       renderClouds();
       renderBank(bank, W, H, dpr, pal);
       renderPark(park, W, H, dpr, pal);
+      renderBlossoms(blossoms, W, H, dpr, pal);
     }
   }
 
@@ -388,6 +394,16 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
     drawRiver(ctx, canvas, river, W, H, dpr, pal, t, motion);
     if (motion) drawBoats(ctx, boats, t, W, dpr, -pointer.x * BOAT_X, pal);
     drawSprite(ctx, park, -pointer.x * PARK_X, -pointer.y * PARK_Y);
+    ctx.drawImage(blossoms, -BLOSSOM_MARGIN - pointer.x * BLOSSOM_X, -pointer.y * PARK_Y, W + BLOSSOM_MARGIN * 2, H);
+    if (motion) drawPetals(ctx, petals, t, W, H, pal);
+    if (grain) {
+      ctx.globalCompositeOperation = "overlay";
+      ctx.globalAlpha = 0.07;
+      ctx.fillStyle = grain;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    }
   }
 
   resize();
