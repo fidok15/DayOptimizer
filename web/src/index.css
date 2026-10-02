@@ -19,7 +19,8 @@
 }
 
 /* only html paints the fallback: a body background would cover the -z scene canvas */
-html { background: var(--color-night); color: var(--color-ink); }
+/* clip sideways overflow at the viewport, not the 1400 px column: the headline blob would get a hard edge there */
+html { background: var(--color-night); color: var(--color-ink); overflow-x: clip; }
 body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 
 /* Smoke-glass panel (web frosted-glass approximation). */
