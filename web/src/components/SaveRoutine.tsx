@@ -29,7 +29,7 @@ export default function SaveRoutine({ categories, week, notes }: { categories: C
         onClick={save}
         disabled={empty || busy}
         title={empty ? "Draw at least one block first" : "Save and hand your routine to DayOptimizer"}
-        className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-night transition active:scale-[0.98] disabled:opacity-40"
+        className="inline-flex min-h-10 items-center gap-1.5 glass-btn rounded-full border-accent/70! px-4 py-1.5 text-sm font-semibold text-accent transition hover:bg-white/20 active:scale-[0.98] disabled:opacity-60"
       >
         <FloppyDisk size={16} weight="bold" aria-hidden />
         Save my routine

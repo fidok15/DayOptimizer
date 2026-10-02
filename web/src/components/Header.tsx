@@ -19,7 +19,7 @@ const fade = {
   exit: { opacity: 0 },
   transition: { duration: 0.2 },
 };
-const pill = "glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-medium";
+const pill = "glass-btn inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-medium";
 
 export default function Header(props: {
   view: View;
@@ -51,7 +51,7 @@ export default function Header(props: {
           aria-hidden
           className="pointer-events-none absolute -inset-x-16 -inset-y-12 -z-10 rounded-[50%] bg-night/55 blur-2xl"
         />
-        <p className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-ink">
+        <p className="glass-btn inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-ink">
           {greeting(hour)}
           <span aria-hidden className="text-ink-dim">·</span>
           <span className="font-mono text-ink-dim">{fromMin(Math.floor(hour * 60))}</span>
@@ -77,7 +77,7 @@ export default function Header(props: {
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} view={view} day={day} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
-        <div role="group" aria-label="View" className="glass inline-flex rounded-full p-1">
+        <div role="group" aria-label="View" className="glass-btn inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;
             return (
@@ -87,13 +87,13 @@ export default function Header(props: {
                 aria-pressed={active}
                 onClick={() => onViewChange(id)}
                 className={`relative inline-flex items-center gap-1.5 rounded-full min-h-8 px-3.5 py-1.5 text-sm font-medium transition active:scale-[0.98] ${
-                  active ? "text-night" : "text-ink-dim hover:text-ink"
+                  active ? "text-night [text-shadow:none]" : "text-ink hover:text-white"
                 }`}
               >
                 {active && (
                   <motion.span
                     layoutId="view-pill"
-                    className="absolute inset-0 rounded-full bg-accent"
+                    className="absolute inset-0 rounded-full bg-white/90 shadow-[0_1px_3px_rgb(0_0_0/0.25)]"
                     transition={{ type: "spring", stiffness: 400, damping: 32 }}
                   />
                 )}

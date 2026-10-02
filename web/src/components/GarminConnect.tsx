@@ -103,7 +103,7 @@ export default function GarminConnect() {
       <button
         type="button"
         onClick={open}
-        className="glass inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:text-accent active:scale-[0.98]"
+        className="glass-btn inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-white/20 active:scale-[0.98]"
       >
         <Watch size={16} weight="bold" aria-hidden />
         Garmin
