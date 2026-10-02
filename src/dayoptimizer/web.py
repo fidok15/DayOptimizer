@@ -458,6 +458,9 @@ class Handler(SimpleHTTPRequestHandler):
         # running the old app; assets/ are content-hashed and may stay cached
         if not self.path.startswith(("/api/", "/assets/")):
             self.send_header("Cache-Control", "no-cache")
+        # clickjacking guard: no other site may frame the planner and steer clicks
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         super().end_headers()
 
     def log_message(self, format, *args):
