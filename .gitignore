@@ -29,3 +29,7 @@ graphify-out/
 
 # Browser automation screenshots/snapshots (may show private calendar data)
 .playwright-mcp/
+
+# Test coverage data (holds absolute local paths)
+.coverage
+htmlcov/
