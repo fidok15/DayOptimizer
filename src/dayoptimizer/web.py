@@ -298,6 +298,10 @@ def _clean_rule(row: dict, categories: list[str]) -> dict | None:
     if row.get("type") in ("not_before", "not_after", "keep_free") and not any(
             c.isdigit() for c in str(row.get("source", ""))):
         return None
+    # a skippable prefix must be in the user's words: never one the model made up
+    if row.get("type") == "skippable" and str(row.get("prefix") or "").strip().lower() not in str(
+            row.get("source", "")).lower():
+        return None
     category = row.get("category")
     if category:
         match = next((c for c in categories if c.lower() == str(category).lower()), None)

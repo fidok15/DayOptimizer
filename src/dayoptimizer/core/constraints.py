@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-TYPES = ("not_before", "not_after", "keep_free", "min_gap_days", "max_per_week")
+TYPES = ("not_before", "not_after", "keep_free", "min_gap_days", "max_per_week", "skippable")
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ class NoteRule:
     weekday: int | None = None        # keep_free: None = every day
     days: int | None = None           # min_gap_days
     count: int | None = None          # max_per_week
+    prefix: str | None = None         # skippable: title start of events that may be planned over
 
 def _minutes(value) -> int | None:
     try:
@@ -60,6 +61,10 @@ def parse_rules(raw) -> list[NoteRule]:
             if 0 <= number <= 14 and category:
                 out.append(NoteRule(kind, source, category,
                                     **({"days": number} if kind == "min_gap_days" else {"count": number})))
+        elif kind == "skippable":
+            prefix = str(row.get("prefix") or "").strip()
+            if category and 0 < len(prefix) <= 20:
+                out.append(NoteRule(kind, source, category, prefix=prefix))
     return dedupe(out)
 
 def dedupe(rules: list[NoteRule]) -> list[NoteRule]:
@@ -149,7 +154,16 @@ def describe(rule: NoteRule) -> str:
         return f"{when} {span}: kept free{subject}"
     if rule.type == "min_gap_days":
         return f"{who}: at least {rule.days} day(s) apart"
+    if rule.type == "skippable":
+        return f"{who}: events starting with \"{rule.prefix}\" may be planned over"
     return f"{who}: at most {rule.count} time(s) a week"
+
+def skippable(rules: list[NoteRule], event) -> bool:
+    """An event the user said may be planned over ("lectures, titles starting
+    with 'W -', can be skipped"): it neither blocks time nor gets moved."""
+    title = event.title.strip().lower()
+    return any(r.type == "skippable" and r.category == event.calendar
+               and title.startswith(r.prefix.lower()) for r in rules)
 
 def explain(rule: NoteRule) -> str:
     return f"your note \"{rule.source}\"" if rule.source else f"your rule ({rule.type})"

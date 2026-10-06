@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, date, time, timedelta
 from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
-from dayoptimizer.core.constraints import (allowed_window, explain, free_windows, gap_rule,
+from dayoptimizer.core.constraints import (allowed_window, explain, free_windows, gap_rule, skippable,
                                             week_rule, window_rule)
 from dayoptimizer.core.recovery import learn_region, training_advice
 from dayoptimizer.core.rules import Rules
@@ -582,7 +582,8 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     day_start = _window_dt(day, rules.day_start)
     day_end = _window_dt(day, rules.day_end)
     changes: list[PlannedChange] = []
-    working = events
+    # events the user said may be planned over neither block time nor get moved
+    working = [e for e in events if not skippable(rules.note_rules, e)]
 
     def run(phase_changes):
         nonlocal working

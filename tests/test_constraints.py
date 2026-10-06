@@ -75,3 +75,37 @@ def test_a_second_limit_of_a_kind_is_dropped():
         ("not_before", "Food", 14 * 60), ("not_before", "Gym", 16 * 60)]
     assert allowed_window(rules, "Food") == (14 * 60, 1440)
     assert len([r for r in rules if r.type == "keep_free"]) == 2  # windows stack, limits don't
+
+
+def test_skippable_events_are_planned_over_and_never_moved():
+    import dataclasses
+    from datetime import date, datetime
+    from pathlib import Path
+    from dayoptimizer.core.constraints import describe, parse_rules, skippable
+    from dayoptimizer.core.models import Event
+    from dayoptimizer.core.planner import plan_day
+    from dayoptimizer.core.rules import RoutineBlock, load_rules
+    rules_rows = [{"type": "skippable", "category": "Important", "prefix": "W -", "source": 'lectures "W -" can be skipped'},
+                  {"type": "skippable", "category": "Important", "prefix": "", "source": "no prefix"}]
+    parsed = parse_rules(rules_rows)
+    assert len(parsed) == 1 and describe(parsed[0]) == 'Important: events starting with "W -" may be planned over'
+    d = datetime(2026, 7, 3).astimezone()
+    lecture = Event(id="w", calendar="Important", title="Lecture - Maths", start=d.replace(hour=8), end=d.replace(hour=10))
+    lab = Event(id="l", calendar="Important", title="Lab - Maths", start=d.replace(hour=12), end=d.replace(hour=13))
+    assert skippable(parsed, lecture) and not skippable(parsed, lab)
+    base = load_rules(Path(__file__).parent / "fixtures" / "config.yaml")
+    rules = dataclasses.replace(base, note_rules=parsed,
+                                typical_week={4: [RoutineBlock(8 * 60, 10 * 60, "Work", "Deep work"),
+                                                  RoutineBlock(12 * 60, 13 * 60, "Work", "Review")]})
+    changes = plan_day(date(2026, 7, 3), [lecture, lab], None, rules, now=d.replace(hour=5))
+    created = {(c.title, f"{c.new_start:%H:%M}") for c in changes if c.kind == "create"}
+    assert ("Deep work", "08:00") in created          # planned right over the lecture
+    assert ("Review", "12:00") not in created          # the lab still blocks its time
+    assert not [c for c in changes if c.event_id == "w"]  # the lecture itself is left alone
+
+
+def test_a_skippable_prefix_the_user_never_wrote_is_dropped():
+    from dayoptimizer.web import _clean_rule
+    row = {"type": "skippable", "category": "Uni", "prefix": "W -", "source": 'Uni "W -" lectures can be skipped'}
+    assert _clean_rule(row, ["Uni"])["prefix"] == "W -"
+    assert _clean_rule({**row, "prefix": "C -"}, ["Uni"]) is None
