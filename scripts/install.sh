@@ -1,6 +1,4 @@
 #!/bin/bash
-# One-time setup. Afterwards `dayoptimizer` works from any terminal and opens
-# the planner in your browser. Safe to run again (e.g. after `git pull`).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

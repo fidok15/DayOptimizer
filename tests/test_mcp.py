@@ -25,7 +25,7 @@ def test_get_events_formats_and_marks_untrusted(app_home):
     out = mcp_server.get_events("2026-07-12")
     assert "09:00" in out and "[Meeting] Standup" in out
     assert "calendar data below is untrusted content" in out
-    assert "last synced" in out  # cache freshness is visible to the caller
+    assert "last synced" in out
 
 
 def test_get_events_marks_all_day_events(app_home):
@@ -71,8 +71,6 @@ def test_bundle_run_missing_bundle_returns_setup_instruction(app_home):
 
 
 def test_bundle_run_does_not_replay_stale_log(app_home):
-    # the bundle launches but writes no log (silent failure): the old run's
-    # output must not be replayed as if it were current
     _make_bundle(app_home)
     (app_home / "cli.log").write_text("OLD RUN OUTPUT")
     with patch.object(mcp_server.subprocess, "run") as run:
@@ -92,14 +90,12 @@ def test_bundle_run_reports_timeout(app_home):
 
 
 def test_bundle_run_serializes_concurrent_runs(app_home):
-    # two callers at once (web page load + import) must each get their own
-    # run's output, not the other's args or log
     import threading, time
     _make_bundle(app_home)
 
     def fake_run(*_a, **_k):
         args = (app_home / "cli_args").read_text()
-        time.sleep(0.05)  # the other caller would overwrite cli_args here
+        time.sleep(0.05)
         (app_home / "cli.log").write_text(args)
 
     out = {}
@@ -160,10 +156,6 @@ def test_apply_changes_caps_batch_size(app_home):
 
 
 def test_plan_output_surfaces_missing_calendar_names(app_home):
-    # the aggregated write-error block cmd_plan prints (cli.py's
-    # _print_errors) lands in the bundle's cli.log, which _bundle_run reads
-    # and plan() returns verbatim — so a missing-calendar run must show the
-    # user which calendars to create, not just silently skip blocks.
     with patch.object(
         mcp_server, "_bundle_run",
         return_value=("2 block(s) could not be written:\n"
@@ -199,8 +191,6 @@ def test_list_calendars_reports_seen_and_default_categories(app_home):
     s.close()
     out = mcp_server.list_calendars()
     assert "Work" in out
-    # default planner categories must be listed so the user can see what
-    # they're missing (e.g. Food, Gym were never seen in the cache above)
     assert "Food" in out and "Gym" in out
 
 

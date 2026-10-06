@@ -1,4 +1,3 @@
-// Flocks of birds in a loose V, shared by the procedural scene and the painted backgrounds.
 interface Bird { dx: number; dy: number; phase: number }
 export interface Flock { t0: number; x0: number; dir: number; y: number; speed: number; size: number; flap: number; birds: Bird[] }
 
@@ -6,7 +5,7 @@ const between = (a: number, b: number): number => a + Math.random() * (b - a);
 
 export function makeFlock(t: number, W: number, H: number): Flock {
   const dir = Math.random() < 0.5 ? 1 : -1;
-  const z = between(0.55, 1.25); // depth: nearer flocks are bigger and faster
+  const z = between(0.55, 1.25);
   const n = 5 + Math.floor(Math.random() * 5);
   const birds: Bird[] = Array.from({ length: n }, (_, i) => {
     const k = Math.ceil(i / 2);
@@ -16,7 +15,6 @@ export function makeFlock(t: number, W: number, H: number): Flock {
   return { t0: t, dir, x0: dir > 0 ? -80 : W + 80, y: H * between(0.12, 0.42), speed: 28 + 36 * z, size: 5.5 * z, flap: between(7, 9.5), birds };
 }
 
-/** Draws every flock and drops the ones that have left the screen. */
 export function drawFlocks(ctx: CanvasRenderingContext2D, flocks: Flock[], t: number, W: number, ink: string): void {
   ctx.strokeStyle = ink;
   ctx.lineCap = "round";

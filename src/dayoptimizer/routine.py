@@ -45,7 +45,7 @@ def render_routine(categories: dict, week: dict, notes: str = "") -> str:
 def save_routine(text: str) -> str:
     path = paths.routine_path()
     paths.ensure_private_dir()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # health-adjacent: owner only
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(text)
     return str(path)

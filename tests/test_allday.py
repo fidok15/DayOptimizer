@@ -17,7 +17,7 @@ RULES = load_rules(Path(__file__).parent / "fixtures" / "config.yaml")
 def test_time_in_title_guesses_and_flags_doubt():
     assert (time_in_title("Dentysta 14:00").start, time_in_title("Dentysta 14:00").sure) == (time(14), True)
     assert time_in_title("Meeting 14-15:30").end == time(15, 30)
-    assert time_in_title("Exam 12.10").sure is False  # could be the 12th of October
+    assert time_in_title("Exam 12.10").sure is False
     assert time_in_title("Room 14").sure is False
     assert time_in_title("Holiday") is None
 
@@ -43,7 +43,7 @@ def test_run_plan_plans_around_and_asks_to_make_it_timed():
     assert len(mine) == 1 and mine[0].kind == "move" and mine[0].requires_approval
     assert (mine[0].new_start, mine[0].new_end) == (day_start + timedelta(hours=14), day_start + timedelta(hours=15))
     assert "make it a 14:00–15:00 event" in mine[0].reason and asked == mine
-    calendar.move_event.assert_not_called()  # declined: the event stays all-day
+    calendar.move_event.assert_not_called()
     busy = (day_start + timedelta(hours=14), day_start + timedelta(hours=15))
     assert not [c for c in changes if c.kind == "create" and c.new_start < busy[1] and c.new_end > busy[0]]
 

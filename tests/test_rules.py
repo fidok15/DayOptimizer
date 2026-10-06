@@ -30,7 +30,7 @@ def test_config_local_overrides_base(tmp_path, monkeypatch):
     rules = load_rules(CONFIG)
     assert rules.buffer_minutes == 0
     assert rules.free_time_activity == "Reading"
-    assert rules.gym_per_week >= 1  # non-overridden keys survive the merge
+    assert rules.gym_per_week >= 1
 
 def test_no_local_file_keeps_defaults():
     rules = load_rules(CONFIG)
@@ -45,7 +45,7 @@ def test_user_config_from_app_dir_overrides_defaults(tmp_path, monkeypatch):
     rules = load_rules(Path("tests/fixtures/config.yaml"))
     assert rules.gym_per_week == 2
     assert rules.is_movable("Climbing") is True
-    assert rules.is_movable("Meeting") is False  # defaults still present
+    assert rules.is_movable("Meeting") is False
 
 
 def test_explicit_user_path_wins_over_env(tmp_path, monkeypatch):
@@ -63,7 +63,6 @@ def test_day_start_end_parsed_from_config():
 
 
 def test_day_start_end_default_when_keys_absent(tmp_path):
-    # simulate an old config predating day_start/day_end
     lines = [l for l in CONFIG.read_text().splitlines()
              if "day_start" not in l and "day_end" not in l]
     old_config = tmp_path / "old_config.yaml"
@@ -130,9 +129,6 @@ def test_holiday_calendars_parsed_from_config(tmp_path):
 
 
 def test_inverted_day_window_falls_back_to_defaults(tmp_path, monkeypatch):
-    # validate_config only sees the user's snippet, so a partial override can
-    # merge into an inverted window; load_rules must keep the planner
-    # functional (background runs) by reverting to the defaults, not raising
     monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
     (tmp_path / "config.local.yaml").write_text(
         "day_rules:\n  day_start: '22:00'\n  day_end: '05:00'\n")

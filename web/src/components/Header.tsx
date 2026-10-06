@@ -26,7 +26,6 @@ const pill = "glass-btn inline-flex items-center gap-1.5 rounded-full px-3 py-1.
 export default function Header(props: {
   view: View;
   onViewChange: (v: View) => void;
-  /** one-typical-day routine: there is only one day to show, so no Day/Week switch */
   oneDay: boolean;
   saveStatus: SaveStatus;
   saveError: string;
@@ -50,9 +49,6 @@ export default function Header(props: {
   return (
     <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div className="relative isolate min-w-0 max-w-2xl">
-        {/* Soft blurred blob behind the text: an oval with a heavy blur has no
-            straight side to show as a seam over the scene (a gradient clipped
-            by its own box does, which is what this replaces). */}
         <div
           aria-hidden
           className="pointer-events-none absolute -inset-x-16 -inset-y-12 -z-10 rounded-[50%] bg-night/55 blur-2xl"
@@ -121,8 +117,6 @@ export default function Header(props: {
         </div>
         )}
       </div>
-      {/* a toast in the corner: coming and going it must not move the buttons, squeeze the headline or cover the
-          calendar's header; in a portal because the header's animated (transformed) parent would pin `fixed` to itself */}
       {createPortal(
         <div aria-live="polite" className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] justify-end text-sm [&>*]:pointer-events-auto [&>*]:shadow-lg">
           <AnimatePresence mode="wait" initial={false}>

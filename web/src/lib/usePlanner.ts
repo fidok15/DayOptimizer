@@ -5,7 +5,6 @@ import { WEEKDAYS, type Block, type Categories, type RoutineMode, type SaveStatu
 
 const AUTOSAVE_MS = 700;
 
-/** In one-day mode the day is kept on Monday and every other day is a copy of it. */
 export const TEMPLATE_DAY: Weekday = "mon";
 const everyDay = (w: Week, from: Weekday): Week =>
   Object.fromEntries(WEEKDAYS.map((d) => [d, d === from ? w[from] : w[from].map((b) => ({ ...b, id: uid() }))])) as Week;
@@ -24,17 +23,15 @@ export function usePlanner() {
   const [week, setWeek] = useState<Week>(() => toWeek({ typical_week: {} } as ServerState));
   const [notes, setNotes] = useState("");
   const [routineMode, setRoutineMode] = useState<RoutineMode | null>(null);
-  // every calendar in the Calendar app (name -> colour), so one can become a category
   const [appCalendars, setAppCalendars] = useState<Record<string, string>>({});
   const modeRef = useRef(routineMode);
   modeRef.current = routineMode;
-  // every week change goes through here: in one-day mode the other days follow Monday
   const mirror = (w: Week) => (modeRef.current === "day" ? everyDay(w, TEMPLATE_DAY) : w);
   const [defaults, setDefaults] = useState<string[]>([]);
   const [dayStart, setDayStart] = useState("06:00");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState("");
-  const rev = useRef(0); // bumps on every local edit
+  const rev = useRef(0);
   const dirty = useRef(false);
 
   const reload = useCallback(() => {
@@ -44,14 +41,11 @@ export function usePlanner() {
         setCategories(s.categories);
         setWeek(toWeek(s));
         setNotes(s.notes ?? "");
-        // someone who drew a week before the choice existed keeps a week, unasked
         const anyBlock = Object.values(s.typical_week).some((b) => b && b.length > 0);
         setRoutineMode(s.routine_mode ?? (anyBlock ? "week" : null));
         setDefaults(s.defaults);
         setDayStart(s.day_start);
         setLoad("ready");
-        // a category without a colour of its own shows its calendar's, so the page and
-        // the Calendar app agree from the start (not an edit: nothing is autosaved)
         calendarColors().then(({ colors, calendars }) => {
           setAppCalendars(calendars);
           setCategories((c) =>
@@ -87,14 +81,12 @@ export function usePlanner() {
       });
   }, []);
 
-  // debounced autosave after any edit
   useEffect(() => {
     if (!dirty.current) return;
     const t = window.setTimeout(() => save(categories, week, notes, routineMode), AUTOSAVE_MS);
     return () => window.clearTimeout(t);
   }, [categories, week, notes, routineMode, save]);
 
-  // warn before closing the tab with unsaved edits
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
       if (dirty.current) e.preventDefault();
@@ -114,7 +106,6 @@ export function usePlanner() {
     setWeek((w) => mirror(fn(w)));
   }, []);
 
-  /** Pick how the routine is drawn. Going to one day makes `from` the day used everywhere. */
   const chooseRoutineMode = useCallback((mode: RoutineMode, from: Weekday = TEMPLATE_DAY) => {
     touch();
     modeRef.current = mode;
@@ -127,7 +118,6 @@ export function usePlanner() {
     setCategories(fn);
   }, []);
 
-  /** Delete a category together with every block that uses it. */
   const removeCategory = useCallback((name: string) => {
     touch();
     setCategories(({ [name]: _, ...rest }) => rest);
@@ -136,9 +126,6 @@ export function usePlanner() {
     );
   }, []);
 
-  /** Put imported blocks into the given days, replacing them or adding to them. A block
-   *  with the same time and title as one already there is skipped, whatever its category,
-   *  so importing twice doesn't double the week. */
   const importBlocks = useCallback((incoming: Week, replace: boolean, days: Weekday[]) => {
     touch();
     setWeek((w) =>

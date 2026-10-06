@@ -5,7 +5,6 @@ from typing import Literal, Protocol
 from pydantic import BaseModel
 from dayoptimizer.core.models import PlannedChange
 
-# Models name the day in words; code turns it into a date (small models get date maths wrong).
 DayWord = Literal["today", "tomorrow", "day_after_tomorrow",
                   "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -18,37 +17,34 @@ def resolve_day(word: str, today: date) -> date:
 
 class NewEvent(BaseModel):
     title: str
-    category: str                      # one of the user's categories
+    category: str
     day: DayWord = "today"
-    start_time: str | None = None      # "HH:MM"; None when the user gave no usable time
-    end_time: str | None = None        # "HH:MM" when the user says until when
+    start_time: str | None = None
+    end_time: str | None = None
     duration_minutes: int | None = None
 
 class DayRequest(BaseModel):
     """What the user said about their day: the events to add."""
     events: list[NewEvent] = []
-    reply: str | None = None           # set when the message isn't about the schedule
+    reply: str | None = None
 
 Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
-# One model per rule type: a small local model fills a short schema with only
-# required fields far more reliably than one shape with many optional ones.
 class TimeRule(BaseModel):
-    source: str                        # the user's own sentence this came from
-    time: str                          # "HH:MM"
-    category: str | None = None        # None = the whole day
+    source: str
+    time: str
+    category: str | None = None
 
 class FreeRule(BaseModel):
     source: str
     start: str
     end: str
-    weekday: Weekday | None = None     # None = every day
+    weekday: Weekday | None = None
 
 class GapRule(BaseModel):
     source: str
     category: str
-    rest_days: int                     # days off between two occurrences; models
-                                       # mix up "days apart" with "days of break"
+    rest_days: int
 
 class WeekRule(BaseModel):
     source: str
@@ -58,7 +54,7 @@ class WeekRule(BaseModel):
 class SkipRule(BaseModel):
     source: str
     category: str
-    prefix: str                        # how the titles of those events start
+    prefix: str
 
 class CompiledNotes(BaseModel):
     """The user's notes as rules the planner can enforce (core/constraints.py)."""
@@ -68,7 +64,7 @@ class CompiledNotes(BaseModel):
     min_gap_days: list[GapRule] = []
     max_per_week: list[WeekRule] = []
     skippable: list[SkipRule] = []
-    not_compiled: list[str] = []       # sentences no rule type can express
+    not_compiled: list[str] = []
 
     def rows(self) -> list[dict]:
         rows = []
@@ -143,8 +139,6 @@ def request_prompt(text: str, today: str, now: str, categories: list[str]) -> st
     return f"{context}now: {now}\ncategories: {', '.join(categories)}\nmessage: {text}"
 
 
-# Day words are a closed vocabulary, and small local models map them wrongly
-# (qwen3:8b: "w środę" -> saturday). Word starts, so any Polish inflection matches.
 _DAY_WORDS = [
     (r"\bpojutrz|\bday after tomorrow\b", "day_after_tomorrow"),
     (r"\bjutr|\btomorrow\b", "tomorrow"),

@@ -4,7 +4,6 @@ import subprocess
 
 
 def build_osascript(title: str, message: str) -> list[str]:
-    # json.dumps gives AppleScript-safe double-quoted strings (escapes " and \)
     return ["osascript", "-e",
             f"display notification {json.dumps(message, ensure_ascii=False)} with title {json.dumps(title, ensure_ascii=False)}"]
 

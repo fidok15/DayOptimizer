@@ -19,16 +19,15 @@ export default function Skyline() {
   return <canvas ref={ref} aria-hidden className="pointer-events-none fixed inset-0 -z-10 h-full w-full" />;
 }
 
-const MARGIN_X = 24; // extra layer width so parallax never shows an edge
+const MARGIN_X = 24;
 const MARGIN_Y = 8;
-// far, mid, near towers; then the bank (+bridge) and the park in front
 const PARALLAX_X = [5, 10, 18];
 const PARALLAX_Y = [1, 2, 3];
 const BANK_X = 22;
 const BOAT_X = 27;
 const PARK_X = 34;
 const PARK_Y = 6;
-const BLOSSOM_X = 40; // the branches hang closest to the viewer
+const BLOSSOM_X = 40;
 const WHITE: RGB = [255, 255, 255];
 
 interface Star { x: number; y: number; r: number; phase: number; speed: number }
@@ -107,7 +106,7 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
     clouds.forEach((cl, i) => {
       const w = 280 * cl.s;
       const h = 120 * cl.s;
-      const pad = w * 0.3; // room for puff falloff so the sprite edge never clips
+      const pad = w * 0.3;
       const c = cloudSprites[i];
       c.width = Math.ceil((w + pad * 2) * dpr);
       c.height = Math.ceil((h + pad * 2) * dpr);
@@ -251,7 +250,7 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
     const y = H * (GROUND + 0.02) - arc * H * 0.6;
     const fade = smooth(0, 0.04, p) * smooth(1, 0.96, p);
     if (isSun) {
-      const low = 1 - arc; // warmer and larger near the horizon
+      const low = 1 - arc;
       const r = base * 0.026 * (1 + 0.4 * low);
       const disc = mix(hex("#fff5dc"), hex("#ffae63"), low ** 1.5);
       const glow = mix(hex("#ffe2a8"), hex("#ff9a55"), low);
@@ -276,7 +275,6 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 6.2832);
       ctx.fill();
-      // soft shading for a gibbous look
       ctx.fillStyle = css(pal.top, 0.35 * fade);
       ctx.beginPath();
       ctx.arc(x + r * 0.45, y - r * 0.1, r * 0.9, 0, 6.2832);
@@ -331,7 +329,6 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
     drawSky(t);
     drawOrb();
 
-    // warm haze band where the sky meets the city
     const hz = ctx.createLinearGradient(0, H * 0.4, 0, H * GROUND);
     hz.addColorStop(0, css(pal.haze, 0));
     hz.addColorStop(1, css(pal.haze, 0.45));
@@ -354,7 +351,6 @@ function startScene(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): (
     const bankX = -pointer.x * BANK_X;
     drawSprite(ctx, bank, bankX);
     if (motion) drawWalkers(ctx, walkers, t, bridgeSpan(W, H), bankX, pal);
-    // The river mirrors whatever is on the canvas above it, so it must come after all of that.
     drawRiver(ctx, canvas, river, W, H, dpr, pal, t, motion);
     if (motion) drawBoats(ctx, boats, t, W, dpr, -pointer.x * BOAT_X, pal);
     drawSprite(ctx, park, -pointer.x * PARK_X, -pointer.y * PARK_Y);

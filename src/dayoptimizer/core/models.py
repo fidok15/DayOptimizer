@@ -11,8 +11,7 @@ class Event:
     start: datetime
     end: datetime
     location: str | None = None
-    all_day: bool = False  # calendar marker (vacation/holiday/birthday): never
-                            # busy time and never a scheduling anchor
+    all_day: bool = False
 
 @dataclass
 class GarminSummary:
@@ -23,8 +22,6 @@ class GarminSummary:
     hrv_status: str | None = None
     stress_avg: int | None = None
     resting_hr: int | None = None
-    # Training readiness (Garmin): recovery_minutes is what was LEFT at
-    # recovery_measured_at, so callers must subtract the time since.
     recovery_minutes: int | None = None
     recovery_measured_at: str | None = None
     readiness_score: int | None = None

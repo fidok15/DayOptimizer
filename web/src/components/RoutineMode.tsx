@@ -17,7 +17,6 @@ const OPTIONS: { id: RoutineMode; label: string; Icon: typeof Rows; text: string
   },
 ];
 
-/** First run: how does the person want to describe their routine? */
 export function RoutineChooser({ onChoose }: { onChoose: (m: RoutineMode) => void }) {
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-night/60 p-4 backdrop-blur-sm">
@@ -52,11 +51,9 @@ export function RoutineChooser({ onChoose }: { onChoose: (m: RoutineMode) => voi
   );
 }
 
-/** Switch between the two later on. */
 export function RoutineSwitch({ mode, onChange }: { mode: RoutineMode; onChange: (m: RoutineMode) => void }) {
   return (
     <div role="group" aria-label="Routine" className="glass-btn inline-flex w-fit items-center gap-1 rounded-full p-0.5 pl-3 text-sm">
-      {/* inside the glass: on the painted background a bare label can't be read */}
       <span className="font-medium text-ink">Routine</span>
       <div className="inline-flex">
         {OPTIONS.map(({ id, label }) => {

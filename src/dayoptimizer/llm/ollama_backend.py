@@ -32,11 +32,11 @@ class OllamaBackend:
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
-            "think": False,  # qwen3 answers in ~6 s without it, ~40 s with
+            "think": False,
             "options": {"temperature": 0},
         }
         if schema:
-            body["format"] = schema  # Ollama constrains the output to this JSON schema
+            body["format"] = schema
         req = Request(f"{_host()}/api/chat", data=json.dumps(body).encode(),
                       headers={"Content-Type": "application/json"})
         try:
@@ -56,7 +56,6 @@ class OllamaBackend:
 
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
         schema = DayRequest.model_json_schema()
-        # the grammar then can't produce a category the user doesn't have
         schema["$defs"]["NewEvent"]["properties"]["category"]["enum"] = list(categories)
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
@@ -72,4 +71,4 @@ class OllamaBackend:
         try:
             return self._chat(_SUMMARY_SYSTEM, rendered).strip() or rendered
         except LLMUnavailable:
-            return rendered  # LLM down: deterministic fallback, same as Anthropic
+            return rendered

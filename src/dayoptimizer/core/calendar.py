@@ -28,13 +28,11 @@ def ek_to_event(identifier, calendar_title, title, start, end, location, all_day
 
 class CalendarClient:
     def __init__(self):
-        import EventKit  # deferred: import only on macOS at runtime
+        import EventKit
         self._EventKit = EventKit
         self._store = EventKit.EKEventStore.alloc().init()
 
     def request_access(self) -> bool:
-        # Completion handler fires only when the runloop is pumped — a plain
-        # threading.Event deadlocks in CLI context and the TCC prompt never shows.
         from Foundation import NSDate, NSRunLoop
 
         granted_holder = {}
@@ -74,11 +72,11 @@ class CalendarClient:
         ev = self._store.eventWithIdentifier_(event_id)
         if ev is None:
             raise KeyError(f"Event {event_id} not found")
-        if ev.isAllDay():  # an all-day event the user agreed to make timed
+        if ev.isAllDay():
             ev.setAllDay_(False)
         ev.setStartDate_(self._nsdate(new_start))
         ev.setEndDate_(self._nsdate(new_end))
-        ok, err = self._store.saveEvent_span_error_(ev, 0, None)  # 0 = EKSpanThisEvent
+        ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")
 
@@ -140,7 +138,6 @@ class CalendarClient:
         EventKit = self._EventKit
         target = self._find_calendar(calendar_name)
         if target is None:
-            # a category the user set up without a calendar yet: make one
             self.ensure_calendar(calendar_name)
             target = self._find_calendar(calendar_name)
         if target is None:

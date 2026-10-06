@@ -19,7 +19,6 @@ const addDays = (s: string, n: number) => {
   return iso(d);
 };
 
-/** Local YYYY-MM-DD of last week's Monday: the most recent complete week. */
 const lastMondayISO = () => {
   const d = new Date();
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
@@ -36,8 +35,6 @@ const dateLabel = (date: string, mode: View) =>
     ? `${short(mondayOf(date))} – ${short(addDays(mondayOf(date), 6))}`
     : fromIso(date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
-// which category each calendar went into last time, so the next import is pre-filled
-// (a per-browser convenience: losing it only means picking again)
 const MAP_KEY = "dayoptimizer.calendarMap";
 const readMap = (): Record<string, string> => {
   try {
@@ -50,11 +47,10 @@ const writeMap = (m: Record<string, string>) => {
   try {
     localStorage.setItem(MAP_KEY, JSON.stringify(m));
   } catch {
-    /* private window: nothing to remember */
   }
 };
 
-const NEW = "\u0000new"; // "make a new category named after this calendar"
+const NEW = "\u0000new";
 
 const primary =
   "inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3.5 py-1.5 text-sm font-semibold text-on-dusk transition active:scale-[0.98] disabled:opacity-40";
@@ -79,7 +75,6 @@ const MODES: { id: View; label: string }[] = [
   { id: "week", label: "Week" },
 ];
 
-/** Pill switch in the style of the header's Day/Week toggle. */
 function Segmented<T extends string>(props: { label: string; options: { id: T; label: string }[]; value: T; onChange: (v: T) => void; pill: string }) {
   return (
     <div role="group" aria-label={props.label} className="inline-flex rounded-full border border-line p-0.5">
@@ -108,14 +103,12 @@ export default function ImportCalendar(props: {
   onCategories: (fn: (c: Categories) => Categories) => void;
   view: View;
   day: Weekday;
-  /** one-typical-day routine: only a day can be imported, and it becomes that day */
   oneDay: boolean;
 }) {
   const { categories, onImport, onCategories, view, day, oneDay } = props;
   const { open, setOpen, ref } = usePopover();
   const [source, setSource] = useState<Source>("apple");
   const [mode, setMode] = useState<View>(view);
-  // the date shown: in week mode only its week counts
   const [date, setDate] = useState(() => addDays(lastMondayISO(), WEEKDAYS.indexOf(day)));
   const [files, setFiles] = useState<{ names: string[]; texts: string[] } | null>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -123,11 +116,10 @@ export default function ImportCalendar(props: {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [found, setFound] = useState<ImportedCalendars | null>(null);
   const [include, setInclude] = useState<Record<string, boolean>>({});
-  const [mapping, setMapping] = useState<Record<string, string>>({}); // calendar -> category | NEW | ""
+  const [mapping, setMapping] = useState<Record<string, string>>({});
   const [replace, setReplace] = useState(false);
   const [spread, setSpread] = useState<Spread>("all");
 
-  // opening the dialog starts from what the page shows: the whole week or the chosen day
   useEffect(() => {
     if (!open) return;
     setMode(oneDay ? "day" : view);
@@ -136,11 +128,9 @@ export default function ImportCalendar(props: {
 
   const monday = mondayOf(date);
   const days: Weekday[] = mode === "week" ? [...WEEKDAYS] : [weekdayOf(date)];
-  // a Day import is a sample day: its blocks go into every day it's used for
   const into = mode === "week" ? days : SPREAD_DAYS[oneDay ? "all" : spread](days[0]);
   const categoryNames = Object.keys(categories);
 
-  // the calendars of this tab: busiest first, empty ones (for this week/day) last
   const google = useMemo(() => new Set(found?.google), [found]);
   const calendars = useMemo(() => {
     if (!found) return [];
@@ -155,14 +145,11 @@ export default function ImportCalendar(props: {
   const missing = chosen.find(([cal]) => !mapping[cal])?.[0];
   const count = chosen.reduce((sum, [, n]) => sum + n, 0);
   const allOn = busy.length > 0 && chosen.length === busy.length;
-  // a Day import of an empty day while the rest of that week has events: say so instead of "nothing"
   const elsewhere =
     mode === "day" && found
       ? WEEKDAYS.filter((d) => !days.includes(d)).reduce((n, d) => n + (found.week[d] ?? []).length, 0)
       : 0;
-  // all-day events can't become blocks (no time): say which were left out
   const skipped = found ? found.allDay.filter((e) => e.days.some((d) => days.includes(d))) : [];
-  // a file whose events all lie outside the shown week: point to where they are
   const span = source === "file" && found?.span && busy.length === 0 && elsewhere === 0 ? found.span : null;
 
   const jumpTo = (iso: string) => {
@@ -183,10 +170,7 @@ export default function ImportCalendar(props: {
         const on: Record<string, boolean> = {};
         for (const cal of names) {
           const home = categories[remembered[cal]] ? remembered[cal] : byLower.get(cal.toLowerCase());
-          // no home yet: offer a new category named after it (visible, changeable; made only on Import)
           guess[cal] = home ?? NEW;
-          // files were picked on purpose, so all their calendars start ticked; of the Calendar
-          // app's many (holidays, birthdays...) only those that already have a home
           on[cal] = from === "file" || home !== undefined;
         }
         setMapping(guess);
@@ -205,7 +189,6 @@ export default function ImportCalendar(props: {
     if (found && mondayOf(next) !== monday) load(mondayOf(next));
   };
 
-  // the Calendar app and files are separate reads
   const pickSource = (next: Source) => {
     if ((next === "file") !== (source === "file")) {
       setFound(null);
@@ -224,7 +207,6 @@ export default function ImportCalendar(props: {
 
   const confirm = () => {
     if (!found || missing || count === 0) return;
-    // calendars put into a new category get one named after them, in the calendar's colour
     const target: Record<string, string> = {};
     const fresh: Categories = {};
     const taken = Object.entries(categories).map(([n, c]) => categoryColor(n, c.color));
@@ -291,7 +273,6 @@ export default function ImportCalendar(props: {
             </div>
 
             <Segmented label="Import from" options={SOURCES} value={source} onChange={pickSource} pill="import-source" />
-            {/* opened by real buttons: Safari won't open the picker from a <label> around an sr-only input */}
             <input
               ref={picker}
               type="file"

@@ -1,4 +1,3 @@
-// Moving life on and by the river: boats with wakes and reflections, people on the bridge.
 import { WATER_BOTTOM, WATER_TOP } from "./layout";
 import { css, hex, mix, type Palette, type RGB } from "./sky";
 import type { Span } from "./waterfront";
@@ -11,15 +10,15 @@ export interface Boat {
   t0: number;
   x0: number;
   dir: number;
-  y: number; // waterline, screen px
-  s: number; // scale
+  y: number;
+  s: number;
   speed: number;
   tour: boolean;
 }
 
 export function makeBoat(t: number, W: number, H: number, darkness: number): Boat {
   const tour = darkness > 0.55 || Math.random() < 0.4;
-  const f = between(0.3, 0.85); // across the river: nearer is lower and larger
+  const f = between(0.3, 0.85);
   const s = (0.85 + f * 0.75) * Math.min(1.3, Math.max(0.8, H / 900));
   const dir = Math.random() < 0.5 ? 1 : -1;
   return {
@@ -43,7 +42,6 @@ function hull(g: CanvasRenderingContext2D, L: number, h: number, bow: number): v
   g.fill();
 }
 
-/** Boat in local coords: waterline at y=0, bow toward +x. */
 function drawShape(g: CanvasRenderingContext2D, b: Boat, t: number, pal: Palette): void {
   const s = b.s;
   const d = pal.darkness;
@@ -64,7 +62,6 @@ function drawShape(g: CanvasRenderingContext2D, b: Boat, t: number, pal: Palette
     const n = Math.floor(cw / (6 * s));
     g.fillStyle = lit ? css(WARM, 0.95) : css(hex("#7d95ab"));
     for (let i = 0; i < n; i++) g.fillRect(cx0 + 2 * s + i * 6 * s, -h - 7 * s, 3.6 * s, 4 * s);
-    // flag at the stern
     g.fillStyle = css(mix(hex("#3b3f4a"), hex("#0e1016"), d));
     g.fillRect(-L / 2 + 2 * s, -h - 14 * s, 0.8 * s, 14 * s);
     g.fillStyle = css(mix(hex("#e0524a"), hex("#3a1c22"), d));
@@ -85,7 +82,6 @@ function drawShape(g: CanvasRenderingContext2D, b: Boat, t: number, pal: Palette
     hull(g, L, h, 2.5 * s);
     g.fillStyle = css(mix(hex("#e8dcc2"), hex("#2e2c33"), d), 0.8);
     g.fillRect(-L / 2 + 1, -h, L, 0.8 * s);
-    // rower
     g.fillStyle = css(mix(hex("#e0674e"), hex("#221a20"), d));
     g.fillRect(-1.6 * s, -h - 6 * s, 3.2 * s, 6 * s);
     g.fillStyle = ink;
@@ -102,7 +98,6 @@ function drawShape(g: CanvasRenderingContext2D, b: Boat, t: number, pal: Palette
   }
 }
 
-/** Draws boats (wake, reflection, hull) at parallax offset `px` and drops ones that left the screen. */
 export function drawBoats(ctx: CanvasRenderingContext2D, boats: Boat[], t: number, W: number, dpr: number, px: number, pal: Palette): void {
   const foam = mix(pal.low, WHITE, 0.55);
   const foamA = 0.55 - pal.darkness * 0.3;
@@ -116,7 +111,6 @@ export function drawBoats(ctx: CanvasRenderingContext2D, boats: Boat[], t: numbe
     const L = (b.tour ? 66 : 24) * b.s;
     ctx.setTransform(dpr * b.dir, 0, 0, dpr, x * dpr, b.y * dpr);
 
-    // wake: two lines fanning out behind the stern, plus a bow wave
     const len = L * (b.tour ? 1.6 : 1.1);
     const wg = ctx.createLinearGradient(-L / 2, 0, -L / 2 - len, 0);
     wg.addColorStop(0, css(foam, foamA));
@@ -135,7 +129,6 @@ export function drawBoats(ctx: CanvasRenderingContext2D, boats: Boat[], t: numbe
     ctx.lineTo(L / 2 + 3 * b.s, 1.2 * b.s);
     ctx.stroke();
 
-    // reflection, squashed like the river's
     ctx.setTransform(dpr * b.dir, 0, 0, -dpr * 0.6, x * dpr, (b.y + 1) * dpr);
     ctx.globalAlpha = 0.28;
     drawShape(ctx, b, t, pal);
@@ -162,7 +155,6 @@ export const makeWalker = (t: number): Walker => ({
   tone: Math.random(),
 });
 
-/** Tiny pedestrians strolling along the promenade and over the bridge. */
 export function drawWalkers(ctx: CanvasRenderingContext2D, walkers: Walker[], t: number, span: Span, px: number, pal: Palette): void {
   const reach = span.hw + 110;
   const ink = mix(hex("#2a303a"), hex("#05070b"), pal.darkness);

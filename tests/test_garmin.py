@@ -42,7 +42,7 @@ def test_garmin_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
     assert garmin_configured() is False
     (tmp_path / "garmin").mkdir(parents=True)
-    assert garmin_configured() is False          # empty dir = not configured
+    assert garmin_configured() is False
     (tmp_path / "garmin" / "oauth1_token.json").write_text("{}")
     assert garmin_configured() is True
 

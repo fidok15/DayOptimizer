@@ -25,8 +25,6 @@ def test_weekly_stats_empty():
 
 
 def test_sleep_trend_improving():
-    # history is newest-first (Storage.garmin_history ordering):
-    # recent 3 avg 8h vs previous 3 avg 6.5h -> improving
     hist = [_s("2026-07-12", 8), _s("2026-07-11", 8), _s("2026-07-10", 8),
             _s("2026-07-09", 6.5), _s("2026-07-08", 6.5), _s("2026-07-07", 6.5)]
     assert weekly_stats(hist)["sleep_trend"] == "improving"
@@ -34,13 +32,13 @@ def test_sleep_trend_improving():
 
 def test_suggestions_thresholds():
     from dayoptimizer.core.rules import load_rules
-    rules = load_rules("tests/fixtures/config.yaml")   # sleep_target_hours 8.0
+    rules = load_rules("tests/fixtures/config.yaml")
     st = {"days_with_data": 7, "avg_sleep_hours": 7.0, "avg_sleep_score": 55,
           "avg_body_battery": 35, "avg_stress": 62, "sleep_trend": "stable"}
     tips = suggest_adjustments(st, rules)
-    assert any("30 min earlier" in t for t in tips)      # sleep < target - 0.5h
-    assert any("recovery" in t for t in tips)            # avg BB < 40
-    assert any("wind-down" in t for t in tips)           # avg stress >= 60
+    assert any("30 min earlier" in t for t in tips)
+    assert any("recovery" in t for t in tips)
+    assert any("wind-down" in t for t in tips)
 
 
 def test_render_stats_contains_key_numbers():

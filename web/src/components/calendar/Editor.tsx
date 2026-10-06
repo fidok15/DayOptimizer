@@ -12,15 +12,12 @@ interface Props {
   categories: Categories;
   onUpdate: (patch: Partial<Omit<Block, "id">>) => void;
   onDelete: () => void;
-  /** Move the block to another day, same times. */
   onMoveDay: (d: Weekday) => void;
-  /** returnFocus: put focus back on the block (keyboard close). */
   onClose: (returnFocus: boolean) => void;
 }
 
 const W = 300;
 const M = 12;
-// A time input cannot show 24:00, so an end of 00:00 means midnight at the end of the day.
 const endToInput = (end: string) => (end === "24:00" ? "00:00" : end);
 const endFromInput = (v: string) => (v === "00:00" ? DAY_MIN : toMin(v));
 
@@ -39,7 +36,6 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
     ? "Enter a start and end time."
     : e <= s ? "End time must be after start time." : "";
 
-  // Anchor next to the block, flipping sides to stay inside the viewport.
   useLayoutEffect(() => {
     if (sheet) return;
     const anchor = document.querySelector(`[data-block-id="${CSS.escape(block.id)}"]`);
@@ -54,8 +50,6 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
     setPos({ left: clamp(left, M, Math.max(M, vw - W - M)), top: clamp(r.top, M, Math.max(M, vh - pop.offsetHeight - M)) });
   }, [block.id, day, sheet]);
 
-  // A resize could push the popover off-screen; closing is simpler and safe (edits are already applied).
-  // (Not for the mobile sheet: the on-screen keyboard fires resize while typing.)
   useEffect(() => {
     if (sheet) return;
     const onResize = () => onClose(false);
@@ -63,8 +57,6 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
     return () => window.removeEventListener("resize", onResize);
   }, [onClose, sheet]);
 
-  // a new (untitled) block opens ready to be named; an existing one opens with the
-  // dialog focused, so Backspace/Delete removes the block instead of title letters
   useEffect(() => {
     (block.title ? ref.current : titleRef.current)?.focus({ preventScroll: true });
   }, []);
@@ -85,7 +77,6 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
     };
     const onDown = (ev: PointerEvent) => {
       const t = ev.target as Element;
-      // The grid handles its own pointerdowns (closing, or starting a drag).
       if (ref.current?.contains(t) || t.closest("[data-cal-grid]")) return;
       onClose(false);
     };
@@ -104,7 +95,6 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
     const [rs, re] = normalizeRange(a, b);
     onUpdate({ start: fromMin(rs), end: fromMin(re) });
   };
-  // Show the snapped result once the user leaves a field.
   const resync = () => {
     if (error) return;
     setStart(block.start);

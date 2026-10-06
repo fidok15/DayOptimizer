@@ -19,8 +19,6 @@ def test_scripts_pass_bash_syntax_check():
 
 
 def test_no_personal_strings():
-    # built indirectly so this guard doesn't itself ship the banned string
-    # (the repo-wide de-personalization grep must stay empty)
     banned = "".join(["fi", "dok"])
     for p in (SETUP, WRAPPER, INSTALL):
         text = p.read_text().lower()

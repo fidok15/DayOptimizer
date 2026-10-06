@@ -1,10 +1,8 @@
 import { GROUND, MAX_TOP } from "./layout";
 import { clamp01, css, hex, mix, smooth, type Palette, type RGB } from "./sky";
 
-/** Buildings are laid out on a virtual strip this many units wide, then scaled to the viewport. */
 export const CITY_W = 1600;
 
-/** Tallest possible roof (incl. spires/antennas) above the ground, as a fraction of H. */
 export const MAX_H = GROUND - MAX_TOP;
 
 export function mulberry32(seed: number): () => number {
@@ -16,7 +14,6 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-/** Stateless 0..1 hash, so windows need no stored thresholds. */
 export const hash = (a: number, b: number): number => {
   let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
   h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
@@ -25,9 +22,9 @@ export const hash = (a: number, b: number): number => {
 };
 
 interface Tier {
-  inset: number; // units trimmed from each side
-  top: number; // roof height above the ground as a fraction of viewport height
-  shift?: number; // units moved sideways (twisting towers)
+  inset: number;
+  top: number;
+  shift?: number;
 }
 
 export interface Building {
@@ -37,23 +34,22 @@ export interface Building {
   antenna: number;
   spire: number;
   tank: boolean;
-  glass?: boolean; // floor-band windows, mullions, sky reflection
-  roof?: "slant" | "dome"; // shape on top of the last tier (tier.top is its peak)
-  slantLeft?: boolean; // high side of a slanted roof
-  crown?: boolean; // tier edges outlined with lights at night
-  hvac?: boolean; // rooftop machinery boxes
+  glass?: boolean;
+  roof?: "slant" | "dome";
+  slantLeft?: boolean;
+  crown?: boolean;
+  hvac?: boolean;
 }
 
 type Range = [number, number];
 const lerp = ([a, b]: Range, t: number): number => a + (b - a) * t;
 
 const SPEC: { w: Range; h: Range; gap: Range; env: number }[] = [
-  { w: [26, 62], h: [0.28, 0.52], gap: [-6, 0], env: 1 }, // far
-  { w: [34, 76], h: [0.2, 0.46], gap: [-4, 2], env: 0.85 }, // mid
-  { w: [44, 104], h: [0.1, 0.3], gap: [-2, 7], env: 0.35 }, // near
+  { w: [26, 62], h: [0.28, 0.52], gap: [-6, 0], env: 1 },
+  { w: [34, 76], h: [0.2, 0.46], gap: [-4, 2], env: 0.85 },
+  { w: [44, 104], h: [0.1, 0.3], gap: [-2, 7], env: 0.35 },
 ];
 
-// Height envelope: main downtown core center-left, a smaller cluster right.
 const bump = (x: number, c: number, s: number): number => Math.exp(-(((x - c) / s) ** 2));
 const skyline = (x: number): number => Math.max(bump(x, 540, 280), 0.75 * bump(x, 1240, 160));
 
@@ -66,15 +62,11 @@ const taper = (n: number, w: number, from: number, to: number, twist: number): T
 
 const LANDMARKS: Building[][] = [
   [
-    // twisted, tapering supertall: the tallest thing in town
     { x: 400, w: 74, tiers: taper(8, 74, 0.3, 0.6, 3), antenna: 0, spire: 0.035, tank: false, glass: true },
-    // slender glass tower with a raked roof, right cluster
     { x: 1235, w: 50, tiers: [{ inset: 0, top: 0.53 }], antenna: 0, spire: 0, tank: false, glass: true, roof: "slant", slantLeft: false },
   ],
   [
-    // slim glass mast tower
     { x: 250, w: 44, tiers: [{ inset: 0, top: 0.45 }, { inset: 7, top: 0.48 }], antenna: 0.08, spire: 0, tank: false, glass: true },
-    // art deco setback tower with a spire and a crown of lights
     {
       x: 575,
       w: 86,
@@ -90,9 +82,7 @@ const LANDMARKS: Building[][] = [
       tank: false,
       crown: true,
     },
-    // rounded-top glass tower
     { x: 700, w: 62, tiers: [{ inset: 0, top: 0.5 }], antenna: 0, spire: 0, tank: false, glass: true, roof: "dome" },
-    // stepped crown tower, right cluster
     {
       x: 1160,
       w: 70,
@@ -108,9 +98,7 @@ const LANDMARKS: Building[][] = [
     },
   ],
   [
-    // wide office block
     { x: 480, w: 150, tiers: [{ inset: 0, top: 0.2 }, { inset: 22, top: 0.23 }], antenna: 0, spire: 0, tank: false, hvac: true },
-    // angled-roof tower
     { x: 990, w: 60, tiers: [{ inset: 0, top: 0.3 }], antenna: 0, spire: 0, tank: false, glass: true, roof: "slant", slantLeft: true },
   ],
 ];
@@ -131,13 +119,12 @@ export function generateCity(): Building[][] {
       let w = lerp(s.w, rand());
       const e = skyline(x + w / 2);
       let t = clamp01((1 - s.env) * rand() ** 1.3 + s.env * (0.05 + 0.85 * e * (0.6 + 0.4 * rand()) + 0.25 * rand()));
-      if (rand() < 0.1) t *= 0.45; // occasional low building breaks up the wall
+      if (rand() < 0.1) t *= 0.45;
       let top = lerp(s.h, t);
       const b: Building = { x, w, tiers: [], antenna: 0, spire: 0, tank: false };
       const r = rand();
 
       if (depth === 2 && r < 0.38) {
-        // wide mid-rise office block
         w = b.w = 96 + rand() * 70;
         top = 0.1 + rand() * 0.11;
         b.tiers = [{ inset: 0, top }];
@@ -159,7 +146,6 @@ export function generateCity(): Building[][] {
         } else if (q < 0.2) b.roof = "dome";
         else if (t > 0.5 && q < 0.45) b.antenna = 0.02 + rand() * 0.04;
       } else if (t > 0.5 && w > 44 && r < 0.62) {
-        // art deco setbacks
         const n = 2 + Math.floor(rand() * 2);
         const base = top * (0.7 + rand() * 0.1);
         b.tiers = [{ inset: 0, top: base }];
@@ -202,18 +188,16 @@ const CROWN = hex("#fff1c8");
 const BLACK: RGB = [0, 0, 0];
 const WHITE: RGB = [255, 255, 255];
 
-/** Share of windows lit: near 0 at noon, about 45% deep at night. */
 export const litShare = (darkness: number): number => 0.015 + 0.435 * smooth(0.15, 0.95, darkness);
 
 export interface View {
-  width: number; // layer canvas width, css px
-  H: number; // viewport height; building heights are fractions of it
-  groundY: number; // y of the ground in the layer canvas
-  sx: number; // units to px
-  ox: number; // px offset of unit 0
+  width: number;
+  H: number;
+  groundY: number;
+  sx: number;
+  ox: number;
 }
 
-/** Paints one layer and returns the keys of its windows (used to pick windows to toggle). */
 export function renderLayer(
   ctx: CanvasRenderingContext2D,
   buildings: Building[],
@@ -227,7 +211,6 @@ export function renderLayer(
   const { H, groundY, sx, ox } = v;
   const facade = mix(mix(NIGHT[depth], DAY[depth], day), pal.haze, HAZE_MIX[depth]);
   const glassBase = mix(facade, mix(pal.mid, pal.top, 0.3), 0.3 * day);
-  // Sun side (left) picks up the horizon colour by day; right side stays in shade.
   const tone = (c: RGB, sun: number) => ({
     face: css(c),
     sun: css(mix(c, pal.low, sun * day + 0.03)),
@@ -246,7 +229,7 @@ export function renderLayer(
   const cell = WIN[depth];
   const pitchX = cell.w + cell.gx;
   const pitchY = cell.h + cell.gy;
-  const k = [0.6, 0.8, 1][depth]; // rooftop detail scale
+  const k = [0.6, 0.8, 1][depth];
   const keys: number[] = [];
 
   ctx.clearRect(0, 0, v.width, groundY);
@@ -271,7 +254,6 @@ export function renderLayer(
       const roofH =
         ti === last && b.roof ? Math.round(Math.min(tw * (b.roof === "dome" ? 0.5 : 0.55), H * 0.06)) : 0;
       const y = peak + roofH;
-      // Upper tiers only paint above the tier below, so its windows stay visible.
       const bot = ti === 0 ? groundY : Math.round(groundY - b.tiers[ti - 1].top * H);
       const h = bot - y;
 
@@ -309,7 +291,6 @@ export function renderLayer(
             } else if (depth > 0) {
               ctx.fillStyle = m.unlit;
             } else continue;
-            // Glass towers: continuous floor bands split only by mullions.
             if (b.glass) ctx.fillRect(wx0 + c * pitchX, wy, pitchX - 1, cell.h);
             else ctx.fillRect(wx0 + c * pitchX, wy, cell.w, cell.h);
             if (depth > 0) keys.push(key);
@@ -384,7 +365,6 @@ export function renderLayer(
     }
   });
 
-  // Atmospheric perspective: far layers sink into the haze toward the ground.
   const hazeAmt = [0.45, 0.18, 0][depth];
   if (hazeAmt) {
     const g = ctx.createLinearGradient(0, groundY - H * MAX_H, 0, groundY);

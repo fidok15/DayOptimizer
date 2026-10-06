@@ -38,7 +38,6 @@ interface Key {
   dark: number;
 }
 
-// Sorted by hour, first key at 0 so the lookup below always finds one.
 const KEYS: Key[] = [
   { h: 0, top: "#060a1a", mid: "#0c1330", low: "#18213f", haze: "#212a48", dark: 1 },
   { h: 5, top: "#0a0f27", mid: "#1b2046", low: "#3a355f", haze: "#3b3a5e", dark: 0.92 },

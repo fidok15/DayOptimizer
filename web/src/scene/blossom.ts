@@ -1,7 +1,3 @@
-// Cherry blossom branches framing the top corners, plus a painterly grain over
-// the whole scene. Branches are grown once from a fixed seed (same tree on every
-// visit) in unit space, then scaled to the viewport and redrawn into a sprite
-// whenever the palette changes.
 import { mulberry32 } from "./city";
 import { css, hex, mix, type Palette, type RGB } from "./sky";
 
@@ -10,7 +6,7 @@ interface Flower { x: number; y: number; r: number; tone: number }
 interface Branch { segs: Seg[]; flowers: Flower[] }
 export interface Petal { x: number; y: number; r: number; fall: number; sway: number; phase: number; spin: number }
 
-export const BLOSSOM_MARGIN = 40; // sprite overhang so parallax never shows its edge
+export const BLOSSOM_MARGIN = 40;
 
 function grow(seed: number, x: number, y: number, angle: number): Branch {
   const rand = mulberry32(seed);
@@ -33,7 +29,6 @@ function grow(seed: number, x: number, y: number, angle: number): Branch {
     if (depth <= 2) cluster(cx, cy, 2 + Math.floor(rand() * 3), 0.02);
     const kids = depth > 3 ? 2 : 2 + Math.floor(rand() * 2);
     for (let k = 0; k < kids; k++) {
-      // children fan out, with a slight droop toward the ground
       const da = (k - (kids - 1) / 2) * (0.45 + rand() * 0.35) + 0.08;
       branch(x1, y1, a + da, len * (0.62 + rand() * 0.16), w * 0.62, depth - 1);
     }
@@ -42,9 +37,8 @@ function grow(seed: number, x: number, y: number, angle: number): Branch {
   return out;
 }
 
-// Unit space: 1 = the branch reach, measured inward from the corner it hangs from.
 const LEFT = grow(0xb105, -0.06, 0.02, 0.2);
-const RIGHT = grow(0x5a4a, -0.06, -0.02, 0.3); // mirrored at draw time
+const RIGHT = grow(0x5a4a, -0.06, -0.02, 0.3);
 
 export function renderBlossoms(c: HTMLCanvasElement, W: number, H: number, dpr: number, pal: Palette): void {
   const w = W + BLOSSOM_MARGIN * 2;
@@ -53,15 +47,12 @@ export function renderBlossoms(c: HTMLCanvasElement, W: number, H: number, dpr: 
   const g = c.getContext("2d")!;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const d = pal.darkness;
-  // Moonlit at night: bark goes to ink, petals cool toward the sky colour.
   const bark = css(mix(hex("#4a3434"), hex("#0b0d18"), d));
   const moon = mix(pal.top, hex("#cdd6f4"), 0.4);
   const pinks: RGB[] = ["#f7c6d4", "#ec9db8", "#fde4ea"].map((p) => mix(hex(p), moon, d * 0.55));
-  // Narrow screens get a smaller reach so the branches stay in the corners.
   const S = Math.min(W * 0.3, H * 0.45, 380);
 
   const side = (b: Branch, flip: boolean) => {
-    // sprite x of screen 0 is BLOSSOM_MARGIN, of screen W is w - BLOSSOM_MARGIN
     const X = (u: number) => (flip ? w - BLOSSOM_MARGIN - u * S : BLOSSOM_MARGIN + u * S);
     const Y = (v: number) => v * S;
     g.strokeStyle = bark;
@@ -78,7 +69,6 @@ export function renderBlossoms(c: HTMLCanvasElement, W: number, H: number, dpr: 
       const p = pinks[Math.floor(f.tone * pinks.length)];
       const x = X(f.x);
       const y = Y(f.y);
-      // five round petals around a darker heart
       g.fillStyle = css(p, 0.85);
       g.beginPath();
       for (let k = 0; k < 5; k++) {
@@ -109,7 +99,6 @@ export function makePetals(n: number): Petal[] {
   }));
 }
 
-/** Petals drift down near the side they fell from and wrap around. Motion only. */
 export function drawPetals(ctx: CanvasRenderingContext2D, petals: Petal[], t: number, W: number, H: number, pal: Palette): void {
   ctx.fillStyle = css(mix(hex("#f4bccd"), pal.top, pal.darkness * 0.5), 0.85);
   for (const p of petals) {
@@ -126,7 +115,6 @@ export function drawPetals(ctx: CanvasRenderingContext2D, petals: Petal[], t: nu
   }
 }
 
-/** Static grain tile, laid over the scene so flat fills read as brushed paint. */
 export function grainPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
   const size = 160;
   const c = document.createElement("canvas");

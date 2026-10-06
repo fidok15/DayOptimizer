@@ -19,7 +19,6 @@ export const durationLabel = (min: number): string => {
   return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
 };
 
-/** Local hour as a float (21.5 = 21:30). `?hour=` in the URL overrides it for QA. */
 export const sceneHour = (): number => {
   const q = new URLSearchParams(window.location.search).get("hour");
   const forced = q === null ? NaN : Number(q);

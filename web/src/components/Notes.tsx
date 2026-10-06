@@ -2,8 +2,6 @@ import { NotePencil } from "@phosphor-icons/react";
 
 const MAX = 2000;
 
-/** Free-text habits and wishes that rules can't express. Goes into the routine
- *  brief the assistant reads, not into the deterministic planner. */
 export default function Notes({ notes, onChange }: { notes: string; onChange: (text: string) => void }) {
   const left = MAX - notes.length;
 

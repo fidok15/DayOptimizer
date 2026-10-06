@@ -42,9 +42,6 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     """Stateless-ish background cycle: sync a 3-day window around today,
     fetch Garmin, decide what to do, and act on it. Never touches fixed
     events without a human in the loop (confirm always denies)."""
-    # Lazy import: cli.py pulls in CalendarClient/GarminClient at module load
-    # time, which we don't want to pay for (or need) when unit-testing check.py
-    # in isolation or running it without those services configured.
     if plan_fn is None:
         from dayoptimizer.cli import _run_plan as plan_fn
     if fetch_garmin_fn is None:
@@ -56,24 +53,7 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     window_start = datetime.combine(today_date - timedelta(days=1), datetime.min.time()).astimezone()
     window_end = datetime.combine(today_date + timedelta(days=2), datetime.min.time()).astimezone()
     events = calendar.list_events(window_start, window_end)
-    # sync_events now reports events that are new OR rescheduled (start/end
-    # changed) since last sync — e.g. the user dragging a block around in
-    # Calendar. Why this can't self-trigger a replan loop: cli._run_plan
-    # calls storage.sync_events() BEFORE apply_changes() applies our own
-    # moves to the calendar. So the cache still holds the PRE-move
-    # start/end when we sync, and only catches up on the NEXT cycle's
-    # sync_events call — at which point the moved event's title is one of
-    # PLANNER_TITLES (e.g. "Deep work", "Own work") and _is_foreign below
-    # filters it out. A user's own edit (e.g. dragging "Standup") keeps its
-    # foreign title and correctly triggers event_replan for its day.
-    # Third case: the planner relocating a USER-titled movable event (e.g.
-    # a personal "Bike ride" under the Gym category) also leaves a stale
-    # cache entry with a foreign title — that fires ONE spurious
-    # event_replan on the next cycle, which is a no-op (plan_day is
-    # deterministic and the plan already reflects the move) and settles.
     changed_events = storage.sync_events(events, window_start, window_end)
-    # all-day markers (vacation, holiday) never anchor a plan, so they never trigger one,
-    # unless the title names a time ("Dentist 14:00"): the planner plans around those
     new_foreign_events = [e for e in changed_events if (not e.all_day or time_in_title(e.title))
                           and _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
 
@@ -92,12 +72,6 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     performed: list[str] = []
     for action in actions:
         if action == "event_replan":
-            # sync_events reports a given id as changed only once per actual
-            # change (new or rescheduled), so every distinct day among
-            # new_foreign_events must be replanned now — otherwise a day's
-            # events are silently dropped forever.
-            # The sync window starts yesterday (sleep crosses midnight), but
-            # a day that is over is never replanned.
             days = sorted(d for d in {e.start.date() for e in new_foreign_events} if d >= today_date)
             if not days:
                 continue

@@ -11,9 +11,7 @@ interface Props {
   week: Week;
   onDayChange: (d: Weekday) => void;
   onChange: (fn: (w: Week) => Week) => void;
-  /** Add a block on the shown day (keyboard alternative to drawing). */
   onAdd?: () => void;
-  /** one-typical-day routine: a label instead of day tabs, nothing to copy to */
   single?: boolean;
 }
 
@@ -55,7 +53,6 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd,
             try {
               localStorage.setItem(HINT_KEY, "1");
             } catch {
-              /* storage blocked: the hint just comes back next time */
             }
           }}
           className="grid size-8 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-ink/10 hover:text-ink active:scale-[0.96]"

@@ -2,9 +2,6 @@ import { useEffect, useState } from "react";
 import { sceneHour } from "../lib/time";
 import Skyline from "./Skyline";
 
-// Painted backgrounds in web/public/scene/, one per time of day, all with the
-// same composition so they crossfade cleanly. Sorted by hour; the list wraps
-// around midnight. If any image is missing, the procedural Skyline is used.
 const KEYS = [
   { h: 0, src: "night" },
   { h: 5.5, src: "night" },
@@ -18,7 +15,6 @@ const KEYS = [
 const NAMES = [...new Set(KEYS.map((k) => k.src))];
 const url = (name: string) => `/scene/${name}.webp`;
 
-/** The two images around `hour` and how far (0..1) we are from the first to the second. */
 export function blend(hour: number): { a: string; b: string; t: number } {
   let i = KEYS.length - 1;
   while (i > 0 && KEYS[i].h > hour) i--;
@@ -60,7 +56,6 @@ export default function Painted() {
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
       <img src={url(mix.a)} alt="" aria-hidden className={layer} />
       {mix.b !== mix.a && (
-        // keyed by image, so a new top layer starts at its own opacity instead of fading from the old one
         <img
           key={mix.b}
           src={url(mix.b)}

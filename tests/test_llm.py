@@ -38,7 +38,7 @@ def test_parse_request_sends_user_categories():
     kwargs = backend.client.messages.parse.call_args.kwargs
     assert kwargs["output_format"] is DayRequest
     assert "Choir, Work" in kwargs["messages"][0]["content"]
-    assert "temperature" not in kwargs  # rejected on Opus 4.7+
+    assert "temperature" not in kwargs
 
 def test_summarize_changes_uses_messages_create():
     backend = AnthropicBackend.__new__(AnthropicBackend)
@@ -97,5 +97,4 @@ def test_one_named_day_overrides_the_model():
     for text, day in [("spotkanie w środę o 14", "wednesday"), ("jutro o 10", "tomorrow"),
                       ("pojutrze basen", "day_after_tomorrow"), ("gym on Friday", "friday")]:
         assert pin_day(text, wrong).events[0].day == day
-    # two days named: the model keeps its choice
     assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"

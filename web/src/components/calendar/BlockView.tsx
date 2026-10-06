@@ -52,7 +52,6 @@ function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, o
         width: `calc(${100 / lane.lanes}% - 4px)`,
         background: `${color}d9`,
         color: ink,
-        // Darker left edge + hairline border give each block a crisp outline on the grid.
         boxShadow: "inset 3px 0 0 rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.14)",
         touchAction: "none",
       }}

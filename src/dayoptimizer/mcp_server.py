@@ -43,14 +43,10 @@ def _bundle_run(args: list[str]) -> str:
     if not os.access(bundle_exe, os.X_OK):
         return ("DayOptimizer's calendar bundle is not set up — run "
                 "scripts/setup-bundle.sh in the plugin directory first.")
-    # cli_args/cli.log are shared: one run at a time, across threads (web server)
-    # and processes (MCP server, CLI), or a run reads another run's args or log
     with open(home / "cli.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         (home / "cli_args").write_text("\n".join(args) + "\n")
         log = home / "cli.log"
-        # remove the previous log so a silent launch failure fails loudly below
-        # instead of replaying the old run's output as if it were current
         log.unlink(missing_ok=True)
         try:
             subprocess.run(

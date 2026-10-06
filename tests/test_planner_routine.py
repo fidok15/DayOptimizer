@@ -7,7 +7,7 @@ from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import RoutineBlock, _parse_typical_week, load_rules
 
 BASE = load_rules(Path(__file__).parent / "fixtures" / "config.yaml")
-DAY = date(2026, 7, 3)  # a Friday
+DAY = date(2026, 7, 3)
 D = datetime(2026, 7, 3, 0, 0).astimezone()
 EARLY = D.replace(hour=5)
 
@@ -57,7 +57,6 @@ def test_replan_is_idempotent_and_skips_the_past():
 
 
 def test_day_left_empty_in_the_routine_stays_empty():
-    # the user drew Friday only: an empty Saturday is their choice, no generic filler
     assert _created(plan_day(date(2026, 7, 4), [], None, RULES, now=D.replace(day=4, hour=5))) == []
 
 
@@ -75,11 +74,10 @@ def test_parse_typical_week_from_config():
 def test_routine_training_reacts_to_recovery():
     from dayoptimizer.core.models import Activity, GarminSummary
     from datetime import timedelta
-    # the watch recorded a run in the Friday 18:00 block on past Fridays: it's a legs session
     history = [Activity(id=str(d), type_key="running", name="Evening run",
                         start=D.replace(month=6, day=d, hour=18, minute=5),
                         end=D.replace(month=6, day=d, hour=19),
-                        aerobic_te=3.0) for d in (19, 26)]  # the two Fridays before
+                        aerobic_te=3.0) for d in (19, 26)]
     race = Activity(id="race", type_key="running", name="Half marathon",
                     start=D.replace(day=1, hour=15), end=D.replace(day=1, hour=17), aerobic_te=5.0)
     rules = dataclasses.replace(RULES, typical_week={4: [RoutineBlock(18 * 60, 19 * 60, "Gym", "Run")]})
@@ -90,7 +88,6 @@ def test_routine_training_reacts_to_recovery():
     note = next(c for c in changes if c.title == "Run")
     assert note.kind == "note" and "Half marathon" in note.reason and "walk" in note.reason
 
-    # same recovery, but the block is upper body: it stays, flagged as easy
     upper = [Activity(id="u", type_key="lap_swimming", name="Swim",
                       start=D.replace(month=6, day=26, hour=18, minute=5), end=D.replace(month=6, day=26, hour=19),
                       aerobic_te=3.0)]
@@ -98,13 +95,11 @@ def test_routine_training_reacts_to_recovery():
     kept = next(c for c in changes if c.title == "Run")
     assert kept.kind == "create" and "keep it easy" in kept.reason
 
-    # recovered: nothing added to the reason
     fresh = dataclasses.replace(poor, recovery_minutes=60)
     kept = next(c for c in plan_day(DAY, [], fresh, rules, now=EARLY, activities=history + [race])
                 if c.title == "Run")
     assert kept.kind == "create" and "—" not in kept.reason
 
-    # respect_recovery: false leaves training alone
     off = dataclasses.replace(rules, respect_recovery=False)
     kept = next(c for c in plan_day(DAY, [], poor, off, now=EARLY, activities=history + [race]) if c.title == "Run")
     assert kept.kind == "create" and "recovery" not in kept.reason
@@ -116,7 +111,6 @@ def _with_notes(raw, week):
 
 
 def test_note_rule_moves_a_block_out_of_a_forbidden_window():
-    # "no lunch before 14:00", but the routine has it at 12:00
     rules = _with_notes([{"type": "not_before", "category": "Food", "time": "14:00",
                           "source": "no lunch before 14"}],
                         {4: [RoutineBlock(12 * 60, 12 * 60 + 45, "Food", "Lunch")]})
@@ -132,11 +126,10 @@ def test_keep_free_window_is_as_binding_as_an_event():
                              RoutineBlock(19 * 60, 20 * 60, "Work", "Emails")]})
     changes = plan_day(DAY, [], None, rules, now=EARLY)
     gym = next(c for c in changes if c.title == "Workout")
-    # flexible: moved to the nearest time outside the window (17:00 is nearer than 21:00)
     assert gym.kind == "create" and f"{gym.new_start:%H:%M}" == "17:00"
     assert gym.new_end <= D.replace(hour=18) or gym.new_start >= D.replace(hour=21)
     emails = next(c for c in changes if c.title == "Emails")
-    assert emails.kind == "note" and "family time" in emails.reason  # fixed: only flagged
+    assert emails.kind == "note" and "family time" in emails.reason
 
 
 def test_min_gap_and_weekly_limit_skip_the_block():
@@ -146,7 +139,6 @@ def test_min_gap_and_weekly_limit_skip_the_block():
     note = next(c for c in plan_day(DAY, [], None, gap, now=EARLY,
                                     history={"Gym": [date(2026, 7, 2)]}) if c.title == "Workout")
     assert note.kind == "note" and "two days in a row" in note.reason
-    # two days off is enough: the block is placed
     assert next(c for c in plan_day(DAY, [], None, gap, now=EARLY,
                                     history={"Gym": [date(2026, 7, 1)]}) if c.title == "Workout").kind == "create"
     weekly = _with_notes([{"type": "max_per_week", "category": "Gym", "count": 2, "source": "gym 2x a week"}], week)
@@ -161,20 +153,15 @@ def test_a_title_repeated_in_one_day_is_placed_every_time():
     rules = dataclasses.replace(BASE, typical_week={4: split})
     assert _created(plan_day(DAY, [], None, rules, now=D)) == [
         ("Sleep", "00:00", "07:00"), ("Work", "09:00", "12:00"), ("Work", "13:00", "17:00"), ("Sleep", "23:00", "00:00")]
-    # replan with everything on the calendar: nothing new
     on_cal = [_ev("s1", "Sleep", 0, 7, "Sleep"), _ev("w1", "Work", 9, 12, "Work"),
               _ev("w2", "Work", 13, 17, "Work"), _ev("s2", "Sleep", 23, 23, "Sleep", m2=59)]
     assert _created(plan_day(DAY, on_cal, None, rules, now=D)) == []
-    # at 12:30 the morning block has passed: the afternoon one still isn't doubled
     assert _created(plan_day(DAY, on_cal[:2], None, rules, now=D.replace(hour=12, minute=30))) == [
         ("Work", "13:00", "17:00"), ("Sleep", "23:00", "00:00")]
     assert _created(plan_day(DAY, on_cal, None, rules, now=D.replace(hour=12, minute=30))) == []
 
 
 def test_a_block_pushed_by_a_new_event_still_obeys_the_notes():
-    # languages 20:00-21:00 already on the calendar, "not after 21:00"; a new
-    # meeting lands on it: the block moves to the nearest time that keeps the
-    # rule (earlier), never past 21:00
     rules = _with_notes([{"type": "not_after", "category": "Learn", "time": "21:00", "source": "no study after 21"}],
                         {})
     events = [_ev("l", "Learn", 20, 21, "English"), _ev("m", "Meeting", 20, 21, "Ania", m1=15)]
@@ -185,8 +172,8 @@ def test_a_block_pushed_by_a_new_event_still_obeys_the_notes():
 def test_a_planner_block_that_breaks_a_note_is_moved_back_inside_the_rules():
     rules = _with_notes([{"type": "not_after", "category": "Learn", "time": "21:00", "source": "no study after 21"}],
                         {4: [RoutineBlock(20 * 60, 21 * 60, "Learn", "English")]})
-    late = _ev("l", "Learn", 21, 22, "English", m1=30, m2=30)       # left there by an older plan
-    mine = _ev("u", "Learn", 22, 23, "Exam prep", m1=30)             # the user's own: left alone
+    late = _ev("l", "Learn", 21, 22, "English", m1=30, m2=30)
+    mine = _ev("u", "Learn", 22, 23, "Exam prep", m1=30)
     changes = plan_day(DAY, [late, mine], None, rules, now=EARLY)
     moves = [(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes if c.kind == "move"]
     assert moves == [("English", "20:00", "21:00")]
@@ -202,21 +189,19 @@ def test_a_displaced_flexible_block_never_takes_a_later_routine_block():
     meeting = _ev("m", "Important", 20, 21, title="Weekly meeting", m1=30, m2=30)
     created = _created(plan_day(DAY, [meeting], None, rules, now=D.replace(hour=13)))
     assert ("Sleep", "22:00", "00:00") in created
-    # dinner and shutdown, pushed off by the meeting, must not eat into sleep
     assert all(end <= "22:00" for title, _, end in created if title != "Sleep")
 
 
 def test_a_displaced_block_may_take_the_slot_of_a_lower_priority_one():
-    evening = [RoutineBlock(20 * 60 + 30, 21 * 60, "Food", "Dinner"),        # priority 6
-               RoutineBlock(21 * 60 + 15, 22 * 60, "Free time", "Shutdown"),  # priority 2
+    evening = [RoutineBlock(20 * 60 + 30, 21 * 60, "Food", "Dinner"),
+               RoutineBlock(21 * 60 + 15, 22 * 60, "Free time", "Shutdown"),
                RoutineBlock(22 * 60, 24 * 60, "Sleep", "")]
     rules = dataclasses.replace(BASE, typical_week={4: evening})
     long_day = _ev("m", "Important", 13, 21, title="Hackathon", m2=30)
     changes = plan_day(DAY, [long_day], None, rules, now=D.replace(hour=12))
     created = _created(changes)
-    assert ("Dinner", "21:30", "22:00") in created  # takes the lower-priority shutdown's time
-    assert ("Sleep", "22:00", "00:00") in created   # but never bedtime
-    # shutdown, pushed out in turn, finds its own free time before the hackathon
+    assert ("Dinner", "21:30", "22:00") in created
+    assert ("Sleep", "22:00", "00:00") in created
     assert [(s, e) for t, s, e in created if t == "Shutdown"] == [("12:15", "13:00")]
 
 
@@ -231,7 +216,7 @@ def test_one_typical_day_with_gym_daily_still_obeys_the_weekly_notes():
     monday = date(2026, 6, 29)
     history: dict = {}
     trained = []
-    for i in range(7):  # plan the week day by day, as `dayoptimizer plan --week` does
+    for i in range(7):
         day = monday + timedelta(days=i)
         start = datetime.combine(day, datetime.min.time()).astimezone()
         changes = plan_day(day, [], None, rules, now=start.replace(hour=5), history=history)
@@ -250,12 +235,10 @@ def test_commute_is_planned_before_the_routine_and_the_routine_keeps_off_it():
     created = _created(changes)
     assert ("Commute: Lecture - Maths", "06:45", "07:30") in created
     breakfast = next(c for c in created if c[0] == "Breakfast")
-    assert breakfast[2] <= "06:45" or breakfast[1] >= "07:30"  # moved off the commute
+    assert breakfast[2] <= "06:45" or breakfast[1] >= "07:30"
 
 
 def test_a_commute_already_in_the_calendar_is_never_moved_away_from_its_class():
-    # a planner-made "Deep work" block of a higher-priority fixed category sits on the
-    # commute: the deep work must yield, the commute stays tied to the class
     deep_cat = dataclasses.replace(BASE.categories["Learn"], movable=False, priority=9)
     rules = dataclasses.replace(BASE, categories={**BASE.categories, "Deep work": deep_cat},
                                 typical_week={0: [RoutineBlock(7 * 60, 9 * 60, "Deep work", "Deep work")]},
@@ -264,6 +247,6 @@ def test_a_commute_already_in_the_calendar_is_never_moved_away_from_its_class():
     commute = _ev("c", "Transport", 8, 9, title="Commute: Lecture - Maths", m1=30, m2=15)
     deep = _ev("d", "Deep work", 7, 8, title="Deep work", m1=45, m2=45)
     changes = plan_day(DAY, [lecture, commute, deep], None, rules, now=EARLY)
-    assert not [c for c in changes if c.event_id == "c"]  # the commute stays put
+    assert not [c for c in changes if c.event_id == "c"]
     assert [c.kind for c in changes if c.event_id == "d"] == ["move"]
     assert not [c for c in changes if c.kind == "create" and c.title == "Commute: Lecture - Maths"]

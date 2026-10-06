@@ -13,7 +13,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from dayoptimizer.core.models import Activity, GarminSummary
 
-# Garmin activity typeKey -> the body region it loads
 LEG_TYPES = ("running", "trail_run", "treadmill_running", "track_running", "virtual_run",
              "hiking", "walking", "cycling", "road_biking", "mountain_biking",
              "indoor_cycling", "virtual_ride", "elliptical", "stair_climbing",
@@ -72,7 +71,7 @@ def block_region(activities: list[Activity], weekday: int, start_min: int, end_m
         if a.start < now - timedelta(weeks=weeks) or a.start.weekday() != weekday:
             continue
         minute = a.start.hour * 60 + a.start.minute
-        if start_min - 90 <= minute <= end_min:  # started around the block's hours
+        if start_min - 90 <= minute <= end_min:
             region = region_of(a)
             counts[region] = counts.get(region, 0) + 1
     if not counts:
@@ -90,7 +89,7 @@ def learn_region(activities: list[Activity], typical_week: dict, weekday: int, b
                 block_region(activities, day, other.start, other.end, now=now))
                for day, blocks in typical_week.items() for other in blocks
                if other.category == block.category]
-    if not regions:  # a block outside the typical week: only its own hours can tell
+    if not regions:
         return block_region(activities, weekday, block.start, block.end, now=now)
     if 2 * sum(1 for _, r in regions if r) < len(regions):
         return None

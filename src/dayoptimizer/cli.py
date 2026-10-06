@@ -30,7 +30,6 @@ def _load_config():
 
 def _fetch_garmin(storage, day: str):
     from dayoptimizer.core.garmin import GarminClient, GarminNotConfigured, garmin_configured
-    # a day that hasn't come has no data yet: don't spend Garmin's rate limit on it
     if not garmin_configured() or day > date.today().isoformat():
         return storage.get_garmin(day)
     try:
@@ -73,12 +72,12 @@ def _fetch_activities(storage, now):
 
 def _confirm(change):
     if not sys.stdin.isatty():
-        return False  # nobody to ask (app bundle, background run): park it as pending
+        return False
     prompt = f"Fixed-event change: {change.category}: {change.title} — {change.reason}. Approve? [y/N] "
     try:
         answer = console.input(prompt, markup=False)
     except (EOFError, KeyboardInterrupt):
-        return False  # no interactive stdin (bundle/background run) — park as pending
+        return False
     return answer.strip().lower() in ("y", "yes")
 
 def _run_plan(day: date, calendar, storage, rules, confirm=None):
@@ -86,24 +85,11 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     day_start = datetime.combine(day, time(0)).astimezone()
     events_raw = calendar.list_events(day_start, day_start + timedelta(days=1))
     tomorrow_raw = calendar.list_events(day_start + timedelta(days=1), day_start + timedelta(days=2))
-    # all-day events are calendar MARKERS (vacations, holidays, birthdays),
-    # not time occupiers: they must never be busy time, a scheduling anchor,
-    # or counted toward the weekly gym quota — but the cache (sync_events)
-    # keeps seeing them unfiltered, since they are real calendar entries.
     events = [e for e in events_raw if not e.all_day]
-    # ...except an all-day event whose title names a time ("Dentist 14:00"): plan
-    # around that time and propose making it a timed event; never move it unasked
     title_timed = timed_all_day(events_raw, day)
     events += [t for t, _ in title_timed]
     tomorrow = [e for e in tomorrow_raw if not e.all_day]
     tomorrow_fixed = [e for e in tomorrow if not rules.is_movable(e.calendar)]
-    # a holiday makes the day a non-work day regardless of work_days: an
-    # all-day event's `end` from EventKit may be modeled either as next-day
-    # 00:00 (exclusive) or as day 23:59 (inclusive). Naively taking end.date()
-    # would off-by-one the exclusive shape (a single-day holiday on `day`
-    # with end == day+1 00:00 would spuriously cover day+1 too) — normalize
-    # an exact-midnight end back one day so both shapes yield the event's
-    # true last covered day.
     def _all_day_last_date(e):
         return (e.end - timedelta(microseconds=1)).date() if e.end.time() == time(0, 0) else e.end.date()
     is_holiday = any(
@@ -121,8 +107,6 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     week_events = [e for e in week_events_raw if not e.all_day]
     week_gym_count = sum(1 for e in week_events if e.calendar == "Gym" and e.start.date() != day)
     now = datetime.now().astimezone()
-    # what each category already did in the days before: needed for the user's
-    # own rules ("no training two days in a row", "gym at most 3x a week")
     past = calendar.list_events(day_start - timedelta(days=8), day_start)
     history: dict[str, list[date]] = {}
     for e in past:
@@ -132,8 +116,6 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
                        activities=_fetch_activities(storage, now), history=history,
                        tomorrow_first_fixed=min((e.start for e in tomorrow_fixed), default=None),
                        week_gym_count=week_gym_count,
-                       # tonight's sleep usually starts after midnight — the planner
-                       # needs tomorrow's events to see it already exists on replan
                        next_day_events=tomorrow,
                        is_workday=is_workday)
     stand_ins = {t.id for t, _ in title_timed}
@@ -194,10 +176,9 @@ def cmd_plan(args, rules, config):
         if days > 1:
             console.print(f"\n[bold]=== {day:%A %Y-%m-%d} ===[/bold]")
         changes, applied, errors = _run_plan(day, calendar, storage, rules)
-        console.print(format_changes(changes), markup=False)  # titles are untrusted text
+        console.print(format_changes(changes), markup=False)
         console.print(f"[green]Applied {len(applied)} changes.[/green]")
         if rules.has_routine and not rules.typical_week.get(day.weekday()):
-            # an empty routine day is left empty on purpose; say so, or "no changes" looks broken
             console.print(f"[yellow]Your routine has nothing on {day:%A}s, so nothing was planned. "
                           "Draw that day in `dayoptimizer setup`.[/yellow]")
         _print_errors(errors)
@@ -231,8 +212,6 @@ def cmd_apply(args, rules, config):
             continue
         storage.log_change(f"[applied #{pid}] {c.kind} {c.category}: {c.title}", c.reason)
         applied += 1
-    # failed rows are removed as well: they cannot succeed until the user
-    # creates the calendar, and a later replan regenerates the proposal
     storage.delete_pending([pid for pid, _ in pending])
     missing = sorted(set(ids) - {pid for pid, _ in pending})
     if missing:
@@ -249,7 +228,7 @@ def cmd_check(args, rules, config):
         console.print(NO_ACCESS_HELP, markup=False, style="red")
         storage = Storage(paths.db_path())
         key = f"no_access:{date.today().isoformat()}"
-        if not storage.get_state(key):  # the agent runs every few minutes: once a day is enough
+        if not storage.get_state(key):
             notify("DayOptimizer", "No calendar access, so your day isn't being adjusted. "
                                    "Allow DayOptimizer in System Settings, Privacy & Security, Calendars.")
             storage.set_state(key, "1")
@@ -369,7 +348,6 @@ def cmd_add(args, rules, config):
         changes, applied, errors = _run_plan(day, calendar, storage, rules)
         if len(days) > 1:
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
-        # the model answers in Markdown: render it rather than printing ** and #
         console.print(Markdown(summarize(changes)))
         _print_errors(errors)
     _print_pending(storage)
@@ -468,8 +446,6 @@ def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
     serve(port=args.port, open_browser=not args.no_open)
 
-# Commands that read or write the calendar. macOS only lets the DayOptimizer app
-# bundle do that (TCC), so from a terminal they are re-run inside the bundle.
 CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "calendars"}
 
 def _in_bundle() -> bool:
@@ -481,7 +457,6 @@ def _calendar_run(argv: list[str]) -> str:
     if not exe.exists():
         return ("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
                 "folder run:  scripts/install.sh")
-    # cli_args is one argument per line: keep each argument on one line
     return _bundle_run([a.replace("\n", " ") for a in argv]).rstrip()
 
 def _first_run() -> bool:
@@ -509,7 +484,7 @@ def _ids(value: str) -> str:
         raise argparse.ArgumentTypeError(f"'{value}' should be pending ids like 3,4")
     return value
 
-_TAKES_WORDS = {"ask", "add", "agent", "garmin"}  # subcommands with positional arguments
+_TAKES_WORDS = {"ask", "add", "agent", "garmin"}
 
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
@@ -519,7 +494,7 @@ def main(argv: list[str] | None = None):
     except Exception as exc:
         raw = list(sys.argv[1:] if argv is None else argv)
         if raw[:1] in (["setup"], ["web"]):
-            rules = config = None  # the planner shows the problem and lets the user fix it
+            rules = config = None
         else:
             console.print(f"Your settings in {paths.user_config_path()} can't be read "
                           f"({type(exc).__name__}: {' '.join(str(exc).split())}).\nFix or delete that file, "
@@ -542,7 +517,7 @@ def main(argv: list[str] | None = None):
     sub.add_parser("chat", help="keep telling DayOptimizer about your day, one line at a time")
     p_ask = sub.add_parser("ask", help='add what you say to the calendar and replan (same as dayoptimizer "...")')
     p_ask.add_argument("text")
-    p_add = sub.add_parser("add")  # internal: ask hands confirmed events to the app bundle
+    p_add = sub.add_parser("add")
     p_add.add_argument("events")
     sub.add_parser("check", help="stateless background cycle (sleep, new events, stress)")
     sub.add_parser("stats", help="14-day Garmin trends and suggestions")
@@ -575,9 +550,8 @@ def main(argv: list[str] | None = None):
             argv = ["plan"]
     elif not first.startswith("-") and (
             first not in sub.choices
-            # "plan is to hit the gym at 18": a command that takes no words, followed by words
             or (first not in _TAKES_WORDS and len(argv) > 1 and not argv[1].startswith("-"))):
-        argv = ["ask", " ".join(argv)]  # plain words: dayoptimizer "gym at 18"
+        argv = ["ask", " ".join(argv)]
     args = parser.parse_args(argv)
     if args.command in CALENDAR_COMMANDS and not _in_bundle() and sys.platform == "darwin":
         console.print("Working on your calendar...", style="dim")

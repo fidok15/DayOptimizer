@@ -39,7 +39,6 @@ const EMOJI = [
   "🎵", "🎨", "💻", "🧠", "📞", "🛒", "🧹", "❤️",
   "☕", "🏃", "🎓", "🌿", "✍️", "📖", "🎬", "⭐",
 ];
-/** First grapheme only, so "👍🏽" or "🏳️‍🌈" survive but pasted text doesn't. */
 const firstGrapheme = (s: string) => [...new Intl.Segmenter().segment(s.trim())][0]?.segment ?? "";
 
 function EmojiPicker({ value, onPick }: { value: string; onPick: (e: string) => void }) {
@@ -301,7 +300,6 @@ export default function Sidebar(props: {
   defaults: string[];
   onChange: (fn: (c: Categories) => Categories) => void;
   onRemove: (name: string) => void;
-  /** calendars in the Calendar app (name -> colour) that can be made a category */
   calendars: Record<string, string>;
 }) {
   const { categories, week, onChange, onRemove, calendars } = props;
@@ -367,7 +365,6 @@ export default function Sidebar(props: {
                     onClick={() =>
                       onChange((c) => {
                         const taken = Object.entries(c).map(([n, cat]) => categoryColor(n, cat.color));
-                        // fixed: someone else's timetable is not the planner's to move
                         return { ...c, [name.slice(0, 40)]: { movable: false, priority: 5, color: /^#[0-9a-f]{6}$/i.test(color) ? color : freshColor(name, taken) } };
                       })
                     }

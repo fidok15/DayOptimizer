@@ -94,7 +94,7 @@ def garmin_start_login(email: str, password: str, token_dir: str | Path | None =
     try:
         status, _ = api.login()
     except Exception as exc:
-        raise _login_error(exc) from None  # from None: keep credentials out of chained tracebacks
+        raise _login_error(exc) from None
     if status == "needs_mfa":
         return True, api
     _save_tokens(api, Path(token_dir) if token_dir else garmin_token_dir())
@@ -145,7 +145,7 @@ class GarminClient:
         def _try(fn, *args):
             try:
                 return fn(*args)
-            except Exception as exc:  # one missing metric shouldn't lose the rest
+            except Exception as exc:
                 print(f"Garmin {getattr(fn, '__name__', 'metric')} unavailable: {type(exc).__name__}",
                       file=sys.stderr)
                 return None

@@ -72,7 +72,7 @@ RULES = type("R", (), {"categories": {"Meeting": None, "Gym": None}})()
 def test_ask_shows_events_then_hands_them_to_the_bundle(routed, monkeypatch, capsys):
     import json
     monkeypatch.setattr(cli, "make_backend", lambda cfg: _LLM())
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)  # non-interactive: no prompt
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)
     cli.cmd_ask(type("A", (), {"text": "spotkanie o 14, potem siłownia"})(), RULES, {"llm": {}})
     assert "I'll add:" in capsys.readouterr().out
     (kind, argv), = routed
@@ -98,7 +98,7 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
 
         def create_event(self, category, title, start, end):
             if category == "Gym":
-                raise KeyError(category)  # no Gym calendar in Apple Calendar
+                raise KeyError(category)
             created.append((category, title, f"{start:%H:%M}", f"{end:%H:%M}"))
 
     cli.paths.ensure_private_dir()

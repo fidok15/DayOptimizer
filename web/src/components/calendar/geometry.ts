@@ -5,7 +5,6 @@ export const HOUR_PX = 52;
 export const PX_PER_MIN = HOUR_PX / 60;
 export const GRID_H = 24 * HOUR_PX;
 export const DRAFT_ID = "__draft__";
-/** Opaque grid surface: the scene must never show through the hour cells. */
 export const SURFACE = "var(--surface)";
 
 export const DAY_NAME: Record<Weekday, string> = {
@@ -17,7 +16,6 @@ export const todayKey = (): Weekday => WEEKDAYS[(new Date().getDay() + 6) % 7];
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Snap a range to the grid and keep it valid: 0 <= start < end <= 24:00, at least SNAP long. */
 export const normalizeRange = (start: number, end: number): [number, number] => {
   const s = clamp(Math.round(start / SNAP) * SNAP, 0, DAY_MIN - SNAP);
   const e = clamp(Math.round(end / SNAP) * SNAP, s + SNAP, DAY_MIN);
@@ -26,7 +24,6 @@ export const normalizeRange = (start: number, end: number): [number, number] => 
 
 export interface Lane { lane: number; lanes: number }
 
-/** Side-by-side lanes for overlapping blocks. Each cluster of overlaps shares one lane count. */
 export function layoutLanes(blocks: Block[]): Map<string, Lane> {
   const sorted = [...blocks].sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(b.end) - toMin(a.end));
   const out = new Map<string, Lane>();
@@ -52,9 +49,7 @@ export function layoutLanes(blocks: Block[]): Map<string, Lane> {
   return out;
 }
 
-// blocks sit on the grid surface: white paper (light) or night (dark)
 const BASES = { light: [255, 255, 255], dark: [15, 19, 34] };
-/** Relative luminance of `hex` drawn at `alpha` over the grid surface. */
 const luminance = (hex: string, alpha = 1, BASE = BASES.light) => {
   const n = parseInt(hex.slice(1, 7), 16);
   const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => {
@@ -64,7 +59,6 @@ const luminance = (hex: string, alpha = 1, BASE = BASES.light) => {
   return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
 };
 
-/** Near-white or night text, whichever contrasts more with the block colour (drawn at 85%). */
 export const readableText = (hex: string, theme: "light" | "dark" = "light"): string => {
   const l = luminance(hex, 0.85, BASES[theme]);
   const onWhite = 1.05 / (l + 0.05);

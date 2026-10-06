@@ -3,7 +3,6 @@ import { WEEKDAYS, type Block, type View, type Weekday } from "../../lib/types";
 import { DAY_MIN, SNAP, snap, toMin } from "../../lib/time";
 import { DRAFT_ID, PX_PER_MIN, clamp } from "./geometry";
 
-/** Live position of the block being dragged (or the draft being drawn), in minutes. */
 export interface Preview { id: string; from: Weekday; day: Weekday; start: number; end: number }
 
 type Gesture = { x0: number; y0: number; moved: boolean; day: Weekday } & (
@@ -15,7 +14,6 @@ type Gesture = { x0: number; y0: number; moved: boolean; day: Weekday } & (
 export interface DragOpts {
   colsRef: RefObject<HTMLDivElement | null>;
   view: View;
-  /** Called on pointerdown on empty space; return false to block creation. */
   canCreate: () => boolean;
   onDragStart: () => void;
   onCreate: (day: Weekday, start: number, end: number) => void;
@@ -25,7 +23,6 @@ export interface DragOpts {
 export interface DragHandlers {
   onColumnPointerDown: (e: RPointerEvent<HTMLElement>, day: Weekday) => void;
   onBlockPointerDown: (e: RPointerEvent<HTMLElement>, b: Block, day: Weekday) => void;
-  /** True once if the last pointer gesture was a drag, so the following click is ignored. */
   takeSuppressClick: () => boolean;
 }
 
@@ -92,7 +89,6 @@ export function useGridDrag(o: DragOpts): { preview: Preview | null; handlers: D
       g = null;
       set(null);
       if (!cur) return;
-      // The click that follows a block drag must not open the editor; clear it after that click.
       suppress = cur.moved && cur.kind !== "create";
       if (suppress) setTimeout(() => (suppress = false), 0);
       if (e.type === "pointercancel") return;

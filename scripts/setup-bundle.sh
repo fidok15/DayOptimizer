@@ -1,11 +1,6 @@
 #!/bin/bash
-# Build the TCC app bundle that macOS requires for calendar access.
-# EventKit silently denies processes whose host app lacks the calendar usage
-# keys (Terminal, VS Code, Claude Code) — so DayOptimizer runs its calendar
-# work through this minimal bundle instead. Run once after `uv sync`,
-# then: open -W -a ~/.dayoptimizer/DayOptimizer.app --args <script.py>
 set -euo pipefail
-umask 077  # everything under ~/.dayoptimizer is private from the moment it exists
+umask 077
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="$REPO/.venv"
@@ -18,13 +13,9 @@ MACOS="$APP/Contents/MacOS"
 mkdir -p "$MACOS"
 chmod 700 "$HOME_DIR"
 
-# Copy the venv python binary (a copy, not a symlink: TCC identifies the app
-# by its own executable) and recreate the venv layout around it.
 cp -f "$VENV/bin/python" "$MACOS/dayopt"
 cp -f "$VENV/pyvenv.cfg" "$MACOS/pyvenv.cfg"
 ln -sfn "$VENV/lib" "$MACOS/lib"
-# uv's standalone python loads libpython from @executable_path/../lib: point
-# the bundle's Contents/lib at the real interpreter's lib dir
 REAL_LIB="$(cd "$(dirname "$(readlink -f "$VENV/bin/python")")/../lib" && pwd)"
 ln -sfn "$REAL_LIB" "$APP/Contents/lib"
 

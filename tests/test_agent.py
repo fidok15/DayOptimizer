@@ -3,8 +3,6 @@ from unittest.mock import patch, MagicMock
 from dayoptimizer import agent
 
 
-# --- build_plist (pure) -----------------------------------------------------
-
 def test_build_plist_contains_label():
     xml = agent.build_plist("/a/dayopt", "/b/runner.py")
     assert "<string>com.dayoptimizer.check</string>" in xml
@@ -40,8 +38,6 @@ def test_build_plist_escapes_xml_specials():
     assert "<string>com.dayoptimizer.check</string>" in xml
 
 
-# --- build_runner (pure) -----------------------------------------------------
-
 def test_build_runner_contains_repo_path():
     src = agent.build_runner("/repo/DayOptimizer")
     assert "/repo/DayOptimizer" in src
@@ -58,8 +54,6 @@ def test_build_runner_calls_cli_main():
     src = agent.build_runner("/repo/DayOptimizer")
     assert "cli" in src and "main" in src
 
-
-# --- install / uninstall / status (I/O, subprocess mocked) ------------------
 
 def test_install_writes_runner_and_plist(tmp_path, monkeypatch):
     home_dir = tmp_path / ".dayoptimizer"
@@ -142,7 +136,7 @@ def test_uninstall_missing_plist_does_not_raise(tmp_path, monkeypatch):
 
     with patch("dayoptimizer.agent.subprocess.run") as run:
         run.return_value = MagicMock(returncode=0, stderr=b"")
-        agent.uninstall()  # should not raise
+        agent.uninstall()
 
 def test_status_running_when_returncode_zero(monkeypatch):
     monkeypatch.setattr(agent.os, "getuid", lambda: 503)

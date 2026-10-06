@@ -43,7 +43,7 @@ from dayoptimizer.onboarding import ConfigError, save_user_config
 STATIC_DIR = Path(__file__).parent / "web_static"
 DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config.default.yaml"
 MAX_BODY = 256 * 1024
-MAX_FILE_BODY = 20 * 1024 * 1024  # exported calendars with years of history are big
+MAX_FILE_BODY = 20 * 1024 * 1024
 
 
 def _code_stamp() -> str:
@@ -69,8 +69,6 @@ def read_state() -> dict:
         "categories": merged["categories"],
         "typical_week": _local().get("typical_week") or {},
         "notes": _local().get("notes") or "",
-        # "day": one typical day drawn once and used every day; "week": each day drawn
-        # on its own; None: not chosen yet (the page asks on first run)
         "routine_mode": _local().get("routine_mode"),
         "defaults": list(_defaults()["categories"]),
         "day_start": rules.get("day_start", "06:00"),
@@ -158,7 +156,6 @@ def all_day_in_week(events: list[Event], week_start: date) -> list[dict]:
     for e in events:
         if not e.all_day:
             continue
-        # EventKit ends an all-day event at the next midnight or at 23:59 of its last day
         last = (e.end - timedelta(microseconds=1)).date() if e.end.time() == time() else e.end.date()
         days = [WEEKDAYS[i] for i in range(7) if e.start.date() <= week_start + timedelta(days=i) <= max(last, e.start.date())]
         if days:
@@ -207,8 +204,6 @@ def _calendar_list(out: str) -> tuple[dict[str, str], list[str]]:
 
 
 def _is_google(account: str) -> bool:
-    # ponytail: macOS names a Google account "Google" or by its address; a
-    # Workspace account renamed to something else shows up under Apple
     a = account.lower()
     return "google" in a or a.endswith(("@gmail.com", "@googlemail.com"))
 
@@ -247,8 +242,6 @@ def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str, list
         all_day = not isinstance(s, datetime)
         if all_day:
             s, e = datetime.combine(s, time()), datetime.combine(e, time())
-        # an event's own CATEGORIES (Outlook and others set it) splits one file into
-        # several calendars to map; without it the event belongs to the file's calendar
         tags = [normalize_calendar(str(c))[:40] for c in ev.categories]
         events.append(Event(id=str(ev.get("UID", "")), calendar=next((t for t in tags if t), name),
                             title=str(ev.get("SUMMARY", "")),
@@ -271,7 +264,7 @@ def import_file(payload: object) -> dict:
         found, name, color, dates = ics_events(text, week_start)
         events += found
         starts += dates
-        timed = [e for e in found if not e.all_day]  # all-day markers never become blocks
+        timed = [e for e in found if not e.all_day]
         if not timed or any(e.calendar == name for e in timed):
             calendars[name] = calendars.get(name) or color
         for e in timed:
@@ -295,8 +288,6 @@ def save_routine_brief(payload: object) -> dict:
     state = write_state(payload)
     text = render_routine(state["categories"], state["typical_week"], state["notes"])
     calendars = create_category_calendars()
-    # notes may be about calendars the routine never drew ("School lectures can
-    # be skipped"): their names are as valid as the user's own categories
     known = list(dict.fromkeys([*state["categories"], *calendars.pop("all", [])]))
     return {"path": save_routine(text), "text": text, "calendars": calendars,
             "notes": compile_notes(state["notes"], known)}
@@ -308,17 +299,13 @@ def _clean_rule(row: dict, categories: list[str]) -> dict | None:
     they sometimes send as `time`. None means the rule is unusable."""
     row = {k: (v.replace("/no_think", "").strip() if isinstance(v, str) else v)
            for k, v in row.items() if v is not None}
-    # a no-op limit is the model padding the schema, not something the user said
     if (row.get("type"), row.get("time")) in (("not_before", "00:00"), ("not_after", "24:00")):
         return None
     if row.get("type") == "min_gap_days" and isinstance(row.get("days"), int) and row["days"] <= 1:
-        return None  # "1 day apart" allows every day
-    # a time rule must come from a sentence that actually names a time: without
-    # digits the model invented it (e.g. "it's family time" -> all Sunday free)
+        return None
     if row.get("type") in ("not_before", "not_after", "keep_free") and not any(
             c.isdigit() for c in str(row.get("source", ""))):
         return None
-    # a skippable prefix must be in the user's words: never one the model made up
     if row.get("type") == "skippable" and str(row.get("prefix") or "").strip().lower() not in str(
             row.get("source", "")).lower():
         return None
@@ -368,18 +355,12 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
             compiled = backend.compile_notes(part, categories)
         except Exception:
             return []
-        # the part we asked about is the source, whatever the model echoes back
         mine = [_clean_rule({**row, "source": part}, categories) for row in compiled.rows()]
         return [row for row in mine if row is not None and parse_rules([row])]
 
-    # (sentence, rules it gave); a part without a rule is usually the tail of one that
-    # has it ("Sunday 12-18 is family time, plan nothing"), so whole sentences are judged
     results: list[tuple[str, list[dict]]] = []
     for parts in split_notes(notes):
         results.append((", ".join(parts), [row for part in parts for row in ask(part)]))
-    # one rule told over two sentences ('Lectures start with "Lecture -". You may skip
-    # them.') gives nothing sentence by sentence: two neighbours that both failed
-    # are asked once more together
     i = 0
     while i < len(results) - 1:
         if not results[i][1] and not results[i + 1][1]:
@@ -391,8 +372,6 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
         i += 1
     rows = [row for _, found in results for row in found]
     unclear = [sentence for sentence, found in results if not found]
-    # keep only rules the planner really enforces, so the config can't hold a dud
-    # rules dropped by dedupe (a second limit of the same kind) are reported too
     kept = parse_rules(rows)
     accepted = [row for row in rows if any(r.type == row["type"] and r.source == row["source"] for r in kept)]
     dropped = [row["source"] for row in rows if row not in accepted]
@@ -447,9 +426,9 @@ def calendar_colors() -> dict:
     return {"colors": _colors(out), "calendars": _calendar_list(out)[0]}
 
 
-MFA_TTL = 300  # seconds a started Garmin login waits for its MFA code
+MFA_TTL = 300
 _mfa_lock = threading.Lock()
-_mfa_pending: dict = {}  # {"api": Garmin, "at": monotonic} for the one login in flight
+_mfa_pending: dict = {}
 
 
 def garmin_status() -> dict:
@@ -513,7 +492,6 @@ class Handler(SimpleHTTPRequestHandler):
     server_version = f"DayOptimizer/{_code_stamp()}"
 
     def _host_ok(self) -> bool:
-        # DNS-rebinding guard: only our own loopback names are accepted
         port = self.server.server_address[1]
         return self.headers.get("Host") in {f"127.0.0.1:{port}", f"localhost:{port}"}
 
@@ -544,12 +522,11 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/"):
             return self._json(404, {"error": "not found"})
         if not (STATIC_DIR / self.path.split("?")[0].lstrip("/")).is_file():
-            self.path = "/index.html"  # SPA fallback
+            self.path = "/index.html"
         return super().do_GET()
 
     def _write(self, action, max_body: int = MAX_BODY) -> None:
         origin = self.headers.get("Origin")
-        # CSRF guard: JSON-only (forces a CORS preflight we never answer) and same origin
         if (not self._host_ok()
                 or self.headers.get("Content-Type", "").split(";")[0] != "application/json"
                 or (origin is not None and origin != f"http://{self.headers.get('Host')}")):
@@ -566,7 +543,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(422, {"error": str(exc)})
         except ApiError as exc:
             return self._json(exc.status, {"error": str(exc), "code": exc.code})
-        except Exception as exc:  # never drop the connection: the page shows this message
+        except Exception as exc:
             return self._json(500, {"error": f"Something went wrong ({type(exc).__name__}). "
                                              "Try again; if it keeps failing, restart `dayoptimizer setup`."})
 
@@ -591,17 +568,14 @@ class Handler(SimpleHTTPRequestHandler):
         return self._write(action, MAX_FILE_BODY if action is import_file else MAX_BODY)
 
     def end_headers(self):
-        # the page itself must be revalidated, or after an update the browser keeps
-        # running the old app; assets/ are content-hashed and may stay cached
         if not self.path.startswith(("/api/", "/assets/")):
             self.send_header("Cache-Control", "no-cache")
-        # clickjacking guard: no other site may frame the planner and steer clicks
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         super().end_headers()
 
     def log_message(self, format, *args):
-        pass  # keep the terminal quiet
+        pass
 
 
 def make_server(port: int = 8765) -> ThreadingHTTPServer:

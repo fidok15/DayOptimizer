@@ -1,13 +1,8 @@
-// Everything at and below the far bank: promenade, footbridge, river and park.
-// Bank and park are pre-rendered sprites (redrawn on resize / palette change);
-// the river is composed every frame from the pixels already drawn above it.
 import { mulberry32 } from "./city";
 import { GROUND, WATER_BOTTOM, WATER_TOP } from "./layout";
 import { css, hex, mix, smooth, type Palette, type RGB } from "./sky";
 
-/** Horizontal headroom on each side of a sprite, larger than any parallax shift. */
 export const SPRITE_MARGIN = 40;
-/** Vertical squash of reflections, so the water shows more of the skyline. */
 const SQUASH = 0.6;
 const STRIPS = 56;
 
@@ -18,14 +13,13 @@ const TAU = Math.PI * 2;
 
 export interface Sprite {
   canvas: HTMLCanvasElement;
-  y0: number; // screen y of the sprite's top edge
+  y0: number;
   w: number;
   h: number;
 }
 
 export const newSprite = (): Sprite => ({ canvas: document.createElement("canvas"), y0: 0, w: 0, h: 0 });
 
-/** Sizes the sprite to cover screen rows y0..y1 and returns a context that draws in screen coordinates. */
 function prep(s: Sprite, W: number, y0: number, y1: number, dpr: number): CanvasRenderingContext2D {
   s.y0 = Math.floor(y0);
   s.w = W + SPRITE_MARGIN * 2;
@@ -41,9 +35,7 @@ export function drawSprite(ctx: CanvasRenderingContext2D, s: Sprite, dx: number,
   if (s.w) ctx.drawImage(s.canvas, dx - SPRITE_MARGIN, s.y0 + dy, s.w, s.h);
 }
 
-// Colour helpers --------------------------------------------------------------
 
-/** Day colour blended toward night by darkness, then tinted by the sky haze. */
 const tone = (pal: Palette, day: string, night: string, haze = 0): RGB =>
   mix(mix(hex(day), hex(night), pal.darkness), pal.haze, haze * (1 - pal.darkness * 0.5));
 
@@ -73,7 +65,6 @@ function foliage(pal: Palette, far: number, hue = 0): Leaves {
   };
 }
 
-// Drawing primitives ------------------------------------------------------------
 
 function circle(g: CanvasRenderingContext2D, x: number, y: number, r: number): void {
   g.beginPath();
@@ -91,7 +82,6 @@ function glow(g: CanvasRenderingContext2D, x: number, y: number, r: number, a: n
   g.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
-/** Bumpy round crown from three overlapping circles, with shade and a sunlit cap. */
 function roundTree(g: CanvasRenderingContext2D, x: number, base: number, r: number, trunk: RGB, c: Leaves): void {
   const cy = base - r * 1.55;
   g.fillStyle = css(trunk);
@@ -168,7 +158,6 @@ function lamp(g: CanvasRenderingContext2D, x: number, base: number, h: number, p
   glow(g, x, base - h - hw, h * 1.3, 0.5 * on);
 }
 
-// Far bank + footbridge ------------------------------------------------------------
 
 export interface Span {
   cx: number;
@@ -176,7 +165,6 @@ export interface Span {
   deckY: (x: number) => number;
 }
 
-/** Footbridge over a canal that joins the river, in front of the towers (screen coords). */
 export function bridgeSpan(W: number, H: number): Span {
   const cx = W * 0.655;
   const hw = Math.min(190, Math.max(100, W * 0.1));
@@ -201,7 +189,6 @@ export function renderBank(s: Sprite, W: number, H: number, dpr: number, pal: Pa
   const on = lampOn(pal);
   const ink = tone(pal, "#3d4650", "#0b0e16", 0.2);
 
-  // promenade surface and embankment wall
   const top = tone(pal, "#c9bfae", "#262a37", 0.3);
   const wall = tone(pal, "#9c907e", "#171a25", 0.3);
   g.fillStyle = css(top);
@@ -219,7 +206,6 @@ export function renderBank(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     g.fillRect(x + 8, mid, 1, T - 3 - mid);
   }
 
-  // trees and lamps along the promenade, leaving room for the bridge
   const leaves = [foliage(pal, 0.55, 0), foliage(pal, 0.55, 0.6)];
   const trunk = tone(pal, "#5b4a3d", "#0d0f15", 0.3);
   const clear = (x: number, pad: number) => Math.abs(x - span.cx) > span.hw + pad;
@@ -230,7 +216,6 @@ export function renderBank(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     else roundTree(g, x, G - 1, 7 + rand() * 5, trunk, leaves[n % 2]);
   }
 
-  // railing along the water
   g.strokeStyle = css(ink, 0.55);
   g.lineWidth = 1;
   g.beginPath();
@@ -245,7 +230,6 @@ function renderBridge(g: CanvasRenderingContext2D, sp: Span, G: number, T: numbe
   const { cx, hw, deckY } = sp;
   const water = waterColour(pal);
 
-  // canal seen through the arches
   const cg = g.createLinearGradient(0, G - 4, 0, T);
   cg.addColorStop(0, css(mix(water, BLACK, 0.45)));
   cg.addColorStop(1, css(mix(water, BLACK, 0.25)));
@@ -256,7 +240,6 @@ function renderBridge(g: CanvasRenderingContext2D, sp: Span, G: number, T: numbe
   const rim = mix(stone, WHITE, 0.25 * (1 - pal.darkness));
   const dark = mix(stone, BLACK, 0.3);
 
-  // body with three arch openings (even-odd fill cuts them out)
   const p = new Path2D();
   p.moveTo(cx - hw - 4, T);
   for (let i = 0; i <= 40; i++) {
@@ -289,7 +272,6 @@ function renderBridge(g: CanvasRenderingContext2D, sp: Span, G: number, T: numbe
   g.fillStyle = css(stone);
   g.fill(p, "evenodd");
 
-  // arch rims and keystones
   g.lineWidth = 2;
   for (const a of arches) {
     g.strokeStyle = css(rim);
@@ -300,7 +282,6 @@ function renderBridge(g: CanvasRenderingContext2D, sp: Span, G: number, T: numbe
     g.fillRect(a.x - 1.5, a.spring - a.ry - 3, 3, 3);
   }
 
-  // deck fascia, railing and lamps
   g.strokeStyle = css(dark);
   g.lineWidth = 2;
   g.beginPath();
@@ -328,7 +309,6 @@ function renderBridge(g: CanvasRenderingContext2D, sp: Span, G: number, T: numbe
   }
 }
 
-// Near-bank park --------------------------------------------------------------------
 
 export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Palette): void {
   const B = WATER_BOTTOM * H;
@@ -343,9 +323,8 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
   const pathY = (x: number) => B + depth * 0.5 + Math.sin(x * 0.0042 + 0.8) * depth * 0.14;
   const pathW = Math.max(9, depth * 0.15);
 
-  // lawn
   const warm = mix(pal.low, pal.haze, 0.5);
-  const dusk = 0.1 + 0.5 * Math.min(d, 1 - d); // sunrise / sunset light tints the lawn
+  const dusk = 0.1 + 0.5 * Math.min(d, 1 - d);
   const grassTop = mix(tone(pal, "#7aa35a", "#15232a"), warm, dusk);
   const grassBot = mix(tone(pal, "#4f7c3f", "#0b151a"), warm, dusk * 0.6);
   const lawn = new Path2D();
@@ -358,14 +337,12 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
   lg.addColorStop(1, css(grassBot));
   g.fillStyle = lg;
   g.fill(lawn);
-  // stone lip at the water line
   g.strokeStyle = css(tone(pal, "#b7ad98", "#20242f", 0.2));
   g.lineWidth = 2.5;
   g.beginPath();
   for (let x = L; x <= R; x += 6) (x === L ? g.moveTo(x, edge(x) + 1) : g.lineTo(x, edge(x) + 1));
   g.stroke();
 
-  // path
   const sand = tone(pal, "#d8c49e", "#2a2d35", 0.15);
   g.lineCap = "round";
   for (const [w, c] of [
@@ -379,7 +356,6 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     g.stroke();
   }
 
-  // flowers
   const petals = ["#f7a8c0", "#ffe07a", "#ffffff", "#c9a4f5", "#ff9d7a"].map(hex);
   for (let i = 0; i < Math.round(W / 14); i++) {
     const x = L + rand() * (R - L);
@@ -389,7 +365,6 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     circle(g, x, y, 1 + rand() * 0.8);
   }
 
-  // trees, bushes, benches and lamps, sorted back to front
   type Item = { y: number; draw: () => void };
   const items: Item[] = [];
   const k = Math.min(1.25, Math.max(0.8, H / 900));
@@ -408,7 +383,6 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     else if (roll < 0.68) items.push({ y, draw: () => poplar(g, x, y, 20 * size, 78 * size, trunk, c) });
     else if (roll < 0.82) items.push({ y, draw: () => conifer(g, x, y, 30 * size, 70 * size, trunk, c) });
     else continue;
-    // a bush or two at the foot of some trees
     if (rand() < 0.5) {
       const bx = x + (rand() - 0.5) * 50;
       const by = y + 4 + rand() * 6;
@@ -438,7 +412,7 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     items.push({
       y,
       draw: () => {
-        glow(g, x, y + 2, h * 1.1, 0.18 * on); // pool of light on the path
+        glow(g, x, y + 2, h * 1.1, 0.18 * on);
         lamp(g, x, y, h, post, on);
       },
     });
@@ -460,7 +434,6 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
     });
   }
 
-  // reeds along the water
   g.strokeStyle = css(mix(grassTop, BLACK, 0.2));
   g.lineWidth = 1;
   for (let x = L + rand() * 60; x < R; x += 90 + rand() * 160) {
@@ -477,7 +450,6 @@ export function renderPark(s: Sprite, W: number, H: number, dpr: number, pal: Pa
   items.sort((a, b) => a.y - b.y).forEach((it) => it.draw());
 }
 
-// River ---------------------------------------------------------------------------------
 
 export interface River {
   scratch: HTMLCanvasElement;
@@ -500,14 +472,8 @@ export function newRiver(): River {
   };
 }
 
-// Rows (as fractions of H above the ground) sampled for night light streaks.
 const STREAK_ROWS = [0.012, 0.03, 0.05, 0.075, 0.1, 0.13, 0.17];
 
-/**
- * Paints the river from WATER_TOP to WATER_BOTTOM. `src` is the main canvas, which must
- * already hold everything above the water (sky, towers, bank): its lower band is mirrored
- * into the water in shimmering horizontal strips, so reflections follow their parallax.
- */
 export function drawRiver(
   ctx: CanvasRenderingContext2D,
   src: HTMLCanvasElement,
@@ -523,7 +489,6 @@ export function drawRiver(
   const wh = (WATER_BOTTOM - WATER_TOP) * H;
   const sh = Math.ceil(wh / SQUASH);
   const sw = Math.ceil(W);
-  // The reflection is sampled at 1x: cheaper, and a little softness suits water.
   if (r.scratch.width !== sw || r.scratch.height !== sh) {
     r.scratch.width = r.streak.width = sw;
     r.scratch.height = r.streak.height = sh;
@@ -533,7 +498,6 @@ export function drawRiver(
   g.drawImage(src, 0, (top - sh) * dpr, W * dpr, sh * dpr, 0, 0, sw, sh);
   g.globalCompositeOperation = "source-over";
 
-  // Night: stretch thin rows of the skyline downward so lit windows become streaks.
   const night = smooth(0.45, 0.85, pal.darkness);
   if (night > 0) {
     const s = r.streak.getContext("2d")!;
@@ -574,14 +538,12 @@ export function drawRiver(
       ? Math.sin(t * 1.5 + i * 0.83) * 0.65 + Math.sin(t * 0.6 - i * 0.31 + 1.7) * 0.35
       : Math.sin(i * 0.83) * 0.5;
     const sy = sh - (y + hs - top) / SQUASH;
-    // Flip each strip around its own centre, so it mirrors the source rows.
     ctx.setTransform(dpr, 0, 0, -dpr, 0, (2 * y + hs) * dpr);
     ctx.drawImage(r.scratch, 0, Math.max(0, sy), sw, hs / SQUASH, wave * amp - 8, y - 0.4, W + 16, hs + 0.8);
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalAlpha = 1;
 
-  // fade into the water colour with distance from the far bank, plus a shadow under the wall
   const deep = mix(water, BLACK, 0.12);
   const fg = ctx.createLinearGradient(0, top, 0, top + wh);
   fg.addColorStop(0, css(deep, 0.12));
@@ -594,7 +556,6 @@ export function drawRiver(
   ctx.fillStyle = sg;
   ctx.fillRect(0, top, W, 7);
 
-  // ripple glints
   const glint = mix(pal.low, WHITE, 0.45);
   ctx.lineWidth = 1;
   for (const rp of r.ripples) {

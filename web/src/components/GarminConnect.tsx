@@ -39,7 +39,6 @@ export default function GarminConnect() {
   };
   const close = () => dialog.current?.close();
 
-  // Never keep the password around longer than one attempt.
   const onClosed = () => {
     setPassword("");
     setCode("");

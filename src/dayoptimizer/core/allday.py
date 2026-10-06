@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from dayoptimizer.core.models import Event, PlannedChange
 
-DEFAULT_MINUTES = 60  # length assumed when the title only gives a start
+DEFAULT_MINUTES = 60
 
 _H = r"([01]?\d|2[0-3])"
 _M = r"([0-5]\d)"
@@ -35,14 +35,11 @@ def time_in_title(title: str) -> TitleTime | None:
     if m := _RANGE.search(title):
         h1, m1, h2, m2 = m.groups()
         start, end = time(int(h1), int(m1 or 0)), time(int(h2), int(m2 or 0))
-        # a range that ends before it starts isn't a time range
         if end > start:
-            # "3-4" alone may be anything (a score, a count); with minutes it's a time
             return TitleTime(start, end, m1 is not None or m2 is not None or int(h1) >= 6)
     clocks = [(int(h), sep, int(mi)) for h, sep, mi in _CLOCK.findall(title)]
     if clocks:
         h, sep, mi = clocks[0]
-        # "12.10" reads as a date as easily as a time; "14.30" or "9:00" do not
         looks_like_date = sep == "." and 1 <= h <= 31 and 1 <= mi <= 12
         sure = not looks_like_date and len({(c[0], c[2]) for c in clocks}) == 1
         return TitleTime(time(h, mi), None, sure)
@@ -62,7 +59,6 @@ def time_in_title(title: str) -> TitleTime | None:
 
 
 def _last_day(e: Event) -> date:
-    # EventKit ends an all-day event at the next midnight or at 23:59 of its last day
     return (e.end - timedelta(microseconds=1)).date() if e.end.time() == time() else e.end.date()
 
 

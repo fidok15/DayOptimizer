@@ -2,8 +2,6 @@ import os
 import tempfile
 import pytest
 
-# test modules load config at import time, before any fixture runs: point the
-# app dir away from the user's real ~/.dayoptimizer during collection too
 os.environ["DAYOPTIMIZER_HOME"] = tempfile.mkdtemp(prefix="dayoptimizer-tests-")
 
 

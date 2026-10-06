@@ -23,7 +23,6 @@ export default function App() {
   const p = usePlanner();
   const [view, setView] = useState<View>(() => (window.innerWidth < 768 ? "day" : "week"));
   const [day, setDay] = useState<Weekday>(todayKey);
-  // one typical day: a single column, kept on Monday and copied to every day
   const oneDay = p.routineMode === "day";
   const shownView: View = oneDay ? "day" : view;
   const shownDay: Weekday = oneDay ? TEMPLATE_DAY : day;
@@ -32,7 +31,6 @@ export default function App() {
     if (mode === "day") {
       const same = (d: Weekday) => JSON.stringify(p.week[d].map(({ id: _, ...b }) => b));
       const differs = WEEKDAYS.some((d) => same(d) !== same(day));
-      // the shown day becomes the one used everywhere: say so before other days are replaced
       if (differs && !window.confirm(`Use ${DAY_NAME[day]} as your typical day? It replaces what the other days have.`)) return;
     }
     p.chooseRoutineMode(mode, day);

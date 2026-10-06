@@ -1,4 +1,3 @@
-// Headlines are about what DayOptimizer does with this page. No trailing periods: they read as slogans.
 const LINES = [
   "Show us your rhythm, we'll shape your week",
   "Your routine in, a smarter week out",
@@ -8,7 +7,6 @@ const LINES = [
   "Teach it your days, let it optimize the rest",
 ]
 
-/** One line per calendar day, stable for the whole day. */
 export const lineOfTheDay = (d = new Date()): string => {
   const day = Math.floor(d.getTime() / 86_400_000);
   return LINES[day % LINES.length];

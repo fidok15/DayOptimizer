@@ -20,7 +20,6 @@ def test_ensure_meals_creates_missing_dinner():
     assert changes[0].new_start.hour >= 18
 
 def test_ensure_meals_skips_past_windows_and_past_slots():
-    # 11:50: breakfast window (07-10) is already over -> skipped; lunch window (12:30-15:30) is still ahead -> created
     now = D.replace(hour=11, minute=50)
     changes = ensure_meals([], RULES, date(2026, 7, 3), now=now)
     names = [c.title for c in changes]
@@ -38,11 +37,9 @@ def test_adjust_gym_moves_on_low_battery():
     low = GarminSummary(date="2026-07-03", body_battery_start=25)
     changes = adjust_gym(events, low, RULES, D.replace(hour=6), D.replace(hour=23), now=D.replace(hour=7))
     assert len(changes) == 1 and changes[0].kind == "move"
-    assert changes[0].new_start > D.replace(hour=16)  # later = more recovery
+    assert changes[0].new_start > D.replace(hour=16)
 
 def test_adjust_gym_user_fixed_gym_requires_approval():
-    # user marked Gym as fixed: a user-created gym event may be proposed to
-    # move, but never applied without approval
     import dataclasses
     from dayoptimizer.core.rules import CategoryRule
     fixed_gym = dataclasses.replace(
@@ -54,8 +51,6 @@ def test_adjust_gym_user_fixed_gym_requires_approval():
     assert changes[0].requires_approval
 
 def test_adjust_gym_planner_created_workout_moves_freely_even_when_gym_fixed():
-    # "Workout" is a planner-created block — the planner's own to reschedule,
-    # even inside a category the user marked fixed
     import dataclasses
     from dayoptimizer.core.rules import CategoryRule
     fixed_gym = dataclasses.replace(
@@ -87,7 +82,6 @@ def test_one_trip_there_before_the_first_class_and_one_back_after_the_last(monke
     changes = insert_transport(classes + [_ev("d", "Work", 19, 20)], RULES)
     trips = [(f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}", c.title) for c in changes]
     assert trips == [("07:15", "08:00", "Commute: Lecture - Maths"), ("18:00", "18:45", "Commute: back from Lab - Physics")]
-    # a replan finds the trips already there and adds nothing
     made = [_ev(f"t{i}", "Transport", 0, 0) for i in range(2)]
     for ev, c in zip(made, changes):
         ev.start, ev.end = c.new_start, c.new_end
@@ -99,9 +93,6 @@ def test_check_free_time_warns_on_packed_day():
     assert len(changes) == 1 and changes[0].kind == "note"
 
 def test_plan_day_does_not_recreate_sleep_existing_on_next_day():
-    # regression: a planner-created Sleep block often starts at/after midnight,
-    # i.e. among the NEXT day's events — invisible to the planned day's event
-    # window, so every replan re-created it. next_day_events closes that hole.
     from datetime import timedelta
     next_sleep = Event(id="s", calendar="Sleep", title="Sleep",
                        start=D + timedelta(days=1),
@@ -112,8 +103,6 @@ def test_plan_day_does_not_recreate_sleep_existing_on_next_day():
     assert not any(c.kind == "create" and c.category == "Sleep" for c in changes)
 
 def test_plan_day_previous_night_sleep_does_not_suppress_tonight():
-    # last night's sleep (ending this morning) overlaps today's event window
-    # but is a DIFFERENT night — tonight's sleep must still be created
     from datetime import timedelta
     last_night = Event(id="s0", calendar="Sleep", title="Sleep",
                        start=D.replace(hour=23, minute=30) - timedelta(days=1),
@@ -124,8 +113,6 @@ def test_plan_day_previous_night_sleep_does_not_suppress_tonight():
     assert any(c.kind == "create" and c.category == "Sleep" for c in changes)
 
 def test_ensure_meals_counts_shifted_meal_by_title():
-    # regression: a Breakfast an earlier replan shifted to 16:00 sits outside
-    # its window — the overlap check missed it and every replan created another
     events = [_ev("b", "Food", 16, 16, m2=30, title="Breakfast")]
     changes = ensure_meals(events, RULES, date(2026, 7, 3), now=D.replace(hour=6),
                            day_start=D.replace(hour=6), day_end=D.replace(hour=23))
@@ -136,15 +123,12 @@ def test_plan_day_returns_combined_changes():
     garmin = GarminSummary(date="2026-07-03", sleep_seconds=5 * 3600, sleep_score=45)
     changes = plan_day(date(2026, 7, 3), events, garmin, RULES, now=D.replace(hour=7))
     kinds = {c.kind for c in changes}
-    assert "move" in kinds          # gym conflict
-    assert any(c.category == "Sleep" for c in changes)  # sleep suggestion
-    assert any(c.category == "Food" for c in changes)   # missing meals
+    assert "move" in kinds
+    assert any(c.category == "Sleep" for c in changes)
+    assert any(c.category == "Food" for c in changes)
 
 
 def test_plan_day_projects_gym_move_before_meals():
-    # Gym conflicts with fixed Work; resolve_conflicts moves Gym right into
-    # the lunch window. ensure_meals must see the moved Gym (not the
-    # original position) so it doesn't schedule lunch on top of it.
     events = [_ev("w", "Work", 9, 12, m2=30), _ev("g", "Gym", 12, 13)]
     changes = plan_day(date(2026, 7, 3), events, None, RULES, now=D.replace(hour=7))
 
@@ -166,9 +150,6 @@ def test_plan_day_projects_gym_move_before_meals():
 
 
 def test_plan_day_dedupes_multiple_moves_same_event():
-    # Gym conflicts with fixed Work (resolve_conflicts moves it) AND body
-    # battery is low (adjust_gym also wants to move it later). Only one
-    # move change for the gym event id should survive.
     events = [_ev("w", "Work", 9, 12), _ev("g", "Gym", 11, 12)]
     low = GarminSummary(date="2026-07-03", body_battery_start=25)
     changes = plan_day(date(2026, 7, 3), events, low, RULES, now=D.replace(hour=7))
@@ -177,9 +158,6 @@ def test_plan_day_dedupes_multiple_moves_same_event():
 
 
 def test_plan_day_respects_configured_day_end():
-    # day_end pulled in from rules (not hardcoded 23:00) — nothing the planner
-    # places should end after it, except the Sleep window, which is anchored
-    # to the wake-up time rather than to day_end.
     import dataclasses
     from datetime import time
     short_day = dataclasses.replace(RULES, day_end=time(21, 30))
@@ -205,10 +183,6 @@ def test_plan_day_is_workday_default_true_unchanged():
 
 
 def test_plan_day_respects_configured_day_start():
-    # symmetric to the day_end test: nothing starts before day_start. No Sleep
-    # exemption needed here — suggest_sleep anchors bedtime to the wake time
-    # (next day's day_start minus the sleep target), which lands in the
-    # evening, well after a 09:00 day_start on the planned day.
     import dataclasses
     from datetime import time
     late_day = dataclasses.replace(RULES, day_start=time(9, 0))
@@ -223,10 +197,9 @@ def test_wind_down_sits_right_before_sleep_or_not_at_all():
     for evening_busy in (False, True):
         events = [_ev("w", "Work", 9, 12)] + ([_ev("m", "Meeting", 18, 21)] if evening_busy else [])
         changes = plan_day(date(2026, 7, 3), events, None, RULES, now=D.replace(hour=7),
-                           week_gym_count=RULES.gym_per_week)  # no workout that evening
+                           week_gym_count=RULES.gym_per_week)
         sleep = next(c for c in changes if c.title == "Sleep")
         wind_down = [c for c in changes if c.title == "Wind-down"]
-        # a packed evening leaves no room right before bed: then none, never one at 15:00
         assert len(wind_down) == (0 if evening_busy else 1)
         for wd in wind_down:
             assert sleep.new_start - wd.new_end <= timedelta(minutes=RULES.buffer_minutes)

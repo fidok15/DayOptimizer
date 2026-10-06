@@ -100,7 +100,7 @@ def test_events_to_week_splits_overnight_and_skips_all_day():
         _ev("2026-09-21T09:00", "2026-09-21T17:30", title="Office"),
         _ev("2026-09-22T23:00", "2026-09-23T07:00", cal="Sleep"),
         _ev("2026-09-24T00:00", "2026-09-25T00:00", cal="Holidays", all_day=True),
-        _ev("2026-09-27T23:30", "2026-09-28T08:00", cal="Sleep"),  # tail is next week
+        _ev("2026-09-27T23:30", "2026-09-28T08:00", cal="Sleep"),
     ], date(2026, 9, 21))
     assert week["mon"] == [{"start": "09:00", "end": "17:30", "calendar": "Work", "title": "Office"}]
     assert [(b["start"], b["end"]) for b in week["tue"]] == [("23:00", "24:00")]
@@ -153,7 +153,7 @@ def test_serve_reuses_running_planner(server, monkeypatch, capsys):
     from dayoptimizer import web
     opened = []
     monkeypatch.setattr(web.webbrowser, "open", opened.append)
-    web.serve(port=server)  # port already taken by our own planner
+    web.serve(port=server)
     assert opened == [f"http://127.0.0.1:{server}/"] and "already running" in capsys.readouterr().out
 
 
@@ -178,7 +178,7 @@ def test_http_save_routine_writes_state_and_brief(server):
 def test_category_calendars_report(monkeypatch):
     import os
     from dayoptimizer import mcp_server, web
-    assert "install.sh" in web.create_category_calendars()["error"]  # no bundle yet
+    assert "install.sh" in web.create_category_calendars()["error"]
     exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     exe.parent.mkdir(parents=True)
     exe.write_text("")
@@ -205,7 +205,6 @@ def test_notes_roundtrip_and_validation(server):
     assert yaml.safe_load(paths.user_config_path().read_text())["notes"] == "no food before 11"
     assert _request(server, "PUT", {**payload, "notes": "x" * 2001}, hdr)[0] == 422
     assert _request(server, "PUT", {**payload, "notes": 5}, hdr)[0] == 422
-    # clearing the notes drops the key instead of storing an empty string
     assert _request(server, "PUT", {**payload, "notes": "   "}, hdr)[1]["notes"] == ""
     assert "notes" not in yaml.safe_load(paths.user_config_path().read_text())
 
@@ -224,33 +223,28 @@ def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monke
                 return llm.CompiledNotes(not_before=[llm.TimeRule(category="Food", time="14:00", source="echoed wrong")])
             if "gym" in sentence:
                 return llm.CompiledNotes(max_per_week=[llm.WeekRule(category="Gym", count=3, source="x")])
-            if "invented" in sentence:  # a category the user doesn't have
+            if "invented" in sentence:
                 return llm.CompiledNotes(not_before=[llm.TimeRule(category="Nope", time="09:00", source="x")])
-            if "broken" in sentence:    # unparseable time
+            if "broken" in sentence:
                 return llm.CompiledNotes(not_after=[llm.TimeRule(time="oops", source="x")])
             if "family" in sentence:
                 return llm.CompiledNotes(keep_free=[llm.FreeRule(start="12:00", end="18:00", weekday="sun", source="x")])
-            return llm.CompiledNotes()  # a mood: no rule
+            return llm.CompiledNotes()
 
     monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
     out = web.compile_notes("no lunch before 14. gym 3x a week\ninvented one; broken one. I want to feel less rushed. "
                             "Sunday 12:00-18:00 is family time, plan nothing", ["Food", "Gym"])
     assert asked == ["no lunch before 14", "gym 3x a week", "invented one", "broken one",
                      "I want to feel less rushed", "Sunday 12:00-18:00 is family time", "plan nothing",
-                     # neighbours that both failed are tried once more together
                      "invented one. broken one", "broken one. I want to feel less rushed"]
-    # "plan nothing" is the tail of a sentence that made a rule: not reported as unclear
     assert out["rules"] == ["Food: not before 14:00", "Gym: at most 3 time(s) a week",
                             "Sun 12:00-18:00: kept free"]
     assert out["not_compiled"] == ["invented one", "broken one", "I want to feel less rushed"]
     stored = yaml.safe_load(paths.user_config_path().read_text())["note_rules"]
-    # the source is the user's own sentence, not whatever the model echoed
     assert [(r["type"], r["source"]) for r in stored] == [("not_before", "no lunch before 14"),
                                                           ("max_per_week", "gym 3x a week"),
                                                           ("keep_free", "Sunday 12:00-18:00 is family time")]
-    # the rules reach the planner through the normal config path
     assert [r.type for r in load_rules(DEFAULT_CONFIG).note_rules] == ["not_before", "max_per_week", "keep_free"]
-    # clearing the notes clears the rules
     assert web.compile_notes("", ["Food"]) == {"rules": [], "not_compiled": [], "error": None}
     assert "note_rules" not in yaml.safe_load(paths.user_config_path().read_text())
 
@@ -266,12 +260,10 @@ def test_compile_notes_without_llm_keeps_the_notes(monkeypatch):
 
 def test_time_rules_need_a_time_in_the_sentence():
     from dayoptimizer import web
-    # a model turning "it's family time" into a whole free Sunday is invention
     assert web._clean_rule({"type": "keep_free", "source": "it's family time",
                             "start": "00:00", "end": "23:59"}, []) is None
     assert web._clean_rule({"type": "keep_free", "source": "Sundays 18:00-22:00 are family time",
                             "start": "18:00", "end": "22:00"}, []) is not None
-    # counts may be spelled out ("two days in a row"), so they aren't checked for digits
     assert web._clean_rule({"type": "min_gap_days", "source": "never two days in a row",
                             "category": "Gym", "days": 2}, ["Gym"]) is not None
 
@@ -279,10 +271,8 @@ def test_time_rules_need_a_time_in_the_sentence():
 def test_gap_rules_count_rest_days():
     from dayoptimizer import web
     from dayoptimizer.llm import backend as llm
-    # "one day of rest between" = rest_days 1 = two days apart (Mon -> Wed)
     rows = llm.CompiledNotes(min_gap_days=[llm.GapRule(category="Gym", rest_days=1, source="x")]).rows()
     assert rows[0]["days"] == 2 and "rest_days" not in rows[0]
-    # one day apart allows every day: a no-op the model padded in
     assert web._clean_rule({"type": "min_gap_days", "source": "x", "category": "Gym", "days": 1}, ["Gym"]) is None
 
 
@@ -336,7 +326,7 @@ def test_import_file_expands_repeats_and_reads_calendar_name(server):
     assert out["calendars"] == {"Uni": "#1badf8"}
     assert out["span"] == ["2026-09-01", "2026-09-24"]
     assert out["typical_week"]["tue"] == [{"start": "10:00", "end": "11:30", "calendar": "Uni", "title": "Lecture"}]
-    assert sum(map(len, out["typical_week"].values())) == 1  # all-day holiday and cancelled one skipped
+    assert sum(map(len, out["typical_week"].values())) == 1
     assert out["all_day"] == [{"calendar": "Uni", "title": "Holiday", "days": ["thu"]}]
     hdr = {"Content-Type": "application/json"}
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": ["nope"]}, hdr, "/api/import-file")[0] == 422
@@ -348,13 +338,13 @@ def test_import_file_splits_by_event_categories():
     ics = ICS.replace("SUMMARY:Lecture", "SUMMARY:Lecture\nCATEGORIES:Study,Uni")
     out = web.import_file({"week_start": "2026-09-21", "files": [ics]})
     assert out["typical_week"]["tue"][0]["calendar"] == "Study"
-    assert out["calendars"] == {"Study": ""}  # the file's own calendar has no events left
+    assert out["calendars"] == {"Study": ""}
 
 
 def test_routine_mode_roundtrip_and_validation():
     assert read_state()["routine_mode"] is None
     assert write_state(_state_payload(routine_mode="day"))["routine_mode"] == "day"
-    assert write_state(_state_payload())["routine_mode"] == "day"  # omitted: kept
+    assert write_state(_state_payload())["routine_mode"] == "day"
     with pytest.raises(ConfigError):
         write_state(_state_payload(routine_mode="month"))
 

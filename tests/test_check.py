@@ -16,7 +16,6 @@ def _foreign_event():
     return Event(id="e1", calendar="Meeting", title="Lunch with client",
                  start=NOW_AFTERNOON, end=NOW_AFTERNOON)
 
-# --- decide() matrix -------------------------------------------------------
 
 def test_morning_replan_when_sleep_data_and_no_state():
     garmin = _garmin(sleep_seconds=7 * 3600)
@@ -55,7 +54,6 @@ def test_morning_replan_without_garmin_after_fallback_time():
     assert check.decide(NOW_MORNING, TODAY, None, [], {}, fallback) == []
     later = NOW_MORNING.replace(hour=7, minute=30)
     assert check.decide(later, TODAY, None, [], {}, fallback) == ["morning_replan"]
-    # watch worn but not synced yet: same fallback
     assert check.decide(later, TODAY, _garmin(), [], {}, fallback) == ["morning_replan"]
     state = {f"morning:{TODAY}": "2026-07-03T07:30:00"}
     assert check.decide(later, TODAY, None, [], state, fallback) == []
@@ -65,7 +63,6 @@ def test_morning_and_event_replan_combine():
     result = check.decide(NOW_MORNING, TODAY, garmin, [_foreign_event()], {})
     assert result == ["morning_replan", "event_replan"]
 
-# --- run_check() orchestration ---------------------------------------------
 
 def _rules():
     r = MagicMock()
@@ -94,7 +91,7 @@ def test_run_check_event_replan_calls_plan_notify_but_not_state(monkeypatch):
     assert performed == ["event_replan"]
     plan_fn.assert_called_once()
     args, kwargs = plan_fn.call_args
-    assert kwargs["confirm"](MagicMock()) is False  # background never touches fixed events
+    assert kwargs["confirm"](MagicMock()) is False
     storage.set_state.assert_not_called()
     notify_mock.assert_called_once()
     notify_args, _ = notify_mock.call_args
@@ -103,8 +100,6 @@ def test_run_check_event_replan_calls_plan_notify_but_not_state(monkeypatch):
     assert "conflicts with a new event" in notify_args[1]
 
 def test_run_check_notifies_skipped_count_when_apply_errors(monkeypatch):
-    # write failures (e.g. a missing calendar) must surface in the background
-    # notification, not just vanish into recent_changes unnoticed
     calendar = MagicMock()
     storage = MagicMock()
     storage.sync_events.return_value = []
@@ -174,7 +169,7 @@ def test_run_check_event_replan_replans_every_distinct_day(monkeypatch):
     performed = check.run_check(calendar, storage, _rules(), NOW_MORNING,
                                  plan_fn=plan_fn, fetch_garmin_fn=fetch_garmin_fn)
 
-    assert performed == ["event_replan"]  # return contract stays stable: one entry
+    assert performed == ["event_replan"]
     assert plan_fn.call_count == 2
     called_days = {c.args[0] for c in plan_fn.call_args_list}
     assert called_days == {day1_event.start.date(), day2_event.start.date()}
@@ -242,8 +237,6 @@ def test_is_foreign_accepts_extra_titles():
     assert check._is_foreign("Reading", extra={"Reading"}) is False
 
 def test_run_check_custom_free_time_activity_is_not_foreign():
-    # a user's custom free_time_activity is a planner-created block: it must
-    # not trigger event_replan (and a notification) on every cycle
     calendar = MagicMock()
     storage = MagicMock()
     reading = Event(id="r1", calendar="Free time", title="Reading",
@@ -261,20 +254,17 @@ def test_run_check_custom_free_time_activity_is_not_foreign():
     assert performed == []
     plan_fn.assert_not_called()
 
-# --- watcher reacts to rescheduled (not just new) events -------------------
-# These use a real Storage (not a mock) so sync_events' new "rescheduled"
-# detection is exercised end-to-end through run_check.
 
 def test_run_check_rescheduled_foreign_event_triggers_event_replan(tmp_path, monkeypatch):
     storage = Storage(tmp_path / "t.db")
     cached = Event(id="e1", calendar="Meeting", title="Standup",
                    start=NOW_MORNING.replace(hour=10), end=NOW_MORNING.replace(hour=10, minute=30))
-    storage.sync_events([cached])  # first sync: cached at 10:00
+    storage.sync_events([cached])
 
     moved = Event(id="e1", calendar="Meeting", title="Standup",
                   start=NOW_MORNING.replace(hour=12), end=NOW_MORNING.replace(hour=12, minute=30))
     calendar = MagicMock()
-    calendar.list_events.return_value = [moved]  # user dragged it to 12:00
+    calendar.list_events.return_value = [moved]
     plan_fn = MagicMock(return_value=([], [], []))
     fetch_garmin_fn = MagicMock(return_value=None)
     notify_mock = MagicMock()
@@ -293,7 +283,6 @@ def test_run_check_rescheduled_planner_titled_event_is_not_foreign(tmp_path, mon
                    start=NOW_MORNING.replace(hour=10), end=NOW_MORNING.replace(hour=10, minute=30))
     storage.sync_events([cached])
 
-    # our own applied move: same id, new start/end, still a planner title
     moved = Event(id="p1", calendar="Food", title="Lunch",
                   start=NOW_MORNING.replace(hour=12), end=NOW_MORNING.replace(hour=12, minute=30))
     calendar = MagicMock()
@@ -316,7 +305,7 @@ def test_run_check_unchanged_event_does_not_trigger_replan(tmp_path, monkeypatch
     storage.sync_events([same])
 
     calendar = MagicMock()
-    calendar.list_events.return_value = [same]  # identical start/end on next poll
+    calendar.list_events.return_value = [same]
     plan_fn = MagicMock(return_value=([], [], []))
     fetch_garmin_fn = MagicMock(return_value=None)
     notify_mock = MagicMock()
@@ -357,7 +346,7 @@ def test_fetch_garmin_unconfigured_falls_back_to_storage(tmp_path, monkeypatch):
     storage = Storage(tmp_path / "t.db")
     cached = GarminSummary(date="2026-07-12", sleep_seconds=7 * 3600)
     storage.save_garmin(cached)
-    assert _fetch_garmin(storage, "2026-07-12") == cached  # no tokens -> cache
+    assert _fetch_garmin(storage, "2026-07-12") == cached
 
 def test_fetch_garmin_never_asks_about_a_future_day(tmp_path, monkeypatch):
     from dayoptimizer import cli

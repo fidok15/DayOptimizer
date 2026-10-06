@@ -6,18 +6,10 @@ from dayoptimizer.core.constraints import (allowed_window, explain, free_windows
 from dayoptimizer.core.recovery import learn_region, training_advice
 from dayoptimizer.core.rules import Rules
 
-# Titles of events the planner itself creates/manages. The background watcher
-# (check.py) uses this to tell "foreign" events (user- or externally-added,
-# meaning something changed and a replan may be warranted) from the planner's
-# own churn (which would otherwise look like a new event on every sync).
 PLANNER_TITLES: frozenset[str] = frozenset({
     "Breakfast", "Lunch", "Dinner", "Deep work", "Own work", "Free time",
     "Wind-down", "Sleep", "Workout",
 })
-# Consumers must also account for the config-dependent titles this set can't
-# list statically: the custom `free_time_activity` and "Commute:" blocks.
-# check.py's _is_foreign takes them as `extra`; _is_planner_managed below
-# handles them for movability.
 
 def free_slots(events, day_start, day_end):
     busy = sorted([e for e in events if e.end > day_start and e.start < day_end],
@@ -45,20 +37,12 @@ def suggest_sleep(garmin, rules, tomorrow_first_fixed, day):
     if causes:
         need_hours += 0.5
         reason = " and ".join(causes) + " — adding 30 min of recovery"
-    # wake when the user's day starts: waking later would put the morning's
-    # planned blocks inside the sleep window. Combine with the next day BEFORE
-    # astimezone: that day may have another UTC offset (DST)
     default_wake = datetime.combine(day + timedelta(days=1), rules.day_start).astimezone()
     if tomorrow_first_fixed is not None:
-        # a late first event must not push wake-up past the default — sleeping
-        # in just because the morning is empty defeats a stable rhythm
         wake = min(tomorrow_first_fixed - timedelta(minutes=rules.morning_buffer_minutes),
                    default_wake)
     else:
         wake = default_wake
-    # safety floor independent of tomorrow_first_fixed: an all-day calendar
-    # marker (vacation/holiday spanning midnight) or any other anomalously
-    # early "fixed" anchor must never pull wake into the previous evening.
     wake_floor = datetime.combine(day + timedelta(days=1), time(5, 0)).astimezone()
     wake = max(wake, wake_floor)
     bedtime = wake - timedelta(hours=need_hours)
@@ -89,12 +73,9 @@ def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
 def resolve_conflicts(events, rules, day_start, day_end):
     midnight = datetime.combine(day_start.date(), time(0)).astimezone()
     changes: list[PlannedChange] = []
-    change_index: dict[str, int] = {}  # event_id -> index in `changes`; later bumps overwrite, not stack
+    change_index: dict[str, int] = {}
     ordered = sorted(events, key=lambda e: e.start)
     placed: list[Event] = []
-    # sleep pairings that were noted, not resolved (both blocks stay put):
-    # excluded from further conflict search so the current event's REMAINING
-    # conflicts still get resolved instead of re-finding the same pairing
     skipped: set[tuple[str, str]] = set()
 
     def _pair(a: Event, b: Event) -> tuple[str, str]:
@@ -103,7 +84,6 @@ def resolve_conflicts(events, rules, day_start, day_end):
     def record(change: PlannedChange) -> None:
         if change.event_id is not None and change.event_id in change_index:
             earlier = changes[change_index[change.event_id]]
-            # bumped again down the chain: the first collision is why it moved
             if earlier.kind == change.kind == "move" and not change.requires_approval:
                 change.reason = earlier.reason.removesuffix(" — moved earlier")
             changes[change_index[change.event_id]] = change
@@ -113,23 +93,13 @@ def resolve_conflicts(events, rules, day_start, day_end):
             changes.append(change)
 
     for ev in ordered:
-        # ev may overlap more than one already-placed event (e.g. it spans two
-        # fixed blocks); keep re-resolving until it's conflict-free or moved itself.
-        # bound: each iteration either moves one placed conflict out of the way
-        # or permanently skips one sleep pairing — each at most once per placed
-        # event — plus one final conflict-free pass.
         for _ in range(2 * len(placed) + 1):
-            # Sleep-vs-Sleep overlaps are duplicate representations of the same
-            # night (e.g. one block crossing midnight, one created at 00:00 by
-            # an earlier replan) — not competing blocks; never "resolve" them.
             conflict = next((p for p in placed
                              if ev.start < p.end and p.start < ev.end
                              and not (ev.calendar == "Sleep" and p.calendar == "Sleep")
                              and _pair(ev, p) not in skipped), None)
             if conflict is None:
                 break
-            # Sleep is nocturnal — it must never be relocated into the day. The
-            # other side yields if it's movable; otherwise flag and leave both.
             if ev.calendar == "Sleep" or conflict.calendar == "Sleep":
                 sleep_block = ev if ev.calendar == "Sleep" else conflict
                 other = conflict if sleep_block is ev else ev
@@ -140,24 +110,18 @@ def resolve_conflicts(events, rules, day_start, day_end):
                                 f"({other.calendar}) — sleep is never moved into "
                                 "the day; user decision required"),
                         event_id=sleep_block.id, requires_approval=True))
-                    # this pairing stays unresolved by design — skip it and keep
-                    # resolving ev's other conflicts (a break here would
-                    # silently drop them)
                     skipped.add(_pair(ev, conflict))
                     continue
                 mover, stay = other, sleep_block
                 requires_approval = False
             elif _anchored(ev) != _anchored(conflict):
-                # a commute never moves: whatever sits on it does (with OK if it's fixed)
                 mover = conflict if _anchored(ev) else ev
                 stay = ev if mover is conflict else conflict
                 requires_approval = not _effectively_movable(rules, mover.calendar, mover.title)
             else:
                 ev_movable = _effectively_movable(rules, ev.calendar, ev.title)
                 other_movable = _effectively_movable(rules, conflict.calendar, conflict.title)
-                # both fixed: still propose moving one of them, but gate it on approval
                 requires_approval = not ev_movable and not other_movable
-                # pick which one moves: the movable one; on a tie, lower priority
                 if ev_movable == other_movable:
                     mover = ev if rules.priority(ev.calendar) <= rules.priority(conflict.calendar) else conflict
                 else:
@@ -165,10 +129,7 @@ def resolve_conflicts(events, rules, day_start, day_end):
                 stay = conflict if mover is ev else ev
             duration = mover.end - mover.start
             others = [p for p in placed if p is not mover] + ([ev] if mover is not ev else [])
-            # the user's notes bind a moved block as much as a placed one
             others += _blocked_events(rules, day_start.date(), midnight, mover.calendar)
-            # nearest free time either side: dinner 19:30 shoved to 22:30 when
-            # 18:00 is free is no plan anyone would draw
             new_start = _nearest_start(others, mover.start, duration, day_start, day_end)
             moved_earlier = new_start is not None and new_start < mover.start
             if new_start is None:
@@ -212,25 +173,17 @@ def ensure_meals(events, rules, day, now=None, day_end=None, day_start=None):
     for w in rules.meal_windows:
         ws, we = _window_dt(day, w.start), _window_dt(day, w.end)
         if now is not None and we <= now:
-            continue  # window already over — don't create meals in the past
-        # replan idempotency: a meal the planner already created may have been
-        # shifted outside its window — a same-titled Food event anywhere today
-        # still satisfies it. Untitled/user food overlapping the window counts too.
-        # (relies on callers passing only the planned day's events, so a title
-        # match is always a same-day meal)
+            continue
         if any(e.title == w.name for e in food):
             continue
         if any(e.start < we and e.end > ws for e in food):
             continue
         duration = timedelta(minutes=w.duration_minutes)
         window_label = f"{w.start.strftime('%H:%M')}-{w.end.strftime('%H:%M')}"
-        # meal windows are user habit hours; the day window still floors them —
-        # nothing is planned before day_start
         not_before = max(p for p in (ws, now, day_start) if p is not None)
         start = _find_slot(free_slots(events, ws, we), duration, not_before)
         reason = f"scheduled meal — window {window_label}"
         if start is None and day_end is not None:
-            # window blocked — shift the meal to the nearest slot after the window
             after = we if day_start is None else max(we, day_start)
             start = _find_slot(free_slots(events, after, day_end), duration, after)
             reason = f"window {window_label} blocked — moved right after it"
@@ -257,10 +210,9 @@ def adjust_gym(events, garmin, rules, day_start, day_end, now):
         duration = gym.end - gym.start
         others = [e for e in events if e.id != gym.id]
         slots = free_slots(others, day_start, day_end)
-        # latest possible start within each viable slot (not just the slot's own start)
         candidates = [e - duration for s, e in slots if e - max(s, gym.end) >= duration]
         if candidates:
-            new_start = max(candidates)  # latest possible slot
+            new_start = max(candidates)
             changes.append(PlannedChange(kind="move", category="Gym", title=gym.title,
                                          reason=reason, event_id=gym.id,
                                          new_start=new_start, new_end=new_start + duration,
@@ -286,12 +238,12 @@ def schedule_gym(events, rules, day_start, day_end, now, garmin, week_gym_count:
     cutoff = min(day_end, day_start.replace(hour=21, minute=0, second=0, microsecond=0))
     not_before = max(day_start, now)
     if cutoff <= not_before:
-        return []  # workout hours entirely excluded by the day window (or already past)
+        return []
     slots = free_slots(events, day_start, cutoff)
     candidates = [(max(s, not_before), e) for s, e in slots if e - max(s, not_before) >= duration]
     if not candidates:
         return []
-    _, slot_end = candidates[-1]  # latest viable slot ending by the cutoff
+    _, slot_end = candidates[-1]
     start = slot_end - duration
     reason = f"workout {week_gym_count + 1}/{rules.gym_per_week} this week"
     return [PlannedChange(kind="create", category="Gym", title="Workout", reason=reason,
@@ -300,7 +252,6 @@ def schedule_gym(events, rules, day_start, day_end, now, garmin, week_gym_count:
 
 def check_free_time(events, rules, day_start, day_end):
     total_free = sum(((e - s).total_seconds() / 60 for s, e in free_slots(events, day_start, day_end)), 0)
-    # explicit Free time blocks count as free, even though the calendar is "busy" there
     for e in events:
         if e.calendar == "Free time" and e.end > day_start and e.start < day_end:
             total_free += (min(e.end, day_end) - max(e.start, day_start)).total_seconds() / 60
@@ -331,7 +282,6 @@ def fill_day(events, rules, day_start, day_end, now, is_workday: bool = True):
         slots = free_slots(_pad(working, buf), start_from, day_end)
         candidates = [(max(s, start_from), e) for s, e in slots
                       if e - max(s, start_from) >= duration
-                      # at_end: only the slot that runs into the end of the day (bedtime)
                       and (not at_end or e >= day_end - buf)]
         if not candidates:
             return None
@@ -367,8 +317,6 @@ def fill_day(events, rules, day_start, day_end, now, is_workday: bool = True):
                                      requires_approval=not _effectively_movable(rules, category, title)))
         return block
 
-    # replan idempotency: blocks a previous run already created (possibly
-    # shifted since) must not be created again — count them by title
     titles = [e.title for e in events]
     if "Wind-down" not in titles:
         place(timedelta(minutes=rules.wind_down_minutes), "Free time",
@@ -381,7 +329,7 @@ def fill_day(events, rules, day_start, day_end, now, is_workday: bool = True):
         place(timedelta(minutes=rules.min_free_minutes), "Free time", rules.free_time_activity,
               "guaranteed free-time minimum", latest=True)
     if is_workday:
-        for _ in range(12):  # one continuous block per remaining >=60 min slot, bounded
+        for _ in range(12):
             if place_filling_slot(timedelta(minutes=60), "Work", "Own work",
                                   "remaining large slot — personal tasks") is None:
                 break
@@ -521,19 +469,14 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
     placed_per_category: dict[str, int] = {}
     seen_labels: dict[tuple[str, str], int] = {}
     routine = rules.typical_week.get(day.weekday(), [])
-    # the routine's own blocks still to come hold their time: a block pushed off its
-    # slot must not take a later block's (dinner pushed into bedtime leaves no sleep)
     upcoming = [Event(id=f"routine-slot:{i}", calendar=o.category, title=o.label,
                       start=midnight + timedelta(minutes=o.start), end=midnight + timedelta(minutes=o.end))
                 for i, o in enumerate(routine) if midnight + timedelta(minutes=o.start) >= now]
     for b in routine:
         start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
-        # the Nth block with this title is already there once the day holds N of
-        # them (a routine may repeat a title: work before and after lunch)
         nth = seen_labels[(b.category, b.label)] = seen_labels.get((b.category, b.label), 0) + 1
         if start < now:
-            continue  # the usual time has passed (or is under way) today
-        # rules the user wrote down: a broken limit drops the block with the reason
+            continue
         broken = (gap_rule(rules.note_rules, b.category, day, history)
                   or week_rule(rules.note_rules, b.category, day, history,
                                placed_per_category.get(b.category, 0)))
@@ -543,7 +486,6 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
             continue
         advice, advice_reason = "keep", ""
         if rules.respect_recovery and garmin is not None and activities:
-            # only blocks the watch has seen workouts in count as training
             region = learn_region(list(activities), rules.typical_week, day.weekday(), b, now=now)
             advice, advice_reason = training_advice(
                 region, garmin, list(activities), now,
@@ -565,9 +507,6 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
         elif rules.is_movable(b.category):
             search_from = max(day_start, now)
             broken_window = window_rule(rules.note_rules, b.category, b.start, b.end, day.weekday())
-            # ...unless that later block matters less: a higher-priority block may take
-            # its slot, and the later one then moves or is noted on its own turn (sleep
-            # always keeps its time)
             held = [e for e in upcoming if not (e.calendar == b.category and e.title == b.label
                                                 and e.start == start)
                     and (e.calendar == "Sleep" or rules.priority(e.calendar) >= rules.priority(b.category))]
@@ -593,7 +532,6 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
         working.append(Event(id=f"routine:{b.label}:{new_start.isoformat()}", calendar=b.category,
                              title=b.label, start=new_start, end=new_end))
         placed_per_category[b.category] = placed_per_category.get(b.category, 0) + 1
-        # the user drew this block themselves: creating it needs no approval
         changes.append(PlannedChange(kind="create", category=b.category, title=b.label, reason=reason,
                                      new_start=new_start, new_end=new_end))
     return changes
@@ -604,12 +542,10 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     day_start = _window_dt(day, rules.day_start)
     day_end = _window_dt(day, rules.day_end)
     changes: list[PlannedChange] = []
-    # events the user said may be planned over neither block time nor get moved
     working = [e for e in events if not skippable(rules.note_rules, e)]
 
     def run(phase_changes):
         nonlocal working
-        # categories are the user's: never create a block in one they don't have
         phase_changes = [c for c in phase_changes
                          if c.kind != "create" or c.category in rules.categories]
         changes.extend(phase_changes)
@@ -619,9 +555,6 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     run(enforce_notes(day, working, rules, now, day_start, day_end))
     run(adjust_gym(working, garmin, rules, day_start, day_end, now))
     if rules.has_routine:
-        # the user's own week replaces the generic meal/gym/sleep/filler generators
-        # commutes first: they hang off the user's own events, and routine blocks
-        # must then find time around them rather than under them
         run(insert_transport(working, rules))
         run(place_routine(day, working, rules, now, day_start, day_end, garmin, activities or (),
                           history))
@@ -635,15 +568,6 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     fill_end = day_end
     if sleep:
         fill_end = min(day_end, sleep.new_start)
-        # A sleep block for THIS night can sit on either side of midnight: a
-        # planner-created one usually starts at/after 00:00, i.e. among the
-        # NEXT day's events, outside this day's event window. Overlap-test the
-        # night (the proposed window widened back to the evening onset, so a
-        # same-night block ending right at midnight still counts) across both
-        # days' events — otherwise every replan re-creates tonight's sleep.
-        # The 20:00 onset assumes proposed bedtimes land at ~20:30 or later
-        # (wake floor 05:00 minus even a stretched target), so widening only
-        # ever reaches back into the evening, never into the afternoon.
         night_start = min(sleep.new_start, _window_dt(day, time(20, 0)))
         pool = working + (next_day_events or [])
         has_sleep_event = any(e.calendar == "Sleep"

@@ -15,15 +15,15 @@ WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 @dataclass(frozen=True)
 class NoteRule:
     type: str
-    source: str = ""                  # the user's own words, for explanations
+    source: str = ""
     category: str | None = None
-    minutes: int | None = None        # not_before/not_after: minutes since midnight
-    start: int | None = None          # keep_free window
+    minutes: int | None = None
+    start: int | None = None
     end: int | None = None
-    weekday: int | None = None        # keep_free: None = every day
-    days: int | None = None           # min_gap_days
-    count: int | None = None          # max_per_week
-    prefix: str | None = None         # skippable: title start of events that may be planned over
+    weekday: int | None = None
+    days: int | None = None
+    count: int | None = None
+    prefix: str | None = None
 
 def _minutes(value) -> int | None:
     try:

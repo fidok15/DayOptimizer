@@ -9,7 +9,6 @@ const DEFAULTS: Record<string, string> = {
   "Free time": "#6fc3b2",
 };
 
-/** Stored colour, else a known default, else a stable swatch from the name. */
 export const categoryColor = (name: string, stored?: string): string => {
   if (stored) return stored;
   if (DEFAULTS[name]) return DEFAULTS[name];
@@ -18,7 +17,6 @@ export const categoryColor = (name: string, stored?: string): string => {
   return SWATCHES[h % SWATCHES.length];
 };
 
-/** Colour for a new category: its usual one unless taken, else the first free swatch. */
 export const freshColor = (name: string, taken: string[]): string => {
   const preferred = categoryColor(name);
   if (!taken.includes(preferred)) return preferred;

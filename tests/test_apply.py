@@ -11,7 +11,7 @@ def _move(approval=False):
 
 def test_flexible_move_applied_without_confirm():
     cal, store = MagicMock(), MagicMock()
-    confirm = MagicMock(return_value=False)  # would deny if asked
+    confirm = MagicMock(return_value=False)
     applied, errors = apply_changes([_move(approval=False)], cal, store, confirm)
     cal.move_event.assert_called_once()
     confirm.assert_not_called()
@@ -38,8 +38,6 @@ def test_create_calls_calendar_create():
     assert errors == []
 
 def test_missing_calendar_logs_error_and_continues():
-    # first-run users may lack a calendar named after a category: the change
-    # is skipped with a logged hint, and the remaining changes still apply
     cal, store = MagicMock(), MagicMock()
     bad = PlannedChange(kind="create", category="Learn", title="Deep work", reason="focus",
                         new_start=datetime(2026, 7, 3, 9), new_end=datetime(2026, 7, 3, 10, 30))
@@ -54,8 +52,6 @@ def test_missing_calendar_logs_error_and_continues():
     logged = [c.args for c in store.log_change.call_args_list if c.args[0].startswith("[error]")]
     assert len(logged) == 1
     assert "Learn" in logged[0][0] and "not found" in logged[0][1]
-    # the caller (cli, check) must be able to see this failure too — it is
-    # no longer swallowed into the storage log alone
     assert len(errors) == 1
     assert "Learn" in errors[0] and "not found" in errors[0]
 
@@ -86,14 +82,12 @@ def test_print_pending_lists_ids_and_details(capsys):
     out = capsys.readouterr().out
     assert "Pending approval" in out
     assert f"#{pid}" in out
-    assert "[move]" in out  # kind must survive rich markup
+    assert "[move]" in out
     assert "Work: Standup" in out
     assert "2026-07-14 09:00" in out
     assert "conflict with Meeting" in out
 
 def test_cmd_plan_survives_markup_like_event_titles(monkeypatch, capsys):
-    # calendar titles are untrusted text: "[/inject]" must print literally,
-    # not crash rich with a MarkupError mid-plan
     from dayoptimizer import cli, paths
     paths.ensure_private_dir()
     ch = PlannedChange(kind="move", category="Meeting", title="[/inject]", reason="conflict",
@@ -106,7 +100,7 @@ def test_cmd_plan_survives_markup_like_event_titles(monkeypatch, capsys):
     cli.cmd_plan(argparse.Namespace(date="2026-07-14", week=None), rules=MagicMock(), config={})
     out = capsys.readouterr().out
     assert "[/inject]" in out
-    assert "[move]" in out  # kind tag must survive as literal text
+    assert "[move]" in out
 
 
 def test_print_pending_silent_when_empty(capsys):
@@ -116,8 +110,6 @@ def test_print_pending_silent_when_empty(capsys):
     assert capsys.readouterr().out == ""
 
 def test_confirm_without_stdin_denies_instead_of_crashing(monkeypatch):
-    # bundle-invoked runs have no stdin: console.input raises EOFError there,
-    # and the change must park for approval instead of crashing the plan
     from dayoptimizer import cli
     def no_stdin(*a, **k):
         raise EOFError
@@ -151,16 +143,15 @@ def test_fixed_conflict_approval_pipeline_end_to_end(monkeypatch):
 
     storage = _real_storage()
     cal = MagicMock()
-    apply_changes(changes, cal, storage, confirm=lambda c: False)  # returns (applied, errors)
+    apply_changes(changes, cal, storage, confirm=lambda c: False)
     moved_ids = {call.args[0] for call in cal.move_event.call_args_list}
-    assert prop.event_id not in moved_ids  # fixed event untouched without consent
+    assert prop.event_id not in moved_ids
     pending = storage.get_pending()
     assert len(pending) == 1
     pid, saved = pending[0]
     assert saved == prop
     storage.close()
 
-    # the user approves: cmd_apply writes it to the calendar and clears pending
     stub_cal = MagicMock()
     stub_cal.request_access.return_value = True
     monkeypatch.setattr(cli, "CalendarClient", MagicMock(return_value=stub_cal))
@@ -172,8 +163,6 @@ def test_fixed_conflict_approval_pipeline_end_to_end(monkeypatch):
 
 
 def test_cmd_apply_missing_calendar_logs_error_and_applies_the_rest(monkeypatch, capsys):
-    # approving pending ids must not die on a missing category calendar: the
-    # failing row is logged with a hint and the other ids still apply
     from dayoptimizer import cli
     storage = _real_storage()
     ok = PlannedChange(kind="move", category="Meeting", title="Standup", reason="r",
@@ -191,13 +180,9 @@ def test_cmd_apply_missing_calendar_logs_error_and_applies_the_rest(monkeypatch,
     cli.cmd_apply(argparse.Namespace(ids=f"{pid_ok},{pid_bad}"), rules=MagicMock(), config={})
     stub_cal.move_event.assert_called_once_with(ok.event_id, ok.new_start, ok.new_end)
     out = capsys.readouterr().out
-    # the failure must be visible to the user immediately, not just logged
-    # silently to storage — this is the whole point of the fix
     assert f"#{pid_bad} failed: calendar 'Learn' not found" in out
     assert "Applied 1 of 2" in out
     storage = _real_storage()
-    # the failed row is removed too: it cannot succeed until the user creates
-    # the calendar, and a later replan regenerates the proposal
     assert storage.get_pending() == []
     logs = storage.recent_changes()
     assert any(desc.startswith("[error]") and "not found" in reason
@@ -224,9 +209,6 @@ def test_cmd_plan_prints_pending_after_planning(monkeypatch, capsys):
 
 
 def test_cmd_plan_prints_aggregated_write_errors(monkeypatch, capsys):
-    # this is the core fix: a first-run user whose calendars don't match the
-    # planner's categories must SEE that blocks were skipped, not just have
-    # them silently vanish into the SQLite change log
     from dayoptimizer import cli, paths
     paths.ensure_private_dir()
     stub_cal = MagicMock()
@@ -241,9 +223,8 @@ def test_cmd_plan_prints_aggregated_write_errors(monkeypatch, capsys):
     cli.cmd_plan(argparse.Namespace(date="2026-07-14", week=None), rules=MagicMock(), config={})
     out = capsys.readouterr().out
     assert "3 block(s) could not be written:" in out
-    # deduped and aggregated into one line naming both missing calendars
     assert "Missing calendars: Food, Gym" in out
-    assert out.count("calendar 'Food' not found") == 0  # raw message not repeated per-line
+    assert out.count("calendar 'Food' not found") == 0
 
 def test_refused_calendar_save_is_reported_not_raised():
     cal, store = MagicMock(), MagicMock()

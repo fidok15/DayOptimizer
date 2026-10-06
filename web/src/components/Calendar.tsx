@@ -36,7 +36,6 @@ const dayTotal = (blocks: Block[]) => {
   return m ? durationLabel(m) : "0h";
 };
 
-/** Blocks of `d` with the in-flight move/resize applied, so only affected days get a new array. */
 function shownBlocks(week: Week, d: Weekday, p: Preview | null): Block[] {
   if (!p || p.id === DRAFT_ID || (d !== p.from && d !== p.day)) return week[d];
   const orig = week[p.from].find((b) => b.id === p.id);
@@ -62,7 +61,6 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = Math.max(0, toMin(dayStart) * PX_PER_MIN - 8);
-    // Only on mount: later dayStart changes must not yank the user's scroll position.
   }, []);
 
   useEffect(() => {
@@ -79,7 +77,6 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
     colsRef,
     view,
     canCreate: () => {
-      // First click on empty space while the editor is open only closes it.
       if (editingRef.current) {
         setEditing(null);
         return false;
@@ -106,7 +103,6 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
 
   const openEditor = useCallback((id: string) => setEditing(id), []);
 
-  // Locate the edited block anywhere in the week (it may have been moved).
   let edited: { block: Block; day: Weekday } | null = null;
   if (editing) {
     for (const d of WEEKDAYS) {
@@ -151,7 +147,6 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
   const weekEmpty = WEEKDAYS.every((d) => week[d].length === 0) && !preview;
   const draftColor = newCat ? categoryColor(newCat, categories[newCat]?.color) : "#f4b860";
 
-  /** Keyboard-reachable way to add a block: the first free hour from 09:00 on `d`. */
   const addBlock = (d: Weekday) => {
     if (!newCat) return;
     const id = uid();

@@ -9,11 +9,9 @@ import type { DragHandlers, Preview } from "./useGridDrag";
 interface Props {
   day: Weekday;
   tint: "today" | "weekend" | null;
-  /** Show the hover ghost of a 1 h block (clicking would create it). */
   canCreate: boolean;
   blocks: Block[];
   categories: Categories;
-  /** Draft being drawn in this column, if any. */
   draft: Preview | null;
   draftColor: string;
   draggingId: string | null;
@@ -37,7 +35,6 @@ function DayColumn({ day, tint, canCreate, blocks, categories, draft, draftColor
       onPointerMove={(e) => {
         if (e.pointerType !== "mouse" || (e.target as HTMLElement).closest("[data-block-id]")) return setHover(null);
         const min = (e.clientY - e.currentTarget.getBoundingClientRect().top) / PX_PER_MIN;
-        // Same slot a click creates (see useGridDrag): the 15 min floor, kept inside the day.
         setHover(Math.min(Math.floor(min / SNAP) * SNAP, DAY_MIN - 60));
       }}
       onPointerLeave={() => setHover(null)}

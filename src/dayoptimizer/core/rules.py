@@ -50,13 +50,12 @@ class Rules:
     gym_duration_minutes: int = 75
     day_start: time = time(6, 0)
     day_end: time = time(23, 0)
-    note_rules: list = field(default_factory=list)  # compiled from the user's notes
+    note_rules: list = field(default_factory=list)
     respect_recovery: bool = True
     recovery_lighter_hours: int = 24
     recovery_skip_hours: int = 48
     work_days: frozenset[int] = field(default_factory=lambda: _DEFAULT_WORK_DAYS)
     holiday_calendars: list[str] = field(default_factory=lambda: list(_DEFAULT_HOLIDAY_CALENDARS))
-    # weekday (0 = Monday) -> the user's routine for that day, from the setup page
     typical_week: dict[int, list[RoutineBlock]] = field(default_factory=dict)
 
     @property
@@ -69,7 +68,7 @@ class Rules:
 
     def is_movable(self, category: str) -> bool:
         rule = self.categories.get(category)
-        return rule.movable if rule else False  # unknown categories are fixed
+        return rule.movable if rule else False
 
     def priority(self, category: str) -> int:
         rule = self.categories.get(category)
@@ -104,7 +103,6 @@ def load_config_data(path: str | Path, user_path: str | Path | None = None) -> d
                 data[section].update(val)
             else:
                 data[section] = val
-    # a user may drop a default category by mapping it to null
     data["categories"] = {k: v for k, v in data.get("categories", {}).items() if v is not None}
     return data
 
@@ -112,10 +110,6 @@ def _day_window(d: dict) -> tuple[time, time]:
     day_start = _parse_time(d["day_start"]) if "day_start" in d else time(6, 0)
     day_end = _parse_time(d["day_end"]) if "day_end" in d else time(23, 0)
     if day_start >= day_end:
-        # inverted/degenerate window — e.g. a partial user override merged with
-        # the default for the other bound (validate_config only sees the user's
-        # snippet, so it cannot catch this). The planner must stay functional
-        # in background runs, so fall back to the defaults instead of raising.
         return time(6, 0), time(23, 0)
     return day_start, day_end
 

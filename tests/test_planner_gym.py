@@ -47,7 +47,6 @@ def test_schedule_gym_wires_into_plan_day_without_duplicating_adjust_gym():
     assert len(gym_creates) == 1
 
 def test_schedule_gym_noop_when_nothing_left_in_the_past():
-    # `now` is already past the 21:00 cutoff -> no viable slot remains today
     good = GarminSummary(date="2026-07-03", body_battery_start=80, hrv_status="BALANCED")
     changes = schedule_gym([], RULES, DAY_START, DAY_END, D.replace(hour=21, minute=30),
                            good, week_gym_count=0)
@@ -58,8 +57,6 @@ def test_schedule_gym_garmin_none_is_treated_as_ok():
     assert len(changes) == 1
 
 def test_schedule_gym_noop_when_day_starts_after_cutoff():
-    # day window starting at/after the 21:00 workout cutoff excludes workout
-    # hours entirely -> deliberate skip, no exception
     good = GarminSummary(date="2026-07-03", body_battery_start=80, hrv_status="BALANCED")
     changes = schedule_gym([], RULES, D.replace(hour=22), D.replace(hour=23, minute=30),
                            D.replace(hour=22), good, week_gym_count=0)

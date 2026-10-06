@@ -13,7 +13,6 @@ LAUNCHD_LOG_PATH = HOME_DIR / "check.launchd.log"
 CHECK_LOG_PATH = HOME_DIR / "check.log"
 PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 
-# src/dayoptimizer/agent.py -> src/dayoptimizer -> src -> repo root
 REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
 
@@ -84,7 +83,7 @@ def install(interval: int = 900) -> str:
 
     uid = os.getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)],
-                    capture_output=True)  # ignore failure — may not be loaded yet
+                    capture_output=True)
     result = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(PLIST_PATH)],
                              capture_output=True)
 
@@ -98,7 +97,7 @@ def uninstall() -> str:
     """Bootout the launchd agent and remove its plist."""
     uid = os.getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)],
-                    capture_output=True)  # ignore failure — may not be loaded
+                    capture_output=True)
     if PLIST_PATH.exists():
         PLIST_PATH.unlink()
     return f"Uninstalled agent {LABEL}."

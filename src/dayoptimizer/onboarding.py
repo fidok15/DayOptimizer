@@ -83,17 +83,14 @@ class DayRulesConfig(BaseModel):
 
 class UserConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # null removes a default category from the merged config
     categories: dict[str, CategoryConfig | None] = {}
     day_rules: DayRulesConfig = DayRulesConfig()
     transport_routes: dict[str, Annotated[int, Field(ge=0, le=600)]] = {}
     holiday_calendars: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = Field(
         default=None, max_length=10)
     notes: str | None = Field(default=None, max_length=2000)
-    # rules compiled from `notes` (see core/constraints.py); hand-editable
     note_rules: list[dict] | None = Field(default=None, max_length=64)
     typical_week: dict[Weekday, Annotated[list[TemplateBlock], Field(max_length=48)]] | None = None
-    # "day": the routine is one typical day used every day (the page keeps all days equal)
     routine_mode: Literal["day", "week"] | None = None
 
     @field_validator("holiday_calendars")
@@ -130,7 +127,6 @@ def validate_config(yaml_text: str) -> UserConfig:
                 problems.append(
                     f"Invalid category name: {name!r} (1-40 printable characters).")
     if non_string_names:
-        # Validate the rest on a copy; never mutate the caller's data.
         data = {**data, "categories": {
             k: v for k, v in categories.items() if k not in non_string_names}}
     result: UserConfig | None = None

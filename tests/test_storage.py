@@ -19,7 +19,7 @@ def test_garmin_upsert_and_history(tmp_path):
     s = Storage(tmp_path / "t.db")
     s.save_garmin(GarminSummary(date="2026-07-02", sleep_score=50))
     s.save_garmin(GarminSummary(date="2026-07-03", sleep_score=80))
-    s.save_garmin(GarminSummary(date="2026-07-03", sleep_score=81))  # upsert
+    s.save_garmin(GarminSummary(date="2026-07-03", sleep_score=81))
     hist = s.garmin_history(days=7)
     assert [g.date for g in hist] == ["2026-07-03", "2026-07-02"]
     assert hist[0].sleep_score == 81
@@ -32,8 +32,6 @@ def test_sync_events_returns_only_new(tmp_path):
     assert {e.id for e in new} == {"c"}
 
 def test_sync_events_returns_rescheduled_existing_event(tmp_path):
-    # a user drags a Calendar block around: same id, new start/end. The
-    # watcher must see it, not silently upsert it as if nothing happened.
     s = Storage(tmp_path / "t.db")
     s.sync_events([_ev("a", "2026-07-12T10:00")])
     moved = _ev("a", "2026-07-12T12:00")
@@ -47,7 +45,6 @@ def test_sync_events_does_not_flag_unchanged_events(tmp_path):
     assert changed == []
 
 def test_sync_events_title_only_change_is_not_rescheduled(tmp_path):
-    # only start/end define "rescheduled" — a rename must not trigger a replan
     s = Storage(tmp_path / "t.db")
     s.sync_events([_ev("a", "2026-07-12T10:00")])
     renamed = _ev("a", "2026-07-12T10:00")
@@ -66,7 +63,7 @@ def test_state_roundtrip_and_default(tmp_path):
     assert s.get_state("x") is None
     assert s.get_state("x", "missing") == "missing"
     s.set_state("x", "1")
-    s.set_state("x", "2")  # upsert
+    s.set_state("x", "2")
     assert s.get_state("x") == "2"
 
 def _ev(id, day_hour):
@@ -87,25 +84,22 @@ def test_sync_events_prunes_cancelled_events_inside_window(tmp_path):
                    _ev("c", "2026-07-13T09:00")])
     ws = datetime.fromisoformat("2026-07-12T00:00").astimezone()
     we = datetime.fromisoformat("2026-07-13T00:00").astimezone()
-    # "b" was cancelled: syncing the window without it must drop it from cache
     s.sync_events([_ev("a", "2026-07-12T09:00")], window_start=ws, window_end=we)
     assert [e.id for e in s.events_on("2026-07-12")] == ["a"]
-    assert [e.id for e in s.events_on("2026-07-13")] == ["c"]  # outside window untouched
+    assert [e.id for e in s.events_on("2026-07-13")] == ["c"]
 
 def test_sync_events_without_window_never_prunes(tmp_path):
     s = Storage(tmp_path / "t.db")
     s.sync_events([_ev("a", "2026-07-12T09:00")])
-    s.sync_events([])  # backward-compatible call: no window, no pruning
+    s.sync_events([])
     assert [e.id for e in s.events_on("2026-07-12")] == ["a"]
 
 def test_events_on_tolerates_cached_rows_missing_all_day_key(tmp_path):
-    # cache rows written before the all_day field existed lack the key —
-    # events_on must not crash and must default all_day to False.
     s = Storage(tmp_path / "t.db")
     start = datetime.fromisoformat("2026-07-12T09:00").astimezone()
     payload = {"id": "old1", "calendar": "Meeting", "title": "Standup",
                "start": start.isoformat(), "end": start.replace(minute=30).isoformat(),
-               "location": None}  # no "all_day" key — simulates a pre-migration row
+               "location": None}
     s._conn.execute(
         "INSERT INTO events_cache(id, data, last_seen) VALUES(?, ?, ?)",
         ("old1", json.dumps(payload), start.isoformat()))
@@ -153,8 +147,6 @@ def test_pending_roundtrip(tmp_path):
     assert s.get_pending() == []
 
 def test_save_pending_replaces_same_event_id_and_kind(tmp_path):
-    # replans re-propose the same unresolved conflict: the newer proposal must
-    # replace the older row, not accumulate near-identical pending entries
     s = Storage(tmp_path / "t.db")
     s.save_pending(PlannedChange(kind="move", category="Work", title="X", reason="first",
                                  event_id="e1", requires_approval=True))
@@ -163,9 +155,8 @@ def test_save_pending_replaces_same_event_id_and_kind(tmp_path):
     s.save_pending(PlannedChange(kind="move", category="Work", title="X", reason="replan",
                                  event_id="e1", requires_approval=True))
     pending = s.get_pending()
-    assert len(pending) == 2  # e1 replaced, e2 untouched
+    assert len(pending) == 2
     assert next(c for _, c in pending if c.event_id == "e1").reason == "replan"
-    # rows without an event_id (creates) are never deduped
     s.save_pending(PlannedChange(kind="create", category="Food", title="L", reason="r"))
     s.save_pending(PlannedChange(kind="create", category="Food", title="L", reason="r"))
     assert len(s.get_pending()) == 4

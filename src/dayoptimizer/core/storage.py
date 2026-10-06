@@ -36,8 +36,7 @@ class Storage:
             self._open(path)
         except sqlite3.DatabaseError:
             if not path.is_file():
-                raise  # nothing damaged: e.g. the folder is missing, not ours to hide
-            # only a cache and a log: set the broken file aside and start fresh
+                raise
             aside = path.with_name(f"{path.name}.corrupt-{datetime.now():%Y%m%d%H%M%S}")
             path.rename(aside)
             print(f"The local cache {path} was damaged; moved it to {aside.name} and started a new one.",
@@ -48,7 +47,7 @@ class Storage:
         self._conn = sqlite3.connect(str(path))
         self._conn.executescript(_SCHEMA)
         if path.exists():
-            os.chmod(path, 0o600)  # health data and calendar cache
+            os.chmod(path, 0o600)
 
     def save_garmin(self, summary: GarminSummary) -> None:
         self._conn.execute(
@@ -91,9 +90,6 @@ class Storage:
                 (e.id, json.dumps(payload), now),
             )
         if window_start is not None and window_end is not None:
-            # `events` is the full calendar content of [window_start, window_end):
-            # cached events starting in that window but absent from the sync were
-            # deleted/cancelled — drop them so reads don't serve ghosts
             synced_ids = {e.id for e in events}
             ghosts = [
                 rid for rid, data in cached.items()
@@ -179,8 +175,6 @@ class Storage:
             if payload[k] is not None:
                 payload[k] = payload[k].isoformat()
         if change.event_id is not None:
-            # replans re-propose the same unresolved conflict — replace the
-            # previous proposal for this event instead of accumulating rows
             self._conn.execute(
                 "DELETE FROM pending_changes WHERE json_extract(data, '$.event_id') = ? "
                 "AND json_extract(data, '$.kind') = ?",
@@ -193,7 +187,7 @@ class Storage:
 
     def get_pending(self, ids: list[int] | None = None) -> list[tuple[int, PlannedChange]]:
         if ids is not None and not ids:
-            return []  # an empty selection is NOT "all" — that would bypass the approval gate
+            return []
         if ids is not None:
             q = f"SELECT id, data FROM pending_changes WHERE id IN ({','.join('?' * len(ids))}) ORDER BY id"
             rows = self._conn.execute(q, ids).fetchall()

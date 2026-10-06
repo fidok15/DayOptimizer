@@ -19,11 +19,8 @@ def test_plan_day_second_pass_is_a_noop():
     now = D.replace(hour=7)
 
     first = plan_day(DAY, events, garmin, RULES, now=now, week_gym_count=0)
-    assert any(c.kind == "create" for c in first)  # first pass builds the day
+    assert any(c.kind == "create" for c in first)
 
-    # apply the plan the way the calendar would end up: creates/moves projected
-    # onto the event list, then split at midnight — the planned day's window
-    # only sees events starting before midnight, the rest live on the next day
     projected = _project(events, first)
     midnight_next = D + timedelta(days=1)
     day_events = [e for e in projected if e.start < midnight_next]
@@ -36,9 +33,6 @@ def test_plan_day_second_pass_is_a_noop():
 
 
 def test_plan_day_second_pass_is_a_noop_on_rest_day():
-    # same two-pass idempotency, but with is_workday=False: the first pass
-    # must build a work-free rest-day structure and the second pass must
-    # neither re-create anything nor suddenly add Own work.
     events = [Event(id="w", calendar="Work", title="Sprint",
                     start=D.replace(hour=9), end=D.replace(hour=12))]
     garmin = GarminSummary(date="2026-07-03", sleep_seconds=8 * 3600, sleep_score=85,
@@ -47,7 +41,7 @@ def test_plan_day_second_pass_is_a_noop_on_rest_day():
 
     first = plan_day(DAY, events, garmin, RULES, now=now, week_gym_count=0,
                      is_workday=False)
-    assert any(c.kind == "create" for c in first)  # rest day still gets structure
+    assert any(c.kind == "create" for c in first)
     assert not any(c.title == "Own work" for c in first)
 
     projected = _project(events, first)

@@ -7,7 +7,7 @@ from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_S
 class AnthropicBackend:
     def __init__(self, model: str = "claude-sonnet-5"):
         self.model = model
-        self.client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from env
+        self.client = anthropic.Anthropic()
 
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
         response = self.client.messages.parse(
@@ -40,4 +40,4 @@ class AnthropicBackend:
             )
             return next((b.text for b in response.content if b.type == "text"), rendered)
         except anthropic.APIError:
-            return rendered  # LLM down → deterministic fallback (hybrid guarantee)
+            return rendered

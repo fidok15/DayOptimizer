@@ -10,7 +10,6 @@ async function parse(res: Response): Promise<ServerState> {
 export const fetchState = (): Promise<ServerState> =>
   fetch("/api/state", { cache: "no-store" }).then(parse);
 
-/** Blocks without their client-only ids, as the server stores them. */
 const toServerWeek = (week: Week) =>
   Object.fromEntries(
     Object.entries(week).map(([day, blocks]) => [
@@ -30,20 +29,17 @@ export const saveState = (categories: Categories, week: Week, notes: string, rou
 
 export type ImportedWeek = Partial<Record<Weekday, ImportedBlock[]>>;
 
-/** API failure with a machine-readable reason, e.g. setup | denied | auth | mfa | rate | offline | expired. */
 export class ApiError extends Error {
   constructor(message: string, readonly code: string) {
     super(message);
   }
 }
 
-/** `span`: first and last event date in imported files (files only). */
 export type ImportedCalendars = {
   week: ImportedWeek;
   calendars: Record<string, string>;
   google: string[];
   span?: [string, string] | null;
-  /** all-day events the import leaves out, with the weekdays they cover */
   allDay: { calendar: string; title: string; days: Weekday[] }[];
 };
 
@@ -55,16 +51,12 @@ const toImported = (body: { typical_week?: unknown; calendars?: unknown; google?
   return { week: body.typical_week as ImportedWeek, calendars, google: Array.isArray(body.google) ? body.google : [], span, allDay };
 };
 
-/** Read one calendar week (Monday date) as blocks tagged with their calendar, plus every
- *  calendar the user has (name -> #rrggbb, "" when unknown) and which come from Google. Nothing is saved. */
 export const importWeek = async (weekStart: string): Promise<ImportedCalendars> =>
   toImported(await post("/api/import", { week_start: weekStart }));
 
-/** The same, read from exported .ics files (their text) instead of the Calendar app. */
 export const importFiles = async (weekStart: string, files: string[]): Promise<ImportedCalendars> =>
   toImported(await post("/api/import-file", { week_start: weekStart, files }));
 
-/** POST JSON and return the body, or throw ApiError with the server's code. */
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
   try {
@@ -91,18 +83,13 @@ export interface RoutineSaved {
   notes: { rules: string[]; not_compiled: string[]; error: string | null };
 }
 
-/** Save the week, write the routine brief the LLM reads, and give every category a
- * Calendar-app calendar in the colour shown here (created or recoloured). */
 export const saveRoutine = (categories: Categories, week: Week, notes: string) => {
-  // send the colour on screen even when it's only a default, so the calendar matches it
   const coloured = Object.fromEntries(
     Object.entries(categories).map(([name, c]) => [name, { ...c, color: categoryColor(name, c.color) }]),
   );
   return post<RoutineSaved>("/api/routine", { categories: coloured, typical_week: toServerWeek(week), notes });
 };
 
-/** The colour each category's calendar has now in the Calendar app ({} without calendar access). */
-/** Each category calendar's colour now, and every calendar the Calendar app has (name -> #rrggbb). */
 export const calendarColors = (): Promise<{ colors: Record<string, string>; calendars: Record<string, string> }> =>
   fetch("/api/calendar-colors", { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
