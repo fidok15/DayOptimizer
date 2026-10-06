@@ -64,6 +64,12 @@ const arrowText = "inline-flex min-h-8 items-center rounded-full border border-l
 
 type Failure = { message: string; code: string };
 type Source = "file" | "apple" | "google";
+type Spread = "all" | "weekdays" | "one";
+const SPREAD_DAYS: Record<Spread, (day: Weekday) => Weekday[]> = {
+  all: () => [...WEEKDAYS],
+  weekdays: () => WEEKDAYS.slice(0, 5),
+  one: (day) => [day],
+};
 const SOURCES: { id: Source; label: string }[] = [
   { id: "file", label: "From file" },
   { id: "apple", label: "Apple Calendar" },
@@ -118,6 +124,7 @@ export default function ImportCalendar(props: {
   const [include, setInclude] = useState<Record<string, boolean>>({});
   const [mapping, setMapping] = useState<Record<string, string>>({}); // calendar -> category | NEW | ""
   const [replace, setReplace] = useState(false);
+  const [spread, setSpread] = useState<Spread>("all");
 
   // opening the dialog starts from what the page shows: the whole week or the chosen day
   useEffect(() => {
@@ -128,6 +135,8 @@ export default function ImportCalendar(props: {
 
   const monday = mondayOf(date);
   const days: Weekday[] = mode === "week" ? [...WEEKDAYS] : [weekdayOf(date)];
+  // a Day import is a sample day: its blocks go into every day it's used for
+  const into = mode === "week" ? days : SPREAD_DAYS[spread](days[0]);
   const categoryNames = Object.keys(categories);
 
   // the calendars of this tab: busiest first, empty ones (for this week/day) last
@@ -237,12 +246,12 @@ export default function ImportCalendar(props: {
     const week = Object.fromEntries(
       WEEKDAYS.map((d) => [
         d,
-        (days.includes(d) ? (found.week[d] ?? []) : [])
+        (into.includes(d) ? (found.week[mode === "week" ? d : days[0]] ?? []) : [])
           .filter((b) => target[b.calendar] && toMin(b.end) > toMin(b.start))
           .map((b) => ({ id: uid(), start: b.start, end: b.end, category: target[b.calendar], title: b.title.slice(0, 60) })),
       ]),
     ) as Week;
-    onImport(week, replace, days);
+    onImport(week, replace, into);
     writeMap({ ...readMap(), ...target });
     setOpen(false);
     setFound(null);
@@ -460,10 +469,26 @@ export default function ImportCalendar(props: {
                     {skipped.length > 3 && ` and ${skipped.length - 3} more`}): a block needs a start and end time. Draw them by hand if they belong in your routine.
                   </p>
                 )}
+                {mode === "day" && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-ink-dim">Use this day for</span>
+                    <Segmented
+                      label="Use this day for"
+                      options={[
+                        { id: "all", label: "Every day" },
+                        { id: "weekdays", label: "Mon–Fri" },
+                        { id: "one", label: `Only ${dayName}` },
+                      ]}
+                      value={spread}
+                      onChange={setSpread}
+                      pill="import-spread"
+                    />
+                  </div>
+                )}
                 <div role="radiogroup" aria-label="How to import" className="flex flex-col gap-1 text-sm">
                   {[
-                    { v: false, label: mode === "week" ? "Add to my typical week" : `Add to my ${dayName}` },
-                    { v: true, label: mode === "week" ? "Replace my typical week" : `Replace my ${dayName}` },
+                    { v: false, label: mode === "week" ? "Add to my typical week" : spread === "one" ? `Add to my ${dayName}` : "Add to those days" },
+                    { v: true, label: mode === "week" ? "Replace my typical week" : spread === "one" ? `Replace my ${dayName}` : "Replace those days" },
                   ].map((o) => (
                     <label key={String(o.v)} className="flex cursor-pointer items-center gap-2 px-1">
                       <input
@@ -483,7 +508,7 @@ export default function ImportCalendar(props: {
                       ? `Choose a category for ${missing.slice(0, 24)}`
                       : count === 0
                         ? "Tick a calendar to import"
-                        : `Import ${count} ${count === 1 ? "event" : "events"}`}
+                        : `Import ${count} ${count === 1 ? "event" : "events"}${mode === "day" && into.length > 1 ? ` into ${into.length} days` : ""}`}
                   </button>
                 </div>
               </>
