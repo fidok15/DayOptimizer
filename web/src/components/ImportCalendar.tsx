@@ -63,7 +63,7 @@ const arrow = "grid size-8 place-items-center rounded-full border border-line te
 const arrowText = "inline-flex min-h-8 items-center rounded-full border border-line px-3 py-1 text-sm font-medium text-ink transition hover:bg-ink/5 active:scale-[0.98]";
 
 type Failure = { message: string; code: string };
-type Source = "file" | "apple" | "google";
+type Source = "file" | "apple";
 type Spread = "all" | "weekdays" | "one";
 const SPREAD_DAYS: Record<Spread, (day: Weekday) => Weekday[]> = {
   all: () => [...WEEKDAYS],
@@ -73,7 +73,6 @@ const SPREAD_DAYS: Record<Spread, (day: Weekday) => Weekday[]> = {
 const SOURCES: { id: Source; label: string }[] = [
   { id: "file", label: "From file" },
   { id: "apple", label: "Apple Calendar" },
-  { id: "google", label: "Google Calendar" },
 ];
 const MODES: { id: View; label: string }[] = [
   { id: "day", label: "Day" },
@@ -141,12 +140,11 @@ export default function ImportCalendar(props: {
 
   // the calendars of this tab: busiest first, empty ones (for this week/day) last
   const google = useMemo(() => new Set(found?.google), [found]);
-  const shown = (cal: string) => source === "file" || (source === "google") === google.has(cal);
   const calendars = useMemo(() => {
     if (!found) return [];
     const n: Record<string, number> = {};
-    for (const cal of Object.keys(found.calendars)) if (shown(cal)) n[cal] = 0;
-    for (const d of days) for (const b of found.week[d] ?? []) if (shown(b.calendar)) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
+    for (const cal of Object.keys(found.calendars)) n[cal] = 0;
+    for (const d of days) for (const b of found.week[d] ?? []) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
     return Object.entries(n).sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
   }, [found, source, mode, date]);
 
@@ -158,10 +156,10 @@ export default function ImportCalendar(props: {
   // a Day import of an empty day while the rest of that week has events: say so instead of "nothing"
   const elsewhere =
     mode === "day" && found
-      ? WEEKDAYS.filter((d) => !days.includes(d)).reduce((n, d) => n + (found.week[d] ?? []).filter((b) => shown(b.calendar)).length, 0)
+      ? WEEKDAYS.filter((d) => !days.includes(d)).reduce((n, d) => n + (found.week[d] ?? []).length, 0)
       : 0;
   // all-day events can't become blocks (no time): say which were left out
-  const skipped = found ? found.allDay.filter((e) => shown(e.calendar) && e.days.some((d) => days.includes(d))) : [];
+  const skipped = found ? found.allDay.filter((e) => e.days.some((d) => days.includes(d))) : [];
   // a file whose events all lie outside the shown week: point to where they are
   const span = source === "file" && found?.span && busy.length === 0 && elsewhere === 0 ? found.span : null;
 
@@ -205,7 +203,7 @@ export default function ImportCalendar(props: {
     if (found && mondayOf(next) !== monday) load(mondayOf(next));
   };
 
-  // Apple and Google come from one read of the Calendar app; files are a read of their own
+  // the Calendar app and files are separate reads
   const pickSource = (next: Source) => {
     if ((next === "file") !== (source === "file")) {
       setFound(null);
@@ -382,12 +380,7 @@ export default function ImportCalendar(props: {
                       </button>
                     </div>
                   )}
-                  {source === "google" && calendars.length === 0 ? (
-                    <p className="text-sm leading-snug text-ink-dim">
-                      No Google calendars on this Mac. Add your Google account in System Settings › Internet Accounts and load again,
-                      or export it from Google and use From file.
-                    </p>
-                  ) : busy.length === 0 && elsewhere > 0 ? (
+                  {busy.length === 0 && elsewhere > 0 ? (
                     <div role="status" className="flex flex-wrap items-center justify-between gap-2 text-sm text-ink-dim">
                       <p>
                         Nothing {target}, but this week has {elsewhere} {elsewhere === 1 ? "event" : "events"} on other days.
@@ -434,6 +427,9 @@ export default function ImportCalendar(props: {
                             />
                             <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: found.calendars[cal] || "currentColor" }} />
                             <span className="truncate">{cal}</span>
+                            {google.has(cal) && (
+                              <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] leading-4 text-ink-dim">Google</span>
+                            )}
                             <span className="font-mono text-xs text-ink-dim tabular-nums">{n}</span>
                           </label>
                           {!empty && include[cal] && (
