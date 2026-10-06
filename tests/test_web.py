@@ -335,3 +335,11 @@ def test_import_file_expands_repeats_and_reads_calendar_name(server):
     hdr = {"Content-Type": "application/json"}
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": ["nope"]}, hdr, "/api/import-file")[0] == 422
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": []}, hdr, "/api/import-file")[0] == 422
+
+
+def test_import_file_splits_by_event_categories():
+    from dayoptimizer import web
+    ics = ICS.replace("SUMMARY:Lecture", "SUMMARY:Lecture\nCATEGORIES:Study,Uni")
+    out = web.import_file({"week_start": "2026-09-21", "files": [ics]})
+    assert out["typical_week"]["tue"][0]["calendar"] == "Study"
+    assert out["calendars"] == {"Study": ""}  # the file's own calendar has no events left

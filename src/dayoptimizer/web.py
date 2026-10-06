@@ -183,7 +183,8 @@ def _is_google(account: str) -> bool:
 
 def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str, list[date]]:
     """Events of one .ics file in the given week (repeats expanded), the
-    calendar's name and colour when the file carries them, and the start dates
+    calendar's name and colour when the file carries them (an event with
+    CATEGORIES is put under its first category instead), and the start dates
     of its events (so the page can point to weeks that have some)."""
     import icalendar
     import recurring_ical_events
@@ -214,7 +215,11 @@ def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str, list
         all_day = not isinstance(s, datetime)
         if all_day:
             s, e = datetime.combine(s, time()), datetime.combine(e, time())
-        events.append(Event(id=str(ev.get("UID", "")), calendar=name, title=str(ev.get("SUMMARY", "")),
+        # an event's own CATEGORIES (Outlook and others set it) splits one file into
+        # several calendars to map; without it the event belongs to the file's calendar
+        tags = [normalize_calendar(str(c))[:40] for c in ev.categories]
+        events.append(Event(id=str(ev.get("UID", "")), calendar=next((t for t in tags if t), name),
+                            title=str(ev.get("SUMMARY", "")),
                             start=s.astimezone(), end=e.astimezone(), all_day=all_day))
     return events, name, color, starts
 
@@ -234,7 +239,11 @@ def import_file(payload: object) -> dict:
         found, name, color, dates = ics_events(text, week_start)
         events += found
         starts += dates
-        calendars[name] = calendars.get(name) or color
+        timed = [e for e in found if not e.all_day]  # all-day markers never become blocks
+        if not timed or any(e.calendar == name for e in timed):
+            calendars[name] = calendars.get(name) or color
+        for e in timed:
+            calendars.setdefault(e.calendar, "")
     span = [min(starts).isoformat(), max(starts).isoformat()] if starts else None
     return {"typical_week": events_to_week(events, week_start), "calendars": calendars, "google": [], "span": span}
 
