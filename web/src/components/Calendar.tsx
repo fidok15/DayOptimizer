@@ -19,6 +19,7 @@ interface Props {
   onDayChange: (d: Weekday) => void;
   onChange: (fn: (w: Week) => Week) => void;
   dayStart: string;
+  single?: boolean;
 }
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -46,7 +47,7 @@ function shownBlocks(week: Week, d: Weekday, p: Preview | null): Block[] {
   return [...week[d], moved];
 }
 
-export default function Calendar({ view, week, categories, day, onDayChange, onChange, dayStart }: Props): JSX.Element {
+export default function Calendar({ view, week, categories, day, onDayChange, onChange, dayStart, single }: Props): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const colsRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -166,7 +167,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
 
   return (
     <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-2xl p-4 md:p-5">
-      <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} onAdd={hasCats ? () => addBlock(day) : undefined} />
+      <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} onAdd={hasCats ? () => addBlock(day) : undefined} single={single} />
 
       <div className="relative">
       <motion.div

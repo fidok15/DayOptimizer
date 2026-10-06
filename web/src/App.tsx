@@ -7,8 +7,10 @@ import Calendar from "./components/Calendar";
 import Notes from "./components/Notes";
 import Footer from "./components/Footer";
 import { LoadError, LoadingSkeleton } from "./components/States";
-import { usePlanner } from "./lib/usePlanner";
-import { WEEKDAYS, type View, type Weekday } from "./lib/types";
+import { RoutineChooser, RoutineSwitch } from "./components/RoutineMode";
+import { DAY_NAME } from "./components/calendar/geometry";
+import { TEMPLATE_DAY, usePlanner } from "./lib/usePlanner";
+import { WEEKDAYS, type RoutineMode, type View, type Weekday } from "./lib/types";
 
 const todayKey = (): Weekday => WEEKDAYS[(new Date().getDay() + 6) % 7];
 const rise = (i: number) => ({
@@ -21,6 +23,20 @@ export default function App() {
   const p = usePlanner();
   const [view, setView] = useState<View>(() => (window.innerWidth < 768 ? "day" : "week"));
   const [day, setDay] = useState<Weekday>(todayKey);
+  // one typical day: a single column, kept on Monday and copied to every day
+  const oneDay = p.routineMode === "day";
+  const shownView: View = oneDay ? "day" : view;
+  const shownDay: Weekday = oneDay ? TEMPLATE_DAY : day;
+
+  const switchMode = (mode: RoutineMode) => {
+    if (mode === "day") {
+      const same = (d: Weekday) => JSON.stringify(p.week[d].map(({ id: _, ...b }) => b));
+      const differs = WEEKDAYS.some((d) => same(d) !== same(day));
+      // the shown day becomes the one used everywhere: say so before other days are replaced
+      if (differs && !window.confirm(`Use ${DAY_NAME[day]} as your typical day? It replaces what the other days have.`)) return;
+    }
+    p.chooseRoutineMode(mode, day);
+  };
 
   return (
     <MotionConfig reducedMotion="user">
@@ -28,15 +44,16 @@ export default function App() {
       <div className="relative mx-auto flex min-h-[100dvh] max-w-[1400px] flex-col gap-5 px-4 py-5 md:px-8 md:py-8">
         <motion.div {...rise(0)} className="relative z-50">
           <Header
-            view={view}
+            view={shownView}
             onViewChange={setView}
+            oneDay={oneDay}
             saveStatus={p.saveStatus}
             saveError={p.saveError}
             onRetry={p.retrySave}
             categories={p.categories}
             onImport={p.importBlocks}
             onCategories={p.updateCategories}
-            day={day}
+            day={shownDay}
             week={p.week}
             notes={p.notes}
           />
@@ -56,11 +73,13 @@ export default function App() {
               />
             </motion.div>
             <motion.div {...rise(2)} className="flex min-w-0 flex-col gap-5">
+              {p.routineMode && <RoutineSwitch mode={p.routineMode} onChange={switchMode} />}
               <Calendar
-                view={view}
+                view={shownView}
+                single={oneDay}
                 week={p.week}
                 categories={p.categories}
-                day={day}
+                day={shownDay}
                 onDayChange={setDay}
                 onChange={p.updateWeek}
                 dayStart={p.dayStart}
@@ -70,6 +89,7 @@ export default function App() {
           </main>
         )}
 
+        {p.load === "ready" && p.routineMode === null && <RoutineChooser onChoose={(m) => p.chooseRoutineMode(m)} />}
         <Footer />
       </div>
     </MotionConfig>

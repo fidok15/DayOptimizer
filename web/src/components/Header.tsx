@@ -26,6 +26,8 @@ const pill = "glass-btn inline-flex items-center gap-1.5 rounded-full px-3 py-1.
 export default function Header(props: {
   view: View;
   onViewChange: (v: View) => void;
+  /** one-typical-day routine: there is only one day to show, so no Day/Week switch */
+  oneDay: boolean;
   saveStatus: SaveStatus;
   saveError: string;
   onRetry: () => void;
@@ -36,7 +38,7 @@ export default function Header(props: {
   week: Week;
   notes: string;
 }) {
-  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, onCategories, day, week, notes } = props;
+  const { view, onViewChange, oneDay, saveStatus, saveError, onRetry, categories, onImport, onCategories, day, week, notes } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -79,7 +81,7 @@ export default function Header(props: {
 
       <div className="flex flex-wrap items-center gap-3">
         <GarminConnect />
-        <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} />
+        <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} oneDay={oneDay} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
         <button
           type="button"
@@ -90,6 +92,7 @@ export default function Header(props: {
         >
           {theme === "dark" ? <Sun size={18} weight="bold" aria-hidden /> : <Moon size={18} weight="bold" aria-hidden />}
         </button>
+        {!oneDay && (
         <div role="group" aria-label="View" className="glass-btn inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
             const active = view === id;
@@ -116,6 +119,7 @@ export default function Header(props: {
             );
           })}
         </div>
+        )}
       </div>
       {/* a toast in the corner: coming and going it must not move the buttons, squeeze the headline or cover the
           calendar's header; in a portal because the header's animated (transformed) parent would pin `fixed` to itself */}

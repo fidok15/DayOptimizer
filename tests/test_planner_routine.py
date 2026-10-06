@@ -218,3 +218,24 @@ def test_a_displaced_block_may_take_the_slot_of_a_lower_priority_one():
     assert ("Sleep", "22:00", "00:00") in created   # but never bedtime
     # shutdown, pushed out in turn, finds its own free time before the hackathon
     assert [(s, e) for t, s, e in created if t == "Shutdown"] == [("12:15", "13:00")]
+
+
+def test_one_typical_day_with_gym_daily_still_obeys_the_weekly_notes():
+    from datetime import timedelta
+    from dayoptimizer.core.constraints import parse_rules
+    gym = [RoutineBlock(18 * 60, 19 * 60, "Gym", "Push day")]
+    rules = dataclasses.replace(
+        BASE, typical_week={d: gym for d in range(7)},
+        note_rules=parse_rules([{"type": "max_per_week", "category": "Gym", "count": 2},
+                                {"type": "min_gap_days", "category": "Gym", "days": 2}]))
+    monday = date(2026, 6, 29)
+    history: dict = {}
+    trained = []
+    for i in range(7):  # plan the week day by day, as `dayoptimizer plan --week` does
+        day = monday + timedelta(days=i)
+        start = datetime.combine(day, datetime.min.time()).astimezone()
+        changes = plan_day(day, [], None, rules, now=start.replace(hour=5), history=history)
+        if any(c.kind == "create" and c.title == "Push day" for c in changes):
+            trained.append(day.strftime("%a"))
+            history.setdefault("Gym", []).append(day)
+    assert trained == ["Mon", "Wed"]

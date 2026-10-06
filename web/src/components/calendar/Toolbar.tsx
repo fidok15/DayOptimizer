@@ -13,6 +13,8 @@ interface Props {
   onChange: (fn: (w: Week) => Week) => void;
   /** Add a block on the shown day (keyboard alternative to drawing). */
   onAdd?: () => void;
+  /** one-typical-day routine: a label instead of day tabs, nothing to copy to */
+  single?: boolean;
 }
 
 const HINT_KEY = "dayoptimizer.weekHintDismissed";
@@ -35,7 +37,7 @@ const PICKS: [string, Weekday[]][] = [
   ["All", [...WEEKDAYS]],
 ];
 
-export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd }: Props) {
+export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd, single }: Props) {
   const [hintHidden, setHintHidden] = useState(readHint);
   if (view === "week") {
     if (hintHidden) return null;
@@ -66,6 +68,12 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
   const today = todayKey();
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
+      {single ? (
+        <p className="text-sm text-ink">
+          <span className="font-semibold">Your typical day</span>
+          <span className="text-ink-dim"> · used every day; your notes limit how often things happen</span>
+        </p>
+      ) : (
       <div role="group" aria-label="Day" className="flex flex-wrap gap-1.5">
         {WEEKDAYS.map((d) => (
           <button
@@ -87,13 +95,14 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
           </button>
         ))}
       </div>
+      )}
       <div className="flex items-center gap-2">
         {onAdd && (
           <button type="button" onClick={onAdd} className={ghost}>
             <Plus weight="bold" size={16} /> Add block
           </button>
         )}
-        <CopyDay day={day} disabled={week[day].length === 0} onChange={onChange} />
+        {!single && <CopyDay day={day} disabled={week[day].length === 0} onChange={onChange} />}
         <ClearDay key={day} day={day} disabled={week[day].length === 0} onChange={onChange} />
       </div>
     </div>

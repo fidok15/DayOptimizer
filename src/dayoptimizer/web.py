@@ -2,8 +2,8 @@
 JSON API over the user's config.local.yaml. Binds to 127.0.0.1 only.
 
 API
-  GET /api/state  -> {categories, typical_week, notes, defaults, day_start, day_end}
-  PUT /api/state  <- {categories, typical_week, notes}  (validated, then saved)
+  GET /api/state  -> {categories, typical_week, notes, routine_mode, defaults, day_start, day_end}
+  PUT /api/state  <- {categories, typical_week, notes, routine_mode?}  (validated, then saved)
   POST /api/import <- {week_start}  -> {typical_week, all_day, calendars, google}  (calendar week as blocks
                     tagged with their source calendar, every calendar -> #rrggbb or "", and the
                     names of those from Google accounts, plus the skipped all-day events as
@@ -68,6 +68,9 @@ def read_state() -> dict:
         "categories": merged["categories"],
         "typical_week": _local().get("typical_week") or {},
         "notes": _local().get("notes") or "",
+        # "day": one typical day drawn once and used every day; "week": each day drawn
+        # on its own; None: not chosen yet (the page asks on first run)
+        "routine_mode": _local().get("routine_mode"),
         "defaults": list(_defaults()["categories"]),
         "day_start": rules.get("day_start", "06:00"),
         "day_end": rules.get("day_end", "23:00"),
@@ -96,6 +99,12 @@ def write_state(payload: object) -> dict:
     local.pop("categories", None)
     local.pop("typical_week", None)
     local.pop("notes", None)
+    mode = payload.get("routine_mode", local.get("routine_mode"))
+    if mode not in (None, "day", "week"):
+        raise ConfigError("routine_mode must be day or week.")
+    local.pop("routine_mode", None)
+    if mode:
+        local["routine_mode"] = mode
     notes = payload.get("notes")
     if notes is not None and not isinstance(notes, str):
         raise ConfigError("notes must be text.")

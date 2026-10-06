@@ -1,5 +1,5 @@
 import { categoryColor } from "./colors";
-import type { Categories, ImportedBlock, ServerState, Week, Weekday } from "./types";
+import type { Categories, ImportedBlock, RoutineMode, ServerState, Week, Weekday } from "./types";
 
 async function parse(res: Response): Promise<ServerState> {
   const body = await res.json().catch(() => ({}));
@@ -19,12 +19,12 @@ const toServerWeek = (week: Week) =>
     ]),
   );
 
-export const saveState = (categories: Categories, week: Week, notes: string): Promise<ServerState> => {
+export const saveState = (categories: Categories, week: Week, notes: string, routineMode: RoutineMode | null): Promise<ServerState> => {
   const typical_week = toServerWeek(week);
   return fetch("/api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ categories, typical_week, notes }),
+    body: JSON.stringify({ categories, typical_week, notes, ...(routineMode && { routine_mode: routineMode }) }),
   }).then(parse);
 };
 

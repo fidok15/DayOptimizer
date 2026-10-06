@@ -93,6 +93,8 @@ class UserConfig(BaseModel):
     # rules compiled from `notes` (see core/constraints.py); hand-editable
     note_rules: list[dict] | None = Field(default=None, max_length=64)
     typical_week: dict[Weekday, Annotated[list[TemplateBlock], Field(max_length=48)]] | None = None
+    # "day": the routine is one typical day used every day (the page keeps all days equal)
+    routine_mode: Literal["day", "week"] | None = None
 
     @field_validator("holiday_calendars")
     @classmethod
@@ -114,7 +116,7 @@ def validate_config(yaml_text: str) -> UserConfig:
     if not isinstance(data, dict):
         raise ConfigError("Config must be a YAML mapping (top-level keys: "
                           "categories, day_rules, transport_routes, "
-                          "holiday_calendars, typical_week, notes, note_rules).")
+                          "holiday_calendars, typical_week, routine_mode, notes, note_rules).")
     problems: list[str] = []
     categories = data.get("categories")
     non_string_names: list[object] = []

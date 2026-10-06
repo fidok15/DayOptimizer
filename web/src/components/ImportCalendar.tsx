@@ -108,8 +108,10 @@ export default function ImportCalendar(props: {
   onCategories: (fn: (c: Categories) => Categories) => void;
   view: View;
   day: Weekday;
+  /** one-typical-day routine: only a day can be imported, and it becomes that day */
+  oneDay: boolean;
 }) {
-  const { categories, onImport, onCategories, view, day } = props;
+  const { categories, onImport, onCategories, view, day, oneDay } = props;
   const { open, setOpen, ref } = usePopover();
   const [source, setSource] = useState<Source>("apple");
   const [mode, setMode] = useState<View>(view);
@@ -128,14 +130,14 @@ export default function ImportCalendar(props: {
   // opening the dialog starts from what the page shows: the whole week or the chosen day
   useEffect(() => {
     if (!open) return;
-    setMode(view);
+    setMode(oneDay ? "day" : view);
     setDate((d) => addDays(mondayOf(d), WEEKDAYS.indexOf(day)));
   }, [open, view, day]);
 
   const monday = mondayOf(date);
   const days: Weekday[] = mode === "week" ? [...WEEKDAYS] : [weekdayOf(date)];
   // a Day import is a sample day: its blocks go into every day it's used for
-  const into = mode === "week" ? days : SPREAD_DAYS[spread](days[0]);
+  const into = mode === "week" ? days : SPREAD_DAYS[oneDay ? "all" : spread](days[0]);
   const categoryNames = Object.keys(categories);
 
   // the calendars of this tab: busiest first, empty ones (for this week/day) last
@@ -303,7 +305,7 @@ export default function ImportCalendar(props: {
             />
 
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Segmented label="Import a day or a week" options={MODES} value={mode} onChange={setMode} pill="import-mode" />
+              {!oneDay && <Segmented label="Import a day or a week" options={MODES} value={mode} onChange={setMode} pill="import-mode" />}
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => shift(-1)} disabled={loading} aria-label={mode === "week" ? "Previous week" : "Previous day"} className={arrow}>
                   <CaretLeft size={14} weight="bold" aria-hidden />
@@ -465,7 +467,7 @@ export default function ImportCalendar(props: {
                     {skipped.length > 3 && ` and ${skipped.length - 3} more`}): a block needs a start and end time. Draw them by hand if they belong in your routine.
                   </p>
                 )}
-                {mode === "day" && (
+                {mode === "day" && !oneDay && (
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="text-ink-dim">Use this day for</span>
                     <Segmented

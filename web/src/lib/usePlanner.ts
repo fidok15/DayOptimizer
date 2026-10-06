@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calendarColors, fetchState, saveState } from "./api";
 import { uid } from "./time";
-import { WEEKDAYS, type Block, type Categories, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
+import { WEEKDAYS, type Block, type Categories, type RoutineMode, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
 
 const AUTOSAVE_MS = 700;
+
+/** In one-day mode the day is kept on Monday and every other day is a copy of it. */
+export const TEMPLATE_DAY: Weekday = "mon";
+const everyDay = (w: Week, from: Weekday): Week =>
+  Object.fromEntries(WEEKDAYS.map((d) => [d, d === from ? w[from] : w[from].map((b) => ({ ...b, id: uid() }))])) as Week;
 
 const blockKey = (b: Block) => `${b.start}-${b.end}-${b.title.trim().toLowerCase()}`;
 
@@ -18,6 +23,11 @@ export function usePlanner() {
   const [categories, setCategories] = useState<Categories>({});
   const [week, setWeek] = useState<Week>(() => toWeek({ typical_week: {} } as ServerState));
   const [notes, setNotes] = useState("");
+  const [routineMode, setRoutineMode] = useState<RoutineMode | null>(null);
+  const modeRef = useRef(routineMode);
+  modeRef.current = routineMode;
+  // every week change goes through here: in one-day mode the other days follow Monday
+  const mirror = (w: Week) => (modeRef.current === "day" ? everyDay(w, TEMPLATE_DAY) : w);
   const [defaults, setDefaults] = useState<string[]>([]);
   const [dayStart, setDayStart] = useState("06:00");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -32,6 +42,9 @@ export function usePlanner() {
         setCategories(s.categories);
         setWeek(toWeek(s));
         setNotes(s.notes ?? "");
+        // someone who drew a week before the choice existed keeps a week, unasked
+        const anyBlock = Object.values(s.typical_week).some((b) => b && b.length > 0);
+        setRoutineMode(s.routine_mode ?? (anyBlock ? "week" : null));
         setDefaults(s.defaults);
         setDayStart(s.day_start);
         setLoad("ready");
@@ -53,10 +66,10 @@ export function usePlanner() {
 
   useEffect(reload, [reload]);
 
-  const save = useCallback((cats: Categories, w: Week, n: string) => {
+  const save = useCallback((cats: Categories, w: Week, n: string, mode: RoutineMode | null) => {
     const mine = rev.current;
     setSaveStatus("saving");
-    saveState(cats, w, n)
+    saveState(cats, w, n, mode)
       .then(() => {
         if (mine === rev.current) {
           dirty.current = false;
@@ -74,9 +87,9 @@ export function usePlanner() {
   // debounced autosave after any edit
   useEffect(() => {
     if (!dirty.current) return;
-    const t = window.setTimeout(() => save(categories, week, notes), AUTOSAVE_MS);
+    const t = window.setTimeout(() => save(categories, week, notes, routineMode), AUTOSAVE_MS);
     return () => window.clearTimeout(t);
-  }, [categories, week, notes, save]);
+  }, [categories, week, notes, routineMode, save]);
 
   // warn before closing the tab with unsaved edits
   useEffect(() => {
@@ -95,7 +108,15 @@ export function usePlanner() {
 
   const updateWeek = useCallback((fn: (w: Week) => Week) => {
     touch();
-    setWeek(fn);
+    setWeek((w) => mirror(fn(w)));
+  }, []);
+
+  /** Pick how the routine is drawn. Going to one day makes `from` the day used everywhere. */
+  const chooseRoutineMode = useCallback((mode: RoutineMode, from: Weekday = TEMPLATE_DAY) => {
+    touch();
+    modeRef.current = mode;
+    setRoutineMode(mode);
+    if (mode === "day") setWeek((w) => everyDay({ ...w, [TEMPLATE_DAY]: w[from] }, TEMPLATE_DAY));
   }, []);
 
   const updateCategories = useCallback((fn: (c: Categories) => Categories) => {
@@ -118,7 +139,7 @@ export function usePlanner() {
   const importBlocks = useCallback((incoming: Week, replace: boolean, days: Weekday[]) => {
     touch();
     setWeek((w) =>
-      Object.fromEntries(
+      mirror(Object.fromEntries(
         WEEKDAYS.map((d) => {
           if (!days.includes(d)) return [d, w[d]];
           const out = replace ? [] : [...w[d]];
@@ -131,7 +152,7 @@ export function usePlanner() {
           }
           return [d, out];
         }),
-      ) as Week,
+      ) as Week),
     );
   }, []);
 
@@ -140,11 +161,11 @@ export function usePlanner() {
     setNotes(text);
   }, []);
 
-  const retrySave = useCallback(() => save(categories, week, notes), [save, categories, week, notes]);
+  const retrySave = useCallback(() => save(categories, week, notes, routineMode), [save, categories, week, notes, routineMode]);
 
   return {
     load, loadError, reload,
-    categories, week, notes, defaults, dayStart, updateNotes,
+    categories, week, notes, defaults, dayStart, updateNotes, routineMode, chooseRoutineMode,
     updateWeek, updateCategories, removeCategory, importBlocks,
     saveStatus, saveError, retrySave,
   };

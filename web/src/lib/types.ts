@@ -32,11 +32,15 @@ export interface ImportedBlock {
 
 export type View = "day" | "week";
 
+/** "day": one typical day drawn once and used every day; "week": each day drawn on its own. */
+export type RoutineMode = "day" | "week";
+
 /** Shape of GET /api/state (blocks arrive without ids). */
 export interface ServerState {
   categories: Categories;
   typical_week: Partial<Record<Weekday, Omit<Block, "id">[]>>;
   notes: string;
+  routine_mode?: RoutineMode | null;
   defaults: string[];
   day_start: string;
   day_end: string;

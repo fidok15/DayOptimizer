@@ -344,3 +344,11 @@ def test_import_file_splits_by_event_categories():
     out = web.import_file({"week_start": "2026-09-21", "files": [ics]})
     assert out["typical_week"]["tue"][0]["calendar"] == "Study"
     assert out["calendars"] == {"Study": ""}  # the file's own calendar has no events left
+
+
+def test_routine_mode_roundtrip_and_validation():
+    assert read_state()["routine_mode"] is None
+    assert write_state(_state_payload(routine_mode="day"))["routine_mode"] == "day"
+    assert write_state(_state_payload())["routine_mode"] == "day"  # omitted: kept
+    with pytest.raises(ConfigError):
+        write_state(_state_payload(routine_mode="month"))
