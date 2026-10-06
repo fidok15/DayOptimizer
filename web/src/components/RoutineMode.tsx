@@ -55,9 +55,10 @@ export function RoutineChooser({ onChoose }: { onChoose: (m: RoutineMode) => voi
 /** Switch between the two later on. */
 export function RoutineSwitch({ mode, onChange }: { mode: RoutineMode; onChange: (m: RoutineMode) => void }) {
   return (
-    <div role="group" aria-label="Routine" className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-ink-dim">Routine:</span>
-      <div className="glass-btn inline-flex rounded-full p-0.5">
+    <div role="group" aria-label="Routine" className="glass-btn inline-flex w-fit items-center gap-1 rounded-full p-0.5 pl-3 text-sm">
+      {/* inside the glass: on the painted background a bare label can't be read */}
+      <span className="font-medium text-ink">Routine</span>
+      <div className="inline-flex">
         {OPTIONS.map(({ id, label }) => {
           const active = id === mode;
           return (
