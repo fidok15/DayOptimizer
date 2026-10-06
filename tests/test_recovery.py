@@ -78,3 +78,15 @@ def test_new_block_inherits_what_its_category_trains():
     # a category the watch never saw stays untouched (Work is not training)
     desk = RoutineBlock(9 * 60, 17 * 60, "Work", "")
     assert learn_region(history, {0: [desk]}, 0, desk, now=NOW) is None
+
+
+def test_a_meal_at_an_hour_once_used_for_running_is_not_training():
+    from dayoptimizer.core.rules import RoutineBlock
+    lunch = RoutineBlock(12 * 60, 13 * 60, "Food", "Lunch")
+    dinner = RoutineBlock(16 * 60, 17 * 60, "Food", "Dinner")
+    breakfast = RoutineBlock(7 * 60, 7 * 60 + 30, "Food", "Breakfast")
+    week = {1: [breakfast, lunch, dinner]}
+    # the watch saw Tuesday runs at 16:00, where the new routine now has dinner
+    history = [_act("running", datetime(2026, 9, d, 16, 0).astimezone()) for d in (8, 15)]
+    assert block_region(history, 1, 16 * 60, 17 * 60, now=NOW) == "legs"
+    assert learn_region(history, week, 1, dinner, now=NOW) is None

@@ -498,7 +498,13 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
     history = history or {}
     placed_per_category: dict[str, int] = {}
     seen_labels: dict[tuple[str, str], int] = {}
-    for b in rules.typical_week.get(day.weekday(), []):
+    routine = rules.typical_week.get(day.weekday(), [])
+    # the routine's own blocks still to come hold their time: a block pushed off its
+    # slot must not take a later block's (dinner pushed into bedtime leaves no sleep)
+    upcoming = [Event(id=f"routine-slot:{i}", calendar=o.category, title=o.label,
+                      start=midnight + timedelta(minutes=o.start), end=midnight + timedelta(minutes=o.end))
+                for i, o in enumerate(routine) if midnight + timedelta(minutes=o.start) >= now]
+    for b in routine:
         start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
         # the Nth block with this title is already there once the day holds N of
         # them (a routine may repeat a title: work before and after lunch)
@@ -537,7 +543,9 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
         elif rules.is_movable(b.category):
             search_from = max(day_start, now)
             broken_window = window_rule(rules.note_rules, b.category, b.start, b.end, day.weekday())
-            new_start = _nearest_start(against, start, end - start, search_from, day_end)
+            held = [e for e in upcoming if not (e.calendar == b.category and e.title == b.label
+                                                and e.start == start)]
+            new_start = _nearest_start(against + held, start, end - start, search_from, day_end)
             if broken_window is not None:
                 reason = f"your routine has it at {usual}, but {explain(broken_window)} — nearest allowed time"
             else:

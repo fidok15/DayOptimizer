@@ -83,18 +83,24 @@ def learn_region(activities: list[Activity], typical_week: dict, weekday: int, b
                   now: datetime | None = None) -> str | None:
     """The region a routine block loads. First its own hours on its own weekday;
     failing that (a block the user just drew), what the same category trains in
-    its other blocks — so a new training block isn't mistaken for desk time."""
-    own = block_region(activities, weekday, block.start, block.end, now=now)
+    its other blocks — so a new training block isn't mistaken for desk time.
+    A category is training only if the watch saw workouts in at least half of
+    its blocks: dinner drawn at an hour once used for runs is still dinner."""
+    regions = [(day == weekday and other.start == block.start,
+                block_region(activities, day, other.start, other.end, now=now))
+               for day, blocks in typical_week.items() for other in blocks
+               if other.category == block.category]
+    if not regions:  # a block outside the typical week: only its own hours can tell
+        return block_region(activities, weekday, block.start, block.end, now=now)
+    if 2 * sum(1 for _, r in regions if r) < len(regions):
+        return None
+    own = next((r for is_own, r in regions if is_own and r), None)
     if own is not None:
         return own
     counts: dict[str, int] = {}
-    for day, blocks in typical_week.items():
-        for other in blocks:
-            if other.category != block.category or (day == weekday and other.start == block.start):
-                continue
-            region = block_region(activities, day, other.start, other.end, now=now)
-            if region:
-                counts[region] = counts.get(region, 0) + 1
+    for is_own, region in regions:
+        if region and not is_own:
+            counts[region] = counts.get(region, 0) + 1
     return max(counts, key=lambda r: counts[r]) if counts else None
 
 def training_advice(region: str | None, garmin: GarminSummary | None, activities: list[Activity],

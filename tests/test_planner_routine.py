@@ -191,3 +191,16 @@ def test_a_planner_block_that_breaks_a_note_is_moved_back_inside_the_rules():
     moves = [(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes if c.kind == "move"]
     assert moves == [("English", "20:00", "21:00")]
     assert "no study after 21" in next(c.reason for c in changes if c.kind == "move")
+
+
+def test_a_displaced_flexible_block_never_takes_a_later_routine_block():
+    evening = [RoutineBlock(19 * 60, 20 * 60 + 30, "Gym", "Push day"),
+               RoutineBlock(20 * 60 + 30, 21 * 60 + 15, "Food", "Dinner"),
+               RoutineBlock(21 * 60 + 15, 22 * 60, "Free time", "Shutdown"),
+               RoutineBlock(22 * 60, 24 * 60, "Sleep", "")]
+    rules = dataclasses.replace(BASE, typical_week={4: evening})
+    meeting = _ev("m", "Important", 20, 21, title="Weekly meeting", m1=30, m2=30)
+    created = _created(plan_day(DAY, [meeting], None, rules, now=D.replace(hour=13)))
+    assert ("Sleep", "22:00", "00:00") in created
+    # dinner and shutdown, pushed off by the meeting, must not eat into sleep
+    assert all(end <= "22:00" for title, _, end in created if title != "Sleep")
