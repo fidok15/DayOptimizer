@@ -11,11 +11,12 @@ from dayoptimizer.core.models import Event
 from dayoptimizer.web import DEFAULT_CONFIG, events_to_week, make_server, read_state, write_state
 
 BLOCK = {"start": "07:00", "end": "07:30", "category": "Food", "title": "Breakfast"}
+FOOD = {"movable": True, "priority": 6, "color": "#e07b53"}
 
 
 def _state_payload(**overrides):
     state = read_state()
-    payload = {"categories": state["categories"], "typical_week": state["typical_week"]}
+    payload = {"categories": {"Food": FOOD, **state["categories"]}, "typical_week": state["typical_week"]}
     payload.update(overrides)
     return payload
 
@@ -23,18 +24,17 @@ def _state_payload(**overrides):
 def test_roundtrip_stores_only_delta_and_keeps_other_keys():
     paths.ensure_private_dir()
     paths.user_config_path().write_text("day_rules:\n  gym_per_week: 2\n")
-    cats = read_state()["categories"]
-    cats["Choir"] = {"movable": False, "priority": 7, "color": "#4f9d8a", "emoji": "🎵"}
-    del cats["Gym"]
-    state = write_state(_state_payload(categories=cats, typical_week={"mon": [BLOCK], "tue": []}))
+    choir = {"movable": False, "priority": 7, "color": "#4f9d8a", "emoji": "🎵"}
+    state = write_state(_state_payload(categories={"Food": FOOD, "Choir": choir},
+                                       typical_week={"mon": [BLOCK], "tue": []}))
 
     local = yaml.safe_load(paths.user_config_path().read_text())
     assert local["day_rules"] == {"gym_per_week": 2}
-    assert local["categories"] == {"Gym": None, "Choir": {"movable": False, "priority": 7, "color": "#4f9d8a", "emoji": "🎵"}}
+    assert local["categories"] == {"Food": FOOD, "Choir": choir}
     assert local["typical_week"] == {"mon": [BLOCK]}
-    assert "Gym" not in state["categories"] and "Choir" in state["categories"]
+    assert set(state["categories"]) == {"Food", "Choir"}
     rules = load_rules(DEFAULT_CONFIG)
-    assert "Gym" not in rules.categories and rules.is_movable("Choir") is False
+    assert set(rules.categories) == {"Food", "Choir"} and rules.is_movable("Choir") is False
 
 
 @pytest.mark.parametrize("week", [
@@ -73,8 +73,8 @@ def _request(port, method, body=None, headers=None, path="/api/state"):
 
 def test_http_get_and_put(server):
     status, state = _request(server, "GET")
-    assert status == 200 and "Food" in state["categories"]
-    payload = {"categories": state["categories"], "typical_week": {"wed": [BLOCK]}}
+    assert status == 200 and state["categories"] == {}
+    payload = {"categories": {"Food": FOOD}, "typical_week": {"wed": [BLOCK]}}
     status, state = _request(server, "PUT", payload, {"Content-Type": "application/json",
                                                      "Origin": f"http://127.0.0.1:{server}"})
     assert status == 200 and state["typical_week"] == {"wed": [BLOCK]}
@@ -168,8 +168,7 @@ def test_serve_refuses_foreign_port():
 
 
 def test_http_save_routine_writes_state_and_brief(server):
-    status, state = _request(server, "GET")
-    payload = {"categories": state["categories"], "typical_week": {"mon": [BLOCK]}}
+    payload = {"categories": {"Food": FOOD}, "typical_week": {"mon": [BLOCK]}}
     status, body = _request(server, "POST", payload, {"Content-Type": "application/json"}, "/api/routine")
     assert status == 200 and body["path"].endswith("routine.md") and "## Mon" in body["text"]
     assert read_state()["typical_week"] == {"mon": [BLOCK]}

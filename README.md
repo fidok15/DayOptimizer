@@ -34,12 +34,9 @@ match its planner categories **exactly** — case-sensitive, no emoji, no extra
 spaces. There is no fuzzy matching: a calendar named `food` or `🍔 Food` does
 not count as `Food`.
 
-Default categories (from `config.default.yaml`):
-
-| Category | The planner... |
-|---|---|
-| `Food`, `Gym`, `Learn`, `Sleep`, `Free time`, `Transport` | creates/moves blocks in these automatically (flexible) |
-| `Work`, `Meeting`, `Important` | only classifies your existing events by these names; it moves them only after you approve the change (fixed) |
+There are no default categories: you define your own in `dayoptimizer setup`
+(name, colour, Fixed or Flexible). Flexible categories are moved by the planner
+on its own; Fixed ones change only after you approve.
 
 **Without a matching calendar for a category, plans are computed but every
 block for that category is skipped** — as of this version, that failure is
@@ -177,7 +174,8 @@ category's other blocks — so nothing needs tagging and non-training blocks are
 never touched. Thresholds live in `day_rules`
 (`recovery_lighter_hours`, `recovery_skip_hours`, `respect_recovery: false` to
 ignore all of it). Without a drawn week, generic rules from
-`config.default.yaml` fill the day (meal windows, workouts, focus blocks).
+`config.default.yaml` fill the day (meal windows, workouts, focus blocks),
+but only in categories you created with matching names (`Food`, `Gym`, `Work`, ...).
 
 `dayoptimizer setup` (run automatically on first use) opens a local planner at
 `http://127.0.0.1:8765/`: add, recolour or remove categories, mark them Fixed or

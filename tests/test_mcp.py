@@ -185,7 +185,8 @@ def test_recent_changes_empty_log(app_home):
     assert out == "No changes logged yet."
 
 
-def test_list_calendars_reports_seen_and_default_categories(app_home):
+def test_list_calendars_reports_seen_and_user_categories(app_home):
+    (app_home / "config.local.yaml").write_text("categories:\n  Food: {}\n  Gym: {}\n")
     s = Storage(app_home / "data.db")
     s.sync_events([_ev("a", "2026-07-12T09:00", cal="Work")])
     s.close()
@@ -194,10 +195,10 @@ def test_list_calendars_reports_seen_and_default_categories(app_home):
     assert "Food" in out and "Gym" in out
 
 
-def test_list_calendars_empty_cache_still_lists_default_categories(app_home):
+def test_list_calendars_empty_cache_and_no_categories(app_home):
     Storage(app_home / "data.db").close()
     out = mcp_server.list_calendars()
-    assert "Food" in out and "Gym" in out
+    assert "dayoptimizer setup" in out
     assert "No calendars seen" in out or "no calendars" in out.lower()
 
 

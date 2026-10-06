@@ -1,16 +1,7 @@
 # Per-category movability. movable: true = the planner reschedules on its own,
 # movable: false = changes require explicit user approval. Users extend/override
 # these in ~/.dayoptimizer/config.local.yaml (created by onboarding).
-categories:
-  Important:   {movable: false, priority: 10}
-  Meeting:     {movable: false, priority: 9}
-  Work:        {movable: false, priority: 9}
-  Sleep:       {movable: true,  priority: 7}
-  Food:        {movable: true,  priority: 6}
-  Transport:   {movable: true,  priority: 6}
-  Gym:         {movable: true,  priority: 5}
-  Learn:       {movable: true,  priority: 4}
-  "Free time": {movable: true,  priority: 2}
+categories: {}
 
 day_rules:
   gym_per_week: 3               # 0 disables workout scheduling

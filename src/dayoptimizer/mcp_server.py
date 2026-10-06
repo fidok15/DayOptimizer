@@ -118,7 +118,7 @@ def list_calendars() -> str:
     finally:
         s.close()
     config = load_config_data(_DEFAULT_CONFIG)
-    categories = list(config.get("categories", {}).keys())
+    categories = [k for k, v in config.get("categories", {}).items() if v is not None]
     if calendars:
         seen = f"Calendars seen in your synced events: {', '.join(calendars)}"
     else:
@@ -128,7 +128,9 @@ def list_calendars() -> str:
         f"{seen}\n\n"
         "Each category's blocks go to the calendar of the same name (emoji and "
         "stray spaces in calendar names are ignored); a missing one is created "
-        f"with its first block. Your categories: {', '.join(categories)}."
+        "with its first block. "
+        + (f"Your categories: {', '.join(categories)}." if categories
+           else "You have no categories yet: define them in `dayoptimizer setup`.")
     )
 
 

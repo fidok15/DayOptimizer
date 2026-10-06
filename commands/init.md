@@ -9,8 +9,8 @@ Run the DayOptimizer onboarding interview. Follow these steps exactly:
    instead of interviewing blind and finding out about mismatches later.
    - If `get_config` shows a user config already exists, ask whether to
      update it or start over.
-   - Compare the calendars `list_calendars` reports against the planner's
-     default categories it lists. Tell the user plainly what you found, e.g.
+   - Compare the calendars `list_calendars` reports against the user's
+     categories it lists (there are none until the user creates them). Tell the user plainly what you found, e.g.
      "I can see calendars Work, Meeting, Gym — which of the planner's
      categories do they map to? You're missing calendars for: Food, Learn,
      Sleep, Free time, Transport — create them in Calendar.app now (File >
