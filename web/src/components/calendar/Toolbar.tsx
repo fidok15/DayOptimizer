@@ -79,7 +79,11 @@ export default function Toolbar({ view, day, week, onDayChange, onChange, onAdd 
             }`}
           >
             {WEEKDAY_LABEL[d]}
-            {d === today && d !== day && <span className="ml-1 inline-block size-1.5 rounded-full bg-accent align-middle" />}
+            {d === today && d !== day && (
+              <span title="Today" className="ml-1 inline-block size-1.5 rounded-full bg-accent align-middle">
+                <span className="sr-only">(today)</span>
+              </span>
+            )}
           </button>
         ))}
       </div>
