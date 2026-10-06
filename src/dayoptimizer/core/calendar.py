@@ -74,6 +74,8 @@ class CalendarClient:
         ev = self._store.eventWithIdentifier_(event_id)
         if ev is None:
             raise KeyError(f"Event {event_id} not found")
+        if ev.isAllDay():  # an all-day event the user agreed to make timed
+            ev.setAllDay_(False)
         ev.setStartDate_(self._nsdate(new_start))
         ev.setEndDate_(self._nsdate(new_end))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)  # 0 = EKSpanThisEvent

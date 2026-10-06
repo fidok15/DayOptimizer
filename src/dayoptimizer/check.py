@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime, time, timedelta
+from dayoptimizer.core.allday import time_in_title
 from dayoptimizer.core.models import Event, GarminSummary
 from dayoptimizer.core.notify import notify
 from dayoptimizer.core.planner import PLANNER_TITLES
@@ -71,8 +72,9 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     # event_replan on the next cycle, which is a no-op (plan_day is
     # deterministic and the plan already reflects the move) and settles.
     changed_events = storage.sync_events(events, window_start, window_end)
-    # all-day markers (vacation, holiday) never anchor a plan, so they never trigger one
-    new_foreign_events = [e for e in changed_events if not e.all_day
+    # all-day markers (vacation, holiday) never anchor a plan, so they never trigger one,
+    # unless the title names a time ("Dentist 14:00"): the planner plans around those
+    new_foreign_events = [e for e in changed_events if (not e.all_day or time_in_title(e.title))
                           and _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
 
     garmin = fetch_garmin_fn(storage, today)

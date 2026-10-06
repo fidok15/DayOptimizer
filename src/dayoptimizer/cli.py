@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from dayoptimizer import paths
 from dayoptimizer.apply import _missing, apply_changes
+from dayoptimizer.core.allday import conversion, timed_all_day
 from dayoptimizer.core.calendar import CalendarClient
 from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.planner import plan_day
@@ -90,6 +91,10 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     # or counted toward the weekly gym quota — but the cache (sync_events)
     # keeps seeing them unfiltered, since they are real calendar entries.
     events = [e for e in events_raw if not e.all_day]
+    # ...except an all-day event whose title names a time ("Dentist 14:00"): plan
+    # around that time and propose making it a timed event; never move it unasked
+    title_timed = timed_all_day(events_raw, day)
+    events += [t for t, _ in title_timed]
     tomorrow = [e for e in tomorrow_raw if not e.all_day]
     tomorrow_fixed = [e for e in tomorrow if not rules.is_movable(e.calendar)]
     # a holiday makes the day a non-work day regardless of work_days: an
@@ -131,6 +136,8 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
                        # needs tomorrow's events to see it already exists on replan
                        next_day_events=tomorrow,
                        is_workday=is_workday)
+    stand_ins = {t.id for t, _ in title_timed}
+    changes = [c for c in changes if c.event_id not in stand_ins] + [conversion(t, tt) for t, tt in title_timed]
     applied, errors = apply_changes(changes, calendar, storage, confirm)
     return changes, applied, errors
 
