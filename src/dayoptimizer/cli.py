@@ -439,8 +439,8 @@ def cmd_sync(args, rules, config):
 def cmd_calendars(args, rules, config):
     """Create a calendar in the Calendar app for every category that lacks one
     and give it the category's colour. Prints CREATED / RECOLORED <names>,
-    FAILED <name>: <why> and COLOR <name> <#hex> lines for the caller.
-    --read only reports the colours."""
+    FAILED <name>: <why> and COLOR <name> <#hex> lines for the caller, then
+    CAL <name>\t<#hex>\t<account> for every calendar. --read only reports."""
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
@@ -461,6 +461,8 @@ def cmd_calendars(args, rules, config):
             print(f"COLOR {name}\t{actual}")
     print("CREATED " + "\t".join(created))
     print("RECOLORED " + "\t".join(recolored))
+    for name, (color, account) in calendar.all_calendars().items():
+        print(f"CAL {name}\t{color or ''}\t{account.replace(chr(9), ' ')}")
 
 def cmd_web(args, rules, config):
     from dayoptimizer.web import serve

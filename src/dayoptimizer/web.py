@@ -13,7 +13,8 @@ API
                     span: [first, last] event start dates in the files (null when empty)
   POST /api/routine <- {categories, typical_week, notes} -> {path, text, calendars, notes}  (save, write the LLM
                     brief, create/recolour a Calendar-app calendar per category)
-  GET  /api/calendar-colors -> {colors: {category: #rrggbb}}  (each category calendar's colour now)
+  GET  /api/calendar-colors -> {colors: {category: #rrggbb}, calendars: {name: #rrggbb}}  (each
+                    category calendar's colour now, and every calendar in the Calendar app)
   GET  /api/garmin          -> {connected}
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
   POST /api/garmin/mfa      <- {code}            -> {status: connected}
@@ -193,10 +194,16 @@ def import_week(payload: object) -> dict:
         events = storage.events_between(start, start + timedelta(days=7))
     finally:
         storage.close()
-    rows = [l[len("CAL "):].split("\t") for l in out.splitlines() if l.startswith("CAL ")]
+    calendars, google = _calendar_list(out)
     return {"typical_week": events_to_week(events, week_start), "all_day": all_day_in_week(events, week_start),
-            "calendars": {r[0]: r[1] if len(r) > 1 else "" for r in rows},
-            "google": [r[0] for r in rows if len(r) > 2 and _is_google(r[2])]}
+            "calendars": calendars, "google": google}
+
+
+def _calendar_list(out: str) -> tuple[dict[str, str], list[str]]:
+    """The bundle's CAL lines: every calendar -> #rrggbb (or ""), and those from Google."""
+    rows = [l[len("CAL "):].split("\t") for l in out.splitlines() if l.startswith("CAL ")]
+    return ({r[0]: r[1] if len(r) > 1 else "" for r in rows},
+            [r[0] for r in rows if len(r) > 2 and _is_google(r[2])])
 
 
 def _is_google(account: str) -> bool:
@@ -425,12 +432,15 @@ def create_category_calendars() -> dict:
 
 def calendar_colors() -> dict:
     """The colour each category's calendar has now, so the page can show the
-    same one. Empty when calendar access isn't set up: the page keeps its own."""
+    same one, plus every calendar the Calendar app has (name -> colour) so the
+    page can offer to make one a category. Empty when calendar access isn't
+    set up: the page keeps its own."""
     from dayoptimizer.mcp_server import _bundle_run
     bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle, os.X_OK):
-        return {"colors": {}}
-    return {"colors": _colors(_bundle_run(["calendars", "--read"]))}
+        return {"colors": {}, "calendars": {}}
+    out = _bundle_run(["calendars", "--read"])
+    return {"colors": _colors(out), "calendars": _calendar_list(out)[0]}
 
 
 MFA_TTL = 300  # seconds a started Garmin login waits for its MFA code

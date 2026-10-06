@@ -102,8 +102,12 @@ export const saveRoutine = (categories: Categories, week: Week, notes: string) =
 };
 
 /** The colour each category's calendar has now in the Calendar app ({} without calendar access). */
-export const calendarColors = (): Promise<Record<string, string>> =>
+/** Each category calendar's colour now, and every calendar the Calendar app has (name -> #rrggbb). */
+export const calendarColors = (): Promise<{ colors: Record<string, string>; calendars: Record<string, string> }> =>
   fetch("/api/calendar-colors", { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
-    .then((b: { colors?: Record<string, string> } | null) => b?.colors ?? {})
-    .catch(() => ({}));
+    .then((b: { colors?: Record<string, string>; calendars?: Record<string, string> } | null) => ({
+      colors: b?.colors ?? {},
+      calendars: b?.calendars ?? {},
+    }))
+    .catch(() => ({ colors: {}, calendars: {} }));

@@ -188,7 +188,10 @@ def test_category_calendars_report(monkeypatch):
     assert web.create_category_calendars() == {"created": ["Choir", "Read"], "recolored": ["Work"],
                                                "colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"},
                                                "error": "Gym: nope"}
-    assert web.calendar_colors() == {"colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"}}
+    assert web.calendar_colors() == {"colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"}, "calendars": {}}
+    monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "COLOR Work\t#c2c2c2\nCAL Work\t#c2c2c2\tiCloud\n"
+                        "CAL School\t#3fa7d6\tme@gmail.com\n")
+    assert web.calendar_colors()["calendars"] == {"Work": "#c2c2c2", "School": "#3fa7d6"}
     monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "NO_ACCESS\n")
     assert "blocked" in web.create_category_calendars()["error"]
 

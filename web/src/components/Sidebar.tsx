@@ -301,8 +301,12 @@ export default function Sidebar(props: {
   defaults: string[];
   onChange: (fn: (c: Categories) => Categories) => void;
   onRemove: (name: string) => void;
+  /** calendars in the Calendar app (name -> colour) that can be made a category */
+  calendars: Record<string, string>;
 }) {
-  const { categories, week, onChange, onRemove } = props;
+  const { categories, week, onChange, onRemove, calendars } = props;
+  const have = new Set(Object.keys(categories).map((c) => c.toLowerCase()));
+  const offered = Object.entries(calendars).filter(([name]) => name && !have.has(name.toLowerCase()));
 
   const { counts, totals } = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -343,6 +347,39 @@ export default function Sidebar(props: {
             })
           }
         />
+
+        {offered.length > 0 && (
+          <details className="rounded-[12px] border border-line px-3 py-2 text-sm">
+            <summary className="cursor-pointer select-none text-ink-dim">
+              From your Calendar app <span className="font-mono text-xs tabular-nums">{offered.length}</span>
+            </summary>
+            <p className="mt-1.5 text-xs leading-snug text-ink-dim">
+              Planned around already. Add one as a category to set its priority, Fixed or Flex, and rules in your notes.
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {offered.map(([name, color]) => (
+                <li key={name} className="flex items-center gap-2">
+                  <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: color || "currentColor" }} />
+                  <span className="min-w-0 flex-1 truncate" title={name}>{name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Add ${name} as a category`}
+                    onClick={() =>
+                      onChange((c) => {
+                        const taken = Object.entries(c).map(([n, cat]) => categoryColor(n, cat.color));
+                        // fixed: someone else's timetable is not the planner's to move
+                        return { ...c, [name.slice(0, 40)]: { movable: false, priority: 5, color: /^#[0-9a-f]{6}$/i.test(color) ? color : freshColor(name, taken) } };
+                      })
+                    }
+                    className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-full border border-line px-2.5 text-xs font-medium text-ink transition hover:bg-ink/5 active:scale-[0.98]"
+                  >
+                    <Plus size={12} weight="bold" aria-hidden /> Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div aria-hidden className="flex items-center gap-1 px-1 pb-1 text-xs text-ink-dim">

@@ -24,6 +24,8 @@ export function usePlanner() {
   const [week, setWeek] = useState<Week>(() => toWeek({ typical_week: {} } as ServerState));
   const [notes, setNotes] = useState("");
   const [routineMode, setRoutineMode] = useState<RoutineMode | null>(null);
+  // every calendar in the Calendar app (name -> colour), so one can become a category
+  const [appCalendars, setAppCalendars] = useState<Record<string, string>>({});
   const modeRef = useRef(routineMode);
   modeRef.current = routineMode;
   // every week change goes through here: in one-day mode the other days follow Monday
@@ -50,13 +52,14 @@ export function usePlanner() {
         setLoad("ready");
         // a category without a colour of its own shows its calendar's, so the page and
         // the Calendar app agree from the start (not an edit: nothing is autosaved)
-        calendarColors().then((colors) =>
+        calendarColors().then(({ colors, calendars }) => {
+          setAppCalendars(calendars);
           setCategories((c) =>
             Object.fromEntries(
               Object.entries(c).map(([name, cat]) => [name, cat.color || !colors[name] ? cat : { ...cat, color: colors[name] }]),
             ),
-          ),
-        );
+          );
+        });
       })
       .catch((e: Error) => {
         setLoadError(e.message);
@@ -165,7 +168,7 @@ export function usePlanner() {
 
   return {
     load, loadError, reload,
-    categories, week, notes, defaults, dayStart, updateNotes, routineMode, chooseRoutineMode,
+    categories, week, notes, defaults, dayStart, updateNotes, routineMode, chooseRoutineMode, appCalendars,
     updateWeek, updateCategories, removeCategory, importBlocks,
     saveStatus, saveError, retrySave,
   };

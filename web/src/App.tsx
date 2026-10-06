@@ -70,6 +70,7 @@ export default function App() {
                 defaults={p.defaults}
                 onChange={p.updateCategories}
                 onRemove={p.removeCategory}
+                calendars={p.appCalendars}
               />
             </motion.div>
             <motion.div {...rise(2)} className="flex min-w-0 flex-col gap-5">
