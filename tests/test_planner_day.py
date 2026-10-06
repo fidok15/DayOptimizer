@@ -75,8 +75,23 @@ def test_insert_transport_before_located_event(monkeypatch):
     monkeypatch.setitem(RULES.transport_routes, "Campus", 25)
     events = [_ev("w", "Work", 10, 12, location="University Campus")]
     changes = insert_transport(events, RULES)
-    assert len(changes) == 1 and changes[0].category == "Transport"
-    assert changes[0].new_end == events[0].start
+    there, back = changes
+    assert there.category == back.category == "Transport"
+    assert there.new_end == events[0].start and back.new_start == events[0].end
+
+def test_one_trip_there_before_the_first_class_and_one_back_after_the_last(monkeypatch):
+    monkeypatch.setitem(RULES.transport_routes, "School", 45)
+    classes = [_ev("a", "School", 8, 9, title="Lecture - Maths"),
+               _ev("b", "School", 11, 12, title="Lab - Maths", location="Main Street 7"),
+               _ev("c", "School", 17, 18, title="Lab - Physics")]
+    changes = insert_transport(classes + [_ev("d", "Work", 19, 20)], RULES)
+    trips = [(f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}", c.title) for c in changes]
+    assert trips == [("07:15", "08:00", "Commute: Lecture - Maths"), ("18:00", "18:45", "Commute: back from Lab - Physics")]
+    # a replan finds the trips already there and adds nothing
+    made = [_ev(f"t{i}", "Transport", 0, 0) for i in range(2)]
+    for ev, c in zip(made, changes):
+        ev.start, ev.end = c.new_start, c.new_end
+    assert insert_transport(classes + made, RULES) == []
 
 def test_check_free_time_warns_on_packed_day():
     events = [_ev("a", "Work", 6, 14), _ev("b", "Learn", 14, 22, m2=30)]

@@ -379,22 +379,35 @@ def fill_day(events, rules, day_start, day_end, now, is_workday: bool = True):
     return changes
 
 def insert_transport(events, rules):
+    """A trip to each place before the day's first event there and one back
+    after its last: classes back to back on campus need no commute between
+    them. A route in transport_routes names a category ("School: 45")
+    or part of an address ("Main Street: 45"). Trips already in the
+    Transport calendar (from an earlier replan) are not added again."""
     changes = []
     transports = [e for e in events if e.calendar == "Transport"]
-    for ev in events:
-        if not ev.location or ev.calendar == "Transport":
+    visits: dict[str, list[Event]] = {}
+    for ev in sorted(events, key=lambda e: e.start):
+        if ev.calendar == "Transport":
             continue
-        minutes = next((m for key, m in rules.transport_routes.items() if key.lower() in ev.location.lower()), None)
-        if minutes is None:
-            continue
-        if any(abs((t.end - ev.start).total_seconds()) < 15 * 60 for t in transports):
-            continue
-        title = f"Commute: {ev.title}"
-        changes.append(PlannedChange(
-            kind="create", category="Transport", title=title,
-            reason=f"route '{ev.location}' ({minutes} min)",
-            new_start=ev.start - timedelta(minutes=minutes), new_end=ev.start,
-            requires_approval=not _effectively_movable(rules, "Transport", title)))
+        key = next((k for k in rules.transport_routes
+                    if k.lower() == ev.calendar.lower()
+                    or (ev.location and k.lower() in ev.location.lower())), None)
+        if key is not None:
+            visits.setdefault(key, []).append(ev)
+    near = timedelta(minutes=15)
+    for key, evs in visits.items():
+        trip = timedelta(minutes=rules.transport_routes[key])
+        first, last = evs[0], max(evs, key=lambda e: e.end)
+        for title, start, end in ((f"Commute: {first.title}", first.start - trip, first.start),
+                                  (f"Commute: back from {last.title}", last.end, last.end + trip)):
+            if any(t.start < end + near and t.end > start - near for t in transports):
+                continue
+            changes.append(PlannedChange(
+                kind="create", category="Transport", title=title,
+                reason=f"route '{key}' ({rules.transport_routes[key]} min)",
+                new_start=start, new_end=end,
+                requires_approval=not _effectively_movable(rules, "Transport", title)))
     return changes
 
 def _project(events, changes):
