@@ -170,8 +170,12 @@ export default function ImportCalendar(props: {
         const guess: Record<string, string> = {};
         const on: Record<string, boolean> = {};
         for (const cal of names) {
-          guess[cal] = categories[remembered[cal]] ? remembered[cal] : (byLower.get(cal.toLowerCase()) ?? "");
-          on[cal] = guess[cal] !== ""; // only calendars that already have a home start ticked
+          const home = categories[remembered[cal]] ? remembered[cal] : byLower.get(cal.toLowerCase());
+          // no home yet: offer a new category named after it (visible, changeable; made only on Import)
+          guess[cal] = home ?? NEW;
+          // files were picked on purpose, so all their calendars start ticked; of the Calendar
+          // app's many (holidays, birthdays...) only those that already have a home
+          on[cal] = from === "file" || home !== undefined;
         }
         setMapping(guess);
         setInclude(on);
