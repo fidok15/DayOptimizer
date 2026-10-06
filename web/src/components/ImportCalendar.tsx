@@ -1,75 +1,120 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowClockwise, ArrowLeft, CalendarPlus, CircleNotch, DownloadSimple, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, CalendarPlus, CaretLeft, CaretRight, CircleNotch, DownloadSimple, WarningCircle } from "@phosphor-icons/react";
 import { ApiError, importWeek, type ImportedWeek } from "../lib/api";
+import { categoryColor, freshColor } from "../lib/colors";
 import { toMin, uid } from "../lib/time";
 import { usePopover } from "../lib/usePopover";
 import { WEEKDAYS, type Categories, type View, type Week, type Weekday } from "../lib/types";
 import { DAY_NAME } from "./calendar/geometry";
 
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fromIso = (s: string) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+const addDays = (s: string, n: number) => {
+  const d = fromIso(s);
+  d.setDate(d.getDate() + n);
+  return iso(d);
+};
+
 /** Local YYYY-MM-DD of last week's Monday: the most recent complete week. */
 const lastMondayISO = () => {
   const d = new Date();
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return iso(d);
 };
 
-const ghost =
-  "inline-flex min-h-8 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-ink-dim transition hover:text-ink active:scale-[0.98]";
+const weekLabel = (monday: string) => {
+  const f = (s: string) => fromIso(s).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return `${f(monday)} – ${f(addDays(monday, 6))}`;
+};
+
+// which category each calendar went into last time, so the next import is pre-filled
+// (a per-browser convenience: losing it only means picking again)
+const MAP_KEY = "dayoptimizer.calendarMap";
+const readMap = (): Record<string, string> => {
+  try {
+    return JSON.parse(localStorage.getItem(MAP_KEY) ?? "{}") ?? {};
+  } catch {
+    return {};
+  }
+};
+const writeMap = (m: Record<string, string>) => {
+  try {
+    localStorage.setItem(MAP_KEY, JSON.stringify(m));
+  } catch {
+    /* private window: nothing to remember */
+  }
+};
+
+const NEW = "\u0000new"; // "make a new category named after this calendar"
+
 const primary =
   "inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3.5 py-1.5 text-sm font-semibold text-on-dusk transition active:scale-[0.98] disabled:opacity-40";
+const arrow = "grid size-8 place-items-center rounded-full border border-line text-ink-dim transition hover:text-ink active:scale-[0.96]";
 
 type Failure = { message: string; code: string };
+type Scope = "week" | Weekday;
 
 export default function ImportCalendar(props: {
   categories: Categories;
   onImport: (week: Week, replace: boolean, days: Weekday[]) => void;
+  onCategories: (fn: (c: Categories) => Categories) => void;
   view: View;
   day: Weekday;
 }) {
-  const { categories, onImport, view, day } = props;
+  const { categories, onImport, onCategories, view, day } = props;
   const { open, setOpen, ref } = usePopover();
-  // Day view imports just that weekday; week view the whole week.
-  const days: Weekday[] = view === "day" ? [day] : [...WEEKDAYS];
-  const target = view === "day" ? `last ${DAY_NAME[day]}` : "last week";
+  const [monday, setMonday] = useState(lastMondayISO);
+  const [scope, setScope] = useState<Scope>(view === "day" ? day : "week");
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [found, setFound] = useState<ImportedWeek | null>(null);
-  const [mapping, setMapping] = useState<Record<string, string>>({}); // calendar -> category, "" = skip
+  const [found, setFound] = useState<{ week: ImportedWeek; calendars: Record<string, string> } | null>(null);
+  const [include, setInclude] = useState<Record<string, boolean>>({});
+  const [mapping, setMapping] = useState<Record<string, string>>({}); // calendar -> category | NEW | ""
   const [replace, setReplace] = useState(false);
 
-  // calendar name -> number of events, biggest first
+  // opening the dialog starts from what the page shows: the whole week or the chosen day
+  useEffect(() => {
+    if (open) setScope(view === "day" ? day : "week");
+  }, [open, view, day]);
+
+  const days: Weekday[] = scope === "week" ? [...WEEKDAYS] : [scope];
+  const categoryNames = Object.keys(categories);
+
+  // every calendar: busiest first, empty ones (for this week/day) last
   const calendars = useMemo(() => {
     const n: Record<string, number> = {};
-    for (const d of days) for (const b of found?.[d] ?? []) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
-    return Object.entries(n).sort(([, a], [, b]) => b - a);
-  }, [found, view, day]);
+    for (const cal of Object.keys(found?.calendars ?? {})) n[cal] = 0;
+    for (const d of days) for (const b of found?.week[d] ?? []) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
+    return Object.entries(n).sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
+  }, [found, scope]);
 
-  // a loaded week belongs to the view and day it was loaded for
-  useEffect(() => {
-    setFound(null);
-    setFailure(null);
-  }, [view, day]);
+  const busy = calendars.filter(([, n]) => n > 0);
+  const chosen = busy.filter(([cal]) => include[cal]);
+  const missing = chosen.find(([cal]) => !mapping[cal])?.[0];
+  const count = chosen.reduce((sum, [, n]) => sum + n, 0);
+  const allOn = busy.length > 0 && chosen.length === busy.length;
 
-  const mapped = calendars.filter(([cal]) => categories[mapping[cal]]);
-  const mappedCount = mapped.reduce((sum, [, n]) => sum + n, 0);
-
-  const reset = () => {
-    setFound(null);
-    setFailure(null);
-  };
-
-  const load = () => {
+  const load = (week: string) => {
     setLoading(true);
     setFailure(null);
-    importWeek(lastMondayISO())
-      .then((w) => {
-        // preselect a category only where the calendar already has the same name
+    importWeek(week)
+      .then((r) => {
+        const remembered = readMap();
         const byLower = new Map(Object.keys(categories).map((c) => [c.toLowerCase(), c]));
+        const names = new Set([...Object.keys(r.calendars), ...WEEKDAYS.flatMap((d) => (r.week[d] ?? []).map((b) => b.calendar))]);
         const guess: Record<string, string> = {};
-        for (const d of days) for (const b of w[d] ?? []) guess[b.calendar] = byLower.get(b.calendar.toLowerCase()) ?? "";
+        const on: Record<string, boolean> = {};
+        for (const cal of names) {
+          guess[cal] = categories[remembered[cal]] ? remembered[cal] : (byLower.get(cal.toLowerCase()) ?? "");
+          on[cal] = guess[cal] !== ""; // only calendars that already have a home start ticked
+        }
         setMapping(guess);
-        setFound(w);
+        setInclude(on);
+        setFound(r);
       })
       .catch((e: unknown) =>
         setFailure(e instanceof ApiError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" }),
@@ -77,22 +122,48 @@ export default function ImportCalendar(props: {
       .finally(() => setLoading(false));
   };
 
+  const shift = (n: number) => {
+    const next = addDays(monday, 7 * n);
+    setMonday(next);
+    if (found) load(next);
+  };
+
   const confirm = () => {
-    if (!found) return;
+    if (!found || missing || count === 0) return;
+    // calendars put into a new category get one named after them, in the calendar's colour
+    const target: Record<string, string> = {};
+    const fresh: Categories = {};
+    const taken = Object.entries(categories).map(([n, c]) => categoryColor(n, c.color));
+    for (const [cal] of chosen) {
+      if (mapping[cal] !== NEW) {
+        target[cal] = mapping[cal];
+        continue;
+      }
+      const name = cal.slice(0, 40);
+      const existing = categoryNames.find((c) => c.toLowerCase() === name.toLowerCase());
+      target[cal] = existing ?? name;
+      if (!existing) {
+        const color = /^#[0-9a-f]{6}$/i.test(found.calendars[cal] ?? "") ? found.calendars[cal] : freshColor(name, taken);
+        fresh[name] = { movable: false, priority: 5, color };
+        taken.push(color);
+      }
+    }
+    if (Object.keys(fresh).length) onCategories((c) => ({ ...c, ...fresh }));
     const week = Object.fromEntries(
       WEEKDAYS.map((d) => [
         d,
-        (days.includes(d) ? (found[d] ?? []) : [])
-          .filter((b) => categories[mapping[b.calendar]] && toMin(b.end) > toMin(b.start))
-          .map((b) => ({ id: uid(), start: b.start, end: b.end, category: mapping[b.calendar], title: b.title.slice(0, 60) })),
+        (days.includes(d) ? (found.week[d] ?? []) : [])
+          .filter((b) => target[b.calendar] && toMin(b.end) > toMin(b.start))
+          .map((b) => ({ id: uid(), start: b.start, end: b.end, category: target[b.calendar], title: b.title.slice(0, 60) })),
       ]),
     ) as Week;
     onImport(week, replace, days);
+    writeMap({ ...readMap(), ...target });
     setOpen(false);
-    reset();
+    setFound(null);
   };
 
-  const categoryNames = Object.keys(categories);
+  const target = scope === "week" ? "this week" : DAY_NAME[scope];
 
   return (
     <div ref={ref} className="relative">
@@ -115,40 +186,66 @@ export default function ImportCalendar(props: {
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 400, damping: 32 }}
             style={{ transformOrigin: "top right" }}
-            className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 rounded-2xl p-4 shadow-2xl"
+            className="glass-strong absolute right-0 top-full z-40 mt-2 flex w-[min(26rem,calc(100vw-2rem))] flex-col gap-3 rounded-2xl p-4 shadow-2xl"
           >
             <div>
-              <h2 className="text-[15px] font-semibold tracking-tight">
-                {view === "day" ? `Fill ${DAY_NAME[day]} from your calendar` : "Fill the week from your calendar"}
-              </h2>
+              <h2 className="text-[15px] font-semibold tracking-tight">Fill your routine from your calendar</h2>
               <p className="mt-1 text-xs leading-snug text-ink-dim">
-                Copies {target}'s events from Apple Calendar (and Google or other accounts added in macOS Settings) as a
-                starting point. You choose which of your categories each calendar belongs to.
+                Copies events from Apple Calendar (and Google or other accounts added in macOS Settings) as a starting point.
+                Tick the calendars to copy and choose which of your categories each one goes into.
               </p>
             </div>
 
-            {categoryNames.length === 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => shift(-1)} disabled={loading} aria-label="Previous week" className={arrow}>
+                  <CaretLeft size={14} weight="bold" aria-hidden />
+                </button>
+                <span className="min-w-[8.5rem] text-center text-sm tabular-nums" aria-live="polite">
+                  {weekLabel(monday)}
+                </span>
+                <button type="button" onClick={() => shift(1)} disabled={loading} aria-label="Next week" className={arrow}>
+                  <CaretRight size={14} weight="bold" aria-hidden />
+                </button>
+              </div>
+              <select
+                aria-label="Import the whole week or one day"
+                value={scope}
+                onChange={(e) => setScope(e.target.value as Scope)}
+                className="h-8 rounded-[10px] border border-line bg-linen px-2 text-sm text-ink outline-none focus:border-accent"
+              >
+                <option value="week">Whole week</option>
+                {WEEKDAYS.map((d) => (
+                  <option key={d} value={d}>
+                    Only {DAY_NAME[d]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {categoryNames.length === 0 && (
               <p role="status" className="rounded-[12px] border border-line bg-ink/[0.04] p-2.5 text-xs leading-snug text-ink">
-                Add your categories in the sidebar first (e.g. Work, Gym). Then each calendar can be put into one of them.
+                You have no categories yet. Each calendar can become a new one below, or add your own in the sidebar first.
               </p>
-            ) : !found ? (
+            )}
+
+            {failure && (
+              <div role="alert" className="flex gap-2 rounded-[12px] border border-danger/30 bg-danger/10 p-2.5 text-xs leading-snug text-ink">
+                <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-danger" aria-hidden />
+                <p className="min-w-0 break-words">
+                  {failure.code === "setup" ? "Calendar access isn't set up yet. Run this once in the DayOptimizer folder, then try again:" : failure.message}
+                  {failure.code === "setup" && (
+                    <code className="mt-1.5 block rounded-md bg-linen px-2 py-1 font-mono text-[11px] text-ink">scripts/install.sh</code>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {!found ? (
               <>
-                {failure && (
-                  <div role="alert" className="flex gap-2 rounded-[12px] border border-danger/30 bg-danger/10 p-2.5 text-xs leading-snug text-ink">
-                    <WarningCircle size={16} weight="bold" className="mt-px shrink-0 text-danger" aria-hidden />
-                    <p className="min-w-0 break-words">
-                      {failure.code === "setup" ? "Calendar access isn't set up yet. Run this once in the DayOptimizer folder, then try again:" : failure.message}
-                      {failure.code === "setup" && (
-                        <code className="mt-1.5 block rounded-md bg-linen px-2 py-1 font-mono text-[11px] text-ink">
-                          scripts/install.sh
-                        </code>
-                      )}
-                    </p>
-                  </div>
-                )}
                 {loading && <p className="text-xs text-ink-dim">Reading your calendar. The first time, macOS may ask for permission.</p>}
                 <div className="flex justify-end">
-                  <button type="button" onClick={load} disabled={loading} className={primary}>
+                  <button type="button" onClick={() => load(monday)} disabled={loading} className={primary}>
                     {loading ? (
                       <CircleNotch size={16} weight="bold" className="animate-spin motion-reduce:animate-none" aria-hidden />
                     ) : failure ? (
@@ -160,47 +257,71 @@ export default function ImportCalendar(props: {
                   </button>
                 </div>
               </>
-            ) : calendars.length === 0 ? (
-              <>
-                <p className="text-sm text-ink-dim">No timed events {target}. Draw it by hand instead.</p>
-                <div className="flex justify-end">
-                  <button type="button" onClick={reset} className={ghost}>
-                    <ArrowLeft size={16} weight="bold" aria-hidden /> Back
-                  </button>
-                </div>
-              </>
             ) : (
               <>
-                <fieldset>
-                  <legend className="mb-1.5 text-xs text-ink-dim">Put each calendar into one of your categories</legend>
-                  <ul className="scroll-thin flex max-h-56 flex-col gap-1 overflow-y-auto">
-                    {calendars.map(([cal, count]) => (
-                      <li key={cal} className="flex items-center gap-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate" title={cal}>
-                          {cal}
-                          <span className="ml-1.5 font-mono text-xs text-ink-dim tabular-nums">{count}</span>
-                        </span>
-                        <select
-                          aria-label={`Category for ${cal}`}
-                          value={mapping[cal] ?? ""}
-                          onChange={(e) => setMapping((m) => ({ ...m, [cal]: e.target.value }))}
-                          className="h-8 w-36 shrink-0 rounded-[10px] border border-line bg-linen px-2 text-sm text-ink outline-none focus:border-accent"
-                        >
-                          <option value="">Skip</option>
-                          {categoryNames.map((c) => (
-                            <option key={c} value={c}>
-                              {categories[c].emoji ? `${categories[c].emoji} ${c}` : c}
-                            </option>
-                          ))}
-                        </select>
-                      </li>
-                    ))}
+                <fieldset disabled={loading} className={loading ? "opacity-60" : undefined}>
+                  <legend className="sr-only">Calendars to import</legend>
+                  {busy.length === 0 ? (
+                    <p className="text-sm text-ink-dim">No timed events {target}. Pick another week, or draw it by hand.</p>
+                  ) : (
+                    <label className="mb-1 flex cursor-pointer items-center gap-2 px-1 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        checked={allOn}
+                        onChange={() => setInclude((m) => ({ ...m, ...Object.fromEntries(busy.map(([c]) => [c, !allOn])) }))}
+                        className="size-4 accent-[#f4b860]"
+                      />
+                      All calendars
+                    </label>
+                  )}
+                  <ul className="scroll-thin flex max-h-60 flex-col gap-1 overflow-y-auto">
+                    {calendars.map(([cal, n]) => {
+                      const empty = n === 0;
+                      const flagged = cal === missing;
+                      return (
+                        <li key={cal} className={`flex min-h-8 items-center gap-2 px-1 text-sm ${empty ? "opacity-45" : ""}`}>
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2" title={cal}>
+                            <input
+                              type="checkbox"
+                              disabled={empty}
+                              checked={!empty && !!include[cal]}
+                              onChange={(e) => setInclude((m) => ({ ...m, [cal]: e.target.checked }))}
+                              className="size-4 shrink-0 accent-[#f4b860]"
+                            />
+                            <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: found.calendars[cal] || "currentColor" }} />
+                            <span className="truncate">{cal}</span>
+                            <span className="font-mono text-xs text-ink-dim tabular-nums">{n}</span>
+                          </label>
+                          {!empty && include[cal] && (
+                            <select
+                              aria-label={`Category for ${cal}`}
+                              aria-invalid={flagged || undefined}
+                              value={mapping[cal] ?? ""}
+                              onChange={(e) => setMapping((m) => ({ ...m, [cal]: e.target.value }))}
+                              className={`h-8 w-40 shrink-0 rounded-[10px] border bg-linen px-2 text-sm text-ink outline-none focus:border-accent ${flagged ? "border-accent ring-2 ring-accent/40" : "border-line"}`}
+                            >
+                              <option value="" disabled>
+                                Choose category…
+                              </option>
+                              {categoryNames.map((c) => (
+                                <option key={c} value={c}>
+                                  {categories[c].emoji ? `${categories[c].emoji} ${c}` : c}
+                                </option>
+                              ))}
+                              {!categoryNames.some((c) => c.toLowerCase() === cal.toLowerCase()) && (
+                                <option value={NEW}>+ New category “{cal.slice(0, 40)}”</option>
+                              )}
+                            </select>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </fieldset>
                 <div role="radiogroup" aria-label="How to import" className="flex flex-col gap-1 text-sm">
                   {[
-                    { v: false, label: view === "day" ? `Add to my ${DAY_NAME[day]}` : "Add to my typical week" },
-                    { v: true, label: view === "day" ? `Replace my ${DAY_NAME[day]}` : "Replace my typical week" },
+                    { v: false, label: scope === "week" ? "Add to my typical week" : `Add to my ${DAY_NAME[scope]}` },
+                    { v: true, label: scope === "week" ? "Replace my typical week" : `Replace my ${DAY_NAME[scope]}` },
                   ].map((o) => (
                     <label key={String(o.v)} className="flex cursor-pointer items-center gap-2 px-1">
                       <input
@@ -214,12 +335,13 @@ export default function ImportCalendar(props: {
                     </label>
                   ))}
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <button type="button" onClick={reset} className={ghost}>
-                    <ArrowLeft size={16} weight="bold" aria-hidden /> Back
-                  </button>
-                  <button type="button" onClick={confirm} disabled={mappedCount === 0} className={primary}>
-                    {mappedCount === 0 ? "Pick a category" : `Import ${mappedCount} ${mappedCount === 1 ? "event" : "events"}`}
+                <div className="flex items-center justify-end gap-2">
+                  <button type="button" onClick={confirm} disabled={loading || !!missing || count === 0} className={primary}>
+                    {missing
+                      ? `Choose a category for ${missing.slice(0, 24)}`
+                      : count === 0
+                        ? "Tick a calendar to import"
+                        : `Import ${count} ${count === 1 ? "event" : "events"}`}
                   </button>
                 </div>
               </>

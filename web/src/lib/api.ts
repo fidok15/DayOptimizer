@@ -37,11 +37,13 @@ export class ApiError extends Error {
   }
 }
 
-/** Read one calendar week (Monday date) as blocks tagged with their calendar. Nothing is saved. */
-export const importWeek = async (weekStart: string): Promise<ImportedWeek> => {
-  const body = await post<{ typical_week?: unknown }>("/api/import", { week_start: weekStart });
+/** Read one calendar week (Monday date) as blocks tagged with their calendar, plus every
+ *  calendar the user has (name -> #rrggbb, "" when unknown). Nothing is saved. */
+export const importWeek = async (weekStart: string): Promise<{ week: ImportedWeek; calendars: Record<string, string> }> => {
+  const body = await post<{ typical_week?: unknown; calendars?: unknown }>("/api/import", { week_start: weekStart });
   if (typeof body.typical_week !== "object" || !body.typical_week) throw new ApiError("The calendar answer looked wrong. Try again.", "bad");
-  return body.typical_week as ImportedWeek;
+  const calendars = typeof body.calendars === "object" && body.calendars ? (body.calendars as Record<string, string>) : {};
+  return { week: body.typical_week as ImportedWeek, calendars };
 };
 
 /** POST JSON and return the body, or throw ApiError with the server's code. */

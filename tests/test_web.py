@@ -279,3 +279,17 @@ def test_gap_rules_count_rest_days():
     assert rows[0]["days"] == 2 and "rest_days" not in rows[0]
     # one day apart allows every day: a no-op the model padded in
     assert web._clean_rule({"type": "min_gap_days", "source": "x", "category": "Gym", "days": 1}, ["Gym"]) is None
+
+
+def test_import_lists_every_calendar_with_colour(monkeypatch):
+    import os
+    from dayoptimizer import mcp_server, web
+    exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("")
+    os.chmod(exe, 0o755)
+    monkeypatch.setattr(mcp_server, "_bundle_run",
+                        lambda a: "SYNCED 0\nCAL Reminder\t#ff2968\nCAL Birthdays\t\n")
+    out = web.import_week({"week_start": "2026-09-21"})
+    assert out["calendars"] == {"Reminder": "#ff2968", "Birthdays": ""}
+    assert out["typical_week"]["mon"] == []

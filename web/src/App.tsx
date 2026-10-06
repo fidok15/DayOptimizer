@@ -35,6 +35,7 @@ export default function App() {
             onRetry={p.retrySave}
             categories={p.categories}
             onImport={p.importBlocks}
+            onCategories={p.updateCategories}
             day={day}
             week={p.week}
             notes={p.notes}

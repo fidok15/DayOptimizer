@@ -4,8 +4,9 @@ JSON API over the user's config.local.yaml. Binds to 127.0.0.1 only.
 API
   GET /api/state  -> {categories, typical_week, notes, defaults, day_start, day_end}
   PUT /api/state  <- {categories, typical_week, notes}  (validated, then saved)
-  POST /api/import <- {week_start}  -> {typical_week}  (calendar week as blocks tagged with their
-                    source calendar; the user maps calendars onto categories, nothing is saved)
+  POST /api/import <- {week_start}  -> {typical_week, calendars}  (calendar week as blocks tagged
+                    with their source calendar, plus every calendar -> #rrggbb or ""; the user
+                    maps calendars onto categories, nothing is saved)
   POST /api/routine <- {categories, typical_week, notes} -> {path, text, calendars, notes}  (save, write the LLM
                     brief, create/recolour a Calendar-app calendar per category)
   GET  /api/calendar-colors -> {colors: {category: #rrggbb}}  (each category calendar's colour now)
@@ -163,7 +164,7 @@ def import_week(payload: object) -> dict:
         events = storage.events_between(start, start + timedelta(days=7))
     finally:
         storage.close()
-    return {"typical_week": events_to_week(events, week_start)}
+    return {"typical_week": events_to_week(events, week_start), "calendars": _colors(out, "CAL")}
 
 
 class ApiError(RuntimeError):
@@ -275,9 +276,9 @@ def _calendar_lines(out: str, tag: str) -> list[str]:
     return [c for c in line[len(tag) + 1:].split("\t") if c]
 
 
-def _colors(out: str) -> dict[str, str]:
-    return dict(l[len("COLOR "):].split("\t", 1) for l in out.splitlines()
-                if l.startswith("COLOR ") and "\t" in l)
+def _colors(out: str, tag: str = "COLOR") -> dict[str, str]:
+    return dict(l[len(tag) + 1:].split("\t", 1) for l in out.splitlines()
+                if l.startswith(tag + " ") and "\t" in l)
 
 
 def create_category_calendars() -> dict:

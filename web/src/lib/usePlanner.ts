@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calendarColors, fetchState, saveState } from "./api";
 import { uid } from "./time";
-import { WEEKDAYS, type Categories, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
+import { WEEKDAYS, type Block, type Categories, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
 
 const AUTOSAVE_MS = 700;
+
+const blockKey = (b: Block) => `${b.start}-${b.end}-${b.title.trim().toLowerCase()}`;
 
 const toWeek = (s: ServerState): Week =>
   Object.fromEntries(
@@ -110,12 +112,25 @@ export function usePlanner() {
     );
   }, []);
 
-  /** Put imported blocks into the given days, replacing them or adding to them. */
+  /** Put imported blocks into the given days, replacing them or adding to them. A block
+   *  with the same time and title as one already there is skipped, whatever its category,
+   *  so importing twice doesn't double the week. */
   const importBlocks = useCallback((incoming: Week, replace: boolean, days: Weekday[]) => {
     touch();
     setWeek((w) =>
       Object.fromEntries(
-        WEEKDAYS.map((d) => [d, !days.includes(d) ? w[d] : replace ? incoming[d] : [...w[d], ...incoming[d]]]),
+        WEEKDAYS.map((d) => {
+          if (!days.includes(d)) return [d, w[d]];
+          const out = replace ? [] : [...w[d]];
+          const seen = new Set(out.map(blockKey));
+          for (const b of incoming[d]) {
+            const key = blockKey(b);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(b);
+          }
+          return [d, out];
+        }),
       ) as Week,
     );
   }, []);

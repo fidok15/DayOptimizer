@@ -30,11 +30,12 @@ export default function Header(props: {
   onRetry: () => void;
   categories: Categories;
   onImport: (week: Week, replace: boolean, days: Weekday[]) => void;
+  onCategories: (fn: (c: Categories) => Categories) => void;
   day: Weekday;
   week: Week;
   notes: string;
 }) {
-  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, day, week, notes } = props;
+  const { view, onViewChange, saveStatus, saveError, onRetry, categories, onImport, onCategories, day, week, notes } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -77,7 +78,7 @@ export default function Header(props: {
 
       <div className="flex flex-wrap items-center gap-3">
         <GarminConnect />
-        <ImportCalendar categories={categories} onImport={onImport} view={view} day={day} />
+        <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
         <button
           type="button"

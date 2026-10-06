@@ -111,6 +111,11 @@ class CalendarClient:
             errors.append(str(err))
         raise KeyError(f"Calendar '{name}' not found and couldn't be created ({'; '.join(errors) or 'no account'})")
 
+    def all_calendars(self) -> dict[str, str | None]:
+        """Every event calendar the user has (empty ones too): name -> #rrggbb."""
+        return {normalize_calendar(str(c.title())): _hex(c.color()) if c.color() is not None else None
+                for c in self._store.calendarsForEntityType_(self._EventKit.EKEntityTypeEvent)}
+
     def calendar_color(self, name: str) -> str | None:
         """#rrggbb of the category's calendar, None when there is no such calendar."""
         cal = self._find_calendar(name)
