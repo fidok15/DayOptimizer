@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowClockwise, CalendarPlus, CaretLeft, CaretRight, CircleNotch, DownloadSimple, FileArrowUp, WarningCircle } from "@phosphor-icons/react";
 import { ApiError, importFiles, importWeek, type ImportedCalendars } from "../lib/api";
@@ -111,6 +111,7 @@ export default function ImportCalendar(props: {
   // the date shown: in week mode only its week counts
   const [date, setDate] = useState(() => addDays(lastMondayISO(), WEEKDAYS.indexOf(day)));
   const [files, setFiles] = useState<{ names: string[]; texts: string[] } | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [found, setFound] = useState<ImportedCalendars | null>(null);
@@ -322,25 +323,28 @@ export default function ImportCalendar(props: {
                 )}
                 <div className="flex justify-end">
                   {source === "file" ? (
-                    <label className={`${primary} cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent`}>
-                      {loading ? (
-                        <CircleNotch size={16} weight="bold" className="animate-spin motion-reduce:animate-none" aria-hidden />
-                      ) : (
-                        <FileArrowUp size={16} weight="bold" aria-hidden />
-                      )}
-                      Choose .ics files
+                    <>
+                      {/* a real button opening a hidden input: Safari won't open the picker from a <label> around an sr-only input */}
+                      <button type="button" onClick={() => picker.current?.click()} disabled={loading} className={`${primary} select-none`}>
+                        {loading ? (
+                          <CircleNotch size={16} weight="bold" className="animate-spin motion-reduce:animate-none" aria-hidden />
+                        ) : (
+                          <FileArrowUp size={16} weight="bold" aria-hidden />
+                        )}
+                        Choose .ics files
+                      </button>
                       <input
+                        ref={picker}
                         type="file"
                         accept=".ics,text/calendar"
                         multiple
-                        disabled={loading}
-                        className="sr-only"
+                        hidden
                         onChange={(e) => {
                           void pickFiles(e.target.files);
                           e.target.value = "";
                         }}
                       />
-                    </label>
+                    </>
                   ) : (
                   <button type="button" onClick={() => load(monday)} disabled={loading} className={primary}>
                     {loading ? (
@@ -435,7 +439,7 @@ export default function ImportCalendar(props: {
                                 </option>
                               ))}
                               {!categoryNames.some((c) => c.toLowerCase() === cal.toLowerCase()) && (
-                                <option value={NEW}>+ New category “{cal.slice(0, 40)}”</option>
+                                <option value={NEW}>+ New “{cal.slice(0, 40)}”</option>
                               )}
                             </select>
                           )}
