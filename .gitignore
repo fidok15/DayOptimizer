@@ -33,3 +33,6 @@ graphify-out/
 # Test coverage data (holds absolute local paths)
 .coverage
 htmlcov/
+
+# .ics files exported from a real calendar, for local testing only
+examples/ics/private-*
