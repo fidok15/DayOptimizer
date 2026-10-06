@@ -63,8 +63,10 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
     return () => window.removeEventListener("resize", onResize);
   }, [onClose, sheet]);
 
+  // a new (untitled) block opens ready to be named; an existing one opens with the
+  // dialog focused, so Backspace/Delete removes the block instead of title letters
   useEffect(() => {
-    titleRef.current?.focus({ preventScroll: true });
+    (block.title ? ref.current : titleRef.current)?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {
@@ -116,13 +118,14 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
   return (
     <motion.div
       ref={ref}
+      tabIndex={-1}
       role="dialog"
       aria-label="Edit block"
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: "spring", stiffness: 400, damping: 32 }}
-      className={`glass-strong scroll-thin fixed z-50 flex max-h-[calc(100dvh-24px)] flex-col gap-4 overflow-y-auto p-4 shadow-2xl ${
+      className={`glass-strong scroll-thin fixed z-50 outline-none flex max-h-[calc(100dvh-24px)] flex-col gap-4 overflow-y-auto p-4 shadow-2xl ${
         sheet ? "inset-x-0 bottom-0 rounded-t-[20px] pb-6" : "rounded-2xl"
       }`}
       style={sheet ? undefined : { width: W, left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
