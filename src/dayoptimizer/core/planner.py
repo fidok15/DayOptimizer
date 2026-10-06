@@ -543,8 +543,12 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
         elif rules.is_movable(b.category):
             search_from = max(day_start, now)
             broken_window = window_rule(rules.note_rules, b.category, b.start, b.end, day.weekday())
+            # ...unless that later block matters less: a higher-priority block may take
+            # its slot, and the later one then moves or is noted on its own turn (sleep
+            # always keeps its time)
             held = [e for e in upcoming if not (e.calendar == b.category and e.title == b.label
-                                                and e.start == start)]
+                                                and e.start == start)
+                    and (e.calendar == "Sleep" or rules.priority(e.calendar) >= rules.priority(b.category))]
             new_start = _nearest_start(against + held, start, end - start, search_from, day_end)
             if broken_window is not None:
                 reason = f"your routine has it at {usual}, but {explain(broken_window)} — nearest allowed time"

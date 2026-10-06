@@ -204,3 +204,17 @@ def test_a_displaced_flexible_block_never_takes_a_later_routine_block():
     assert ("Sleep", "22:00", "00:00") in created
     # dinner and shutdown, pushed off by the meeting, must not eat into sleep
     assert all(end <= "22:00" for title, _, end in created if title != "Sleep")
+
+
+def test_a_displaced_block_may_take_the_slot_of_a_lower_priority_one():
+    evening = [RoutineBlock(20 * 60 + 30, 21 * 60, "Food", "Dinner"),        # priority 6
+               RoutineBlock(21 * 60 + 15, 22 * 60, "Free time", "Shutdown"),  # priority 2
+               RoutineBlock(22 * 60, 24 * 60, "Sleep", "")]
+    rules = dataclasses.replace(BASE, typical_week={4: evening})
+    long_day = _ev("m", "Important", 13, 21, title="Hackathon", m2=30)
+    changes = plan_day(DAY, [long_day], None, rules, now=D.replace(hour=12))
+    created = _created(changes)
+    assert ("Dinner", "21:30", "22:00") in created  # takes the lower-priority shutdown's time
+    assert ("Sleep", "22:00", "00:00") in created   # but never bedtime
+    # shutdown, pushed out in turn, finds its own free time before the hackathon
+    assert [(s, e) for t, s, e in created if t == "Shutdown"] == [("12:15", "13:00")]
