@@ -76,7 +76,7 @@ export default function Header(props: {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="relative flex flex-wrap items-center gap-3">
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
@@ -116,7 +116,8 @@ export default function Header(props: {
           })}
         </div>
 
-        <div aria-live="polite" className="flex min-h-9 min-w-0 items-center text-sm">
+        {/* out of the flow: the status coming and going must not move the buttons or squeeze the headline */}
+        <div aria-live="polite" className="pointer-events-none absolute right-0 top-full mt-2 flex max-w-full justify-end text-sm [&>*]:pointer-events-auto">
           <AnimatePresence mode="wait" initial={false}>
             {saveStatus === "saving" && (
               <motion.span key="saving" {...fade} className={`${pill} text-ink`}>

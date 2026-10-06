@@ -8,7 +8,8 @@ API
                     tagged with their source calendar, every calendar -> #rrggbb or "", and the
                     names of those from Google accounts; the user maps calendars onto
                     categories, nothing is saved)
-  POST /api/import-file <- {week_start, files: [.ics text]} -> same as /api/import
+  POST /api/import-file <- {week_start, files: [.ics text]} -> same as /api/import, plus
+                    span: [first, last] event start dates in the files (null when empty)
   POST /api/routine <- {categories, typical_week, notes} -> {path, text, calendars, notes}  (save, write the LLM
                     brief, create/recolour a Calendar-app calendar per category)
   GET  /api/calendar-colors -> {colors: {category: #rrggbb}}  (each category calendar's colour now)
@@ -180,9 +181,10 @@ def _is_google(account: str) -> bool:
     return "google" in a or a.endswith(("@gmail.com", "@googlemail.com"))
 
 
-def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str]:
-    """Events of one .ics file in the given week (repeats expanded), plus the
-    calendar's name and colour when the file carries them."""
+def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str, list[date]]:
+    """Events of one .ics file in the given week (repeats expanded), the
+    calendar's name and colour when the file carries them, and the start dates
+    of its events (so the page can point to weeks that have some)."""
     import icalendar
     import recurring_ical_events
     from dayoptimizer.core.calendar import normalize_calendar
@@ -193,6 +195,13 @@ def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str]:
     name = normalize_calendar(str(cal.get("X-WR-CALNAME") or ""))[:40] or "Imported calendar"
     color = str(cal.get("X-APPLE-CALENDAR-COLOR") or "")[:7].lower()
     color = color if len(color) == 7 and color[0] == "#" and all(c in "0123456789abcdef" for c in color[1:]) else ""
+    starts = []
+    for ev in cal.walk("VEVENT"):
+        try:
+            s = ev.start
+        except icalendar.error.IncompleteComponent:
+            continue
+        starts.append(s.date() if isinstance(s, datetime) else s)
     start = datetime.combine(week_start, time()).astimezone()
     events = []
     for ev in recurring_ical_events.of(cal).between(start, start + timedelta(days=7)):
@@ -205,7 +214,7 @@ def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str]:
             s, e = datetime.combine(s, time()), datetime.combine(e, time())
         events.append(Event(id=str(ev.get("UID", "")), calendar=name, title=str(ev.get("SUMMARY", "")),
                             start=s.astimezone(), end=e.astimezone(), all_day=all_day))
-    return events, name, color
+    return events, name, color, starts
 
 
 def import_file(payload: object) -> dict:
@@ -218,12 +227,14 @@ def import_file(payload: object) -> dict:
         raise ConfigError("week_start must be a YYYY-MM-DD date and files a list.")
     if not isinstance(files, list) or not 0 < len(files) <= 20 or not all(isinstance(f, str) for f in files):
         raise ConfigError("Choose 1-20 calendar files (.ics).")
-    events, calendars = [], {}
+    events, calendars, starts = [], {}, []
     for text in files:
-        found, name, color = ics_events(text, week_start)
+        found, name, color, dates = ics_events(text, week_start)
         events += found
+        starts += dates
         calendars[name] = calendars.get(name) or color
-    return {"typical_week": events_to_week(events, week_start), "calendars": calendars, "google": []}
+    span = [min(starts).isoformat(), max(starts).isoformat()] if starts else None
+    return {"typical_week": events_to_week(events, week_start), "calendars": calendars, "google": [], "span": span}
 
 
 class ApiError(RuntimeError):

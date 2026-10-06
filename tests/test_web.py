@@ -322,6 +322,7 @@ def test_import_file_expands_repeats_and_reads_calendar_name(server):
     from dayoptimizer import web
     out = web.import_file({"week_start": "2026-09-21", "files": [ICS]})
     assert out["calendars"] == {"Uni": "#1badf8"}
+    assert out["span"] == ["2026-09-01", "2026-09-24"]
     assert out["typical_week"]["tue"] == [{"start": "10:00", "end": "11:30", "calendar": "Uni", "title": "Lecture"}]
     assert sum(map(len, out["typical_week"].values())) == 1  # the all-day holiday is skipped
     hdr = {"Content-Type": "application/json"}

@@ -29,6 +29,7 @@ const lastMondayISO = () => {
 const weekdayOf = (s: string): Weekday => WEEKDAYS[(fromIso(s).getDay() + 6) % 7];
 const mondayOf = (s: string) => addDays(s, -WEEKDAYS.indexOf(weekdayOf(s)));
 
+const long = (s: string) => fromIso(s).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 const short = (s: string) => fromIso(s).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 const dateLabel = (date: string, mode: View) =>
   mode === "week"
@@ -58,6 +59,8 @@ const NEW = "\u0000new"; // "make a new category named after this calendar"
 const primary =
   "inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-dusk px-3.5 py-1.5 text-sm font-semibold text-on-dusk transition active:scale-[0.98] disabled:opacity-40";
 const arrow = "grid size-8 place-items-center rounded-full border border-line text-ink-dim transition hover:text-ink active:scale-[0.96]";
+
+const arrowText = "inline-flex min-h-8 items-center rounded-full border border-line px-3 py-1 text-sm font-medium text-ink transition hover:bg-ink/5 active:scale-[0.98]";
 
 type Failure = { message: string; code: string };
 type Source = "file" | "apple" | "google";
@@ -127,10 +130,10 @@ export default function ImportCalendar(props: {
   const categoryNames = Object.keys(categories);
 
   // the calendars of this tab: busiest first, empty ones (for this week/day) last
+  const google = useMemo(() => new Set(found?.google), [found]);
+  const shown = (cal: string) => source === "file" || (source === "google") === google.has(cal);
   const calendars = useMemo(() => {
     if (!found) return [];
-    const google = new Set(found.google);
-    const shown = (cal: string) => source === "file" || (source === "google") === google.has(cal);
     const n: Record<string, number> = {};
     for (const cal of Object.keys(found.calendars)) if (shown(cal)) n[cal] = 0;
     for (const d of days) for (const b of found.week[d] ?? []) if (shown(b.calendar)) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
@@ -142,6 +145,18 @@ export default function ImportCalendar(props: {
   const missing = chosen.find(([cal]) => !mapping[cal])?.[0];
   const count = chosen.reduce((sum, [, n]) => sum + n, 0);
   const allOn = busy.length > 0 && chosen.length === busy.length;
+  // a Day import of an empty day while the rest of that week has events: say so instead of "nothing"
+  const elsewhere =
+    mode === "day" && found
+      ? WEEKDAYS.filter((d) => !days.includes(d)).reduce((n, d) => n + (found.week[d] ?? []).filter((b) => shown(b.calendar)).length, 0)
+      : 0;
+  // a file whose events all lie outside the shown week: point to where they are
+  const span = source === "file" && found?.span && busy.length === 0 && elsewhere === 0 ? found.span : null;
+
+  const jumpTo = (iso: string) => {
+    setDate(iso);
+    if (mondayOf(iso) !== monday) load(mondayOf(iso));
+  };
 
   const load = (week: string, from: Source = source, texts = files?.texts) => {
     if (from === "file" && !texts) return;
@@ -297,10 +312,7 @@ export default function ImportCalendar(props: {
             {!found ? (
               <>
                 {source === "file" ? (
-                  <p className="text-xs leading-snug text-ink-dim">
-                    Choose one or more .ics files. From Google: calendar.google.com › Settings › Import &amp; export › Export (unzip it first).
-                    From Apple Calendar: File › Export.
-                  </p>
+                  <p className="text-xs text-ink-dim">Supports iCalendar files (.ics), one or more at a time.</p>
                 ) : (
                   loading && <p className="text-xs text-ink-dim">Reading your calendar. The first time, macOS may ask for permission.</p>
                 )}
@@ -353,6 +365,24 @@ export default function ImportCalendar(props: {
                       No Google calendars on this Mac. Add your Google account in System Settings › Internet Accounts and load again,
                       or export it from Google and use From file.
                     </p>
+                  ) : busy.length === 0 && elsewhere > 0 ? (
+                    <div role="status" className="flex flex-wrap items-center justify-between gap-2 text-sm text-ink-dim">
+                      <p>
+                        Nothing {target}, but this week has {elsewhere} {elsewhere === 1 ? "event" : "events"} on other days.
+                      </p>
+                      <button type="button" onClick={() => setMode("week")} className={arrowText}>
+                        Import the whole week
+                      </button>
+                    </div>
+                  ) : span ? (
+                    <div role="status" className="flex flex-wrap items-center justify-between gap-2 text-sm text-ink-dim">
+                      <p>
+                        Nothing {target}. {span[0] === span[1] ? `This file's events are on ${long(span[0])}.` : `This file's events run from ${long(span[0])} to ${long(span[1])}.`}
+                      </p>
+                      <button type="button" onClick={() => jumpTo(span[1])} className={arrowText}>
+                        Go to {short(span[1])}
+                      </button>
+                    </div>
                   ) : busy.length === 0 ? (
                     <p className="text-sm text-ink-dim">No timed events {target}. Try another {mode}, or draw it by hand.</p>
                   ) : (
