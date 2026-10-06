@@ -196,6 +196,10 @@ def cmd_plan(args, rules, config):
         changes, applied, errors = _run_plan(day, calendar, storage, rules)
         console.print(format_changes(changes), markup=False)  # titles are untrusted text
         console.print(f"[green]Applied {len(applied)} changes.[/green]")
+        if rules.has_routine and not rules.typical_week.get(day.weekday()):
+            # an empty routine day is left empty on purpose; say so, or "no changes" looks broken
+            console.print(f"[yellow]Your routine has nothing on {day:%A}s, so nothing was planned. "
+                          "Draw that day in `dayoptimizer setup`.[/yellow]")
         _print_errors(errors)
     _print_pending(storage)
 
