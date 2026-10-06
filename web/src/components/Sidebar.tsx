@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowsOutLineVertical, Lock, Minus, Plus, Smiley, Trash } from "@phosphor-icons/react";
 import { categoryColor, freshColor, SWATCHES } from "../lib/colors";
 import { usePopover } from "../lib/usePopover";
+import { TEMPLATE_DAY } from "../lib/usePlanner";
 import { durationLabel, toMin } from "../lib/time";
 import { WEEKDAYS, type Categories, type Category, type Week } from "../lib/types";
 
@@ -301,21 +302,22 @@ export default function Sidebar(props: {
   onChange: (fn: (c: Categories) => Categories) => void;
   onRemove: (name: string) => void;
   calendars: Record<string, string>;
+  oneDay?: boolean;
 }) {
-  const { categories, week, onChange, onRemove, calendars } = props;
+  const { categories, week, onChange, onRemove, calendars, oneDay } = props;
   const have = new Set(Object.keys(categories).map((c) => c.toLowerCase()));
   const offered = Object.entries(calendars).filter(([name]) => name && !have.has(name.toLowerCase()));
 
   const { counts, totals } = useMemo(() => {
     const counts: Record<string, number> = {};
     const totals: Record<string, number> = {};
-    for (const d of WEEKDAYS)
+    for (const d of oneDay ? [TEMPLATE_DAY] : WEEKDAYS)
       for (const b of week[d]) {
         counts[b.category] = (counts[b.category] ?? 0) + 1;
         totals[b.category] = (totals[b.category] ?? 0) + toMin(b.end) - toMin(b.start);
       }
     return { counts, totals };
-  }, [week]);
+  }, [week, oneDay]);
 
   const rows = Object.entries(categories).sort(([an, a], [bn, b]) => b.priority - a.priority || an.localeCompare(bn));
   const usage = Object.entries(totals)
@@ -402,7 +404,7 @@ export default function Sidebar(props: {
       </section>
 
       <section className="flex shrink-0 flex-col gap-2 border-t border-line px-1 pt-3">
-        <h2 className="text-[15px] font-semibold tracking-tight">This week</h2>
+        <h2 className="text-[15px] font-semibold tracking-tight">{oneDay ? "This day" : "This week"}</h2>
         {usage.length === 0 ? (
           <p className="text-sm text-ink-dim">No blocks yet.</p>
         ) : (

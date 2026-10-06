@@ -69,6 +69,7 @@ export default function App() {
                 onChange={p.updateCategories}
                 onRemove={p.removeCategory}
                 calendars={p.appCalendars}
+                oneDay={oneDay}
               />
             </motion.div>
             <motion.div {...rise(2)} className="flex min-w-0 flex-col gap-5">
