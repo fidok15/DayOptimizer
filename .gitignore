@@ -34,5 +34,3 @@ graphify-out/
 .coverage
 htmlcov/
 
-# .ics files exported from a real calendar, for local testing only
-examples/ics/private-*
