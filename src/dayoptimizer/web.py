@@ -294,8 +294,12 @@ def save_routine_brief(payload: object) -> dict:
     from dayoptimizer.routine import render_routine, save_routine
     state = write_state(payload)
     text = render_routine(state["categories"], state["typical_week"], state["notes"])
-    return {"path": save_routine(text), "text": text, "calendars": create_category_calendars(),
-            "notes": compile_notes(state["notes"], list(state["categories"]))}
+    calendars = create_category_calendars()
+    # notes may be about calendars the routine never drew ("School lectures can
+    # be skipped"): their names are as valid as the user's own categories
+    known = list(dict.fromkeys([*state["categories"], *calendars.pop("all", [])]))
+    return {"path": save_routine(text), "text": text, "calendars": calendars,
+            "notes": compile_notes(state["notes"], known)}
 
 
 def _clean_rule(row: dict, categories: list[str]) -> dict | None:
@@ -427,7 +431,7 @@ def create_category_calendars() -> dict:
         return {**empty, "error": "Couldn't add your categories to the Calendar app."}
     failed = [l[len("FAILED "):] for l in out.splitlines() if l.startswith("FAILED ")]
     return {"created": _calendar_lines(out, "CREATED"), "recolored": _calendar_lines(out, "RECOLORED"),
-            "colors": _colors(out), "error": "; ".join(failed) or None}
+            "colors": _colors(out), "all": list(_calendar_list(out)[0]), "error": "; ".join(failed) or None}
 
 
 def calendar_colors() -> dict:

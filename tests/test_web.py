@@ -187,7 +187,7 @@ def test_category_calendars_report(monkeypatch):
                         "COLOR Work\t#c2c2c2\nCREATED Choir\tRead\nRECOLORED Work\n")
     assert web.create_category_calendars() == {"created": ["Choir", "Read"], "recolored": ["Work"],
                                                "colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"},
-                                               "error": "Gym: nope"}
+                                               "all": [], "error": "Gym: nope"}
     assert web.calendar_colors() == {"colors": {"Choir": "#4f9d8a", "Work": "#c2c2c2"}, "calendars": {}}
     monkeypatch.setattr(mcp_server, "_bundle_run", lambda a: "COLOR Work\t#c2c2c2\nCAL Work\t#c2c2c2\tiCloud\n"
                         "CAL School\t#3fa7d6\tme@gmail.com\n")
@@ -373,3 +373,13 @@ def test_a_rule_told_over_two_sentences_compiles_from_both(monkeypatch):
     out = web.compile_notes('Lectures are Uni events starting with "W -". You may skip lectures.', ["Uni"])
     assert out["rules"] == ['Uni: events starting with "W -" may be planned over']
     assert out["not_compiled"] == []
+
+
+def test_notes_may_name_a_calendar_that_is_not_a_category(monkeypatch):
+    from dayoptimizer import web
+    seen = {}
+    monkeypatch.setattr(web, "create_category_calendars", lambda: {"created": [], "all": ["School", "Work"]})
+    monkeypatch.setattr(web, "compile_notes", lambda notes, cats: seen.setdefault("cats", cats) and {})
+    monkeypatch.setattr("dayoptimizer.routine.save_routine", lambda text: "/tmp/x")
+    out = web.save_routine_brief(_state_payload(notes='School "W -" lectures can be skipped'))
+    assert "School" in seen["cats"] and "all" not in out["calendars"]
