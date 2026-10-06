@@ -309,6 +309,13 @@ DTEND:20260901T113000
 RRULE:FREQ=WEEKLY
 END:VEVENT
 BEGIN:VEVENT
+UID:c
+SUMMARY:Called off
+STATUS:CANCELLED
+DTSTART:20260922T080000
+DTEND:20260922T090000
+END:VEVENT
+BEGIN:VEVENT
 UID:b
 SUMMARY:Holiday
 DTSTART;VALUE=DATE:20260924
@@ -324,7 +331,7 @@ def test_import_file_expands_repeats_and_reads_calendar_name(server):
     assert out["calendars"] == {"Uni": "#1badf8"}
     assert out["span"] == ["2026-09-01", "2026-09-24"]
     assert out["typical_week"]["tue"] == [{"start": "10:00", "end": "11:30", "calendar": "Uni", "title": "Lecture"}]
-    assert sum(map(len, out["typical_week"].values())) == 1  # the all-day holiday is skipped
+    assert sum(map(len, out["typical_week"].values())) == 1  # all-day holiday and cancelled one skipped
     hdr = {"Content-Type": "application/json"}
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": ["nope"]}, hdr, "/api/import-file")[0] == 422
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": []}, hdr, "/api/import-file")[0] == 422

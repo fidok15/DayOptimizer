@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, Moon, Sun, WarningCircle } from "@phosphor-icons/react";
@@ -76,7 +77,7 @@ export default function Header(props: {
         </p>
       </div>
 
-      <div className="relative flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
@@ -115,9 +116,11 @@ export default function Header(props: {
             );
           })}
         </div>
-
-        {/* out of the flow: the status coming and going must not move the buttons or squeeze the headline */}
-        <div aria-live="polite" className="pointer-events-none absolute right-0 top-full mt-2 flex max-w-full justify-end text-sm [&>*]:pointer-events-auto">
+      </div>
+      {/* a toast in the corner: coming and going it must not move the buttons, squeeze the headline or cover the
+          calendar's header; in a portal because the header's animated (transformed) parent would pin `fixed` to itself */}
+      {createPortal(
+        <div aria-live="polite" className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] justify-end text-sm [&>*]:pointer-events-auto [&>*]:shadow-lg">
           <AnimatePresence mode="wait" initial={false}>
             {saveStatus === "saving" && (
               <motion.span key="saving" {...fade} className={`${pill} text-ink`}>
@@ -148,8 +151,9 @@ export default function Header(props: {
               </motion.span>
             )}
           </AnimatePresence>
-        </div>
-      </div>
+        </div>,
+        document.body,
+      )}
     </header>
   );
 }

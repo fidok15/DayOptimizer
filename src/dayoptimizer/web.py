@@ -205,6 +205,8 @@ def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str, list
     start = datetime.combine(week_start, time()).astimezone()
     events = []
     for ev in recurring_ical_events.of(cal).between(start, start + timedelta(days=7)):
+        if str(ev.get("STATUS", "")).upper() == "CANCELLED":
+            continue
         try:
             s, e = ev.start, ev.end
         except icalendar.error.IncompleteComponent:
