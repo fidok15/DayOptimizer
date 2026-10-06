@@ -4,9 +4,11 @@ JSON API over the user's config.local.yaml. Binds to 127.0.0.1 only.
 API
   GET /api/state  -> {categories, typical_week, notes, defaults, day_start, day_end}
   PUT /api/state  <- {categories, typical_week, notes}  (validated, then saved)
-  POST /api/import <- {week_start}  -> {typical_week, calendars}  (calendar week as blocks tagged
-                    with their source calendar, plus every calendar -> #rrggbb or ""; the user
-                    maps calendars onto categories, nothing is saved)
+  POST /api/import <- {week_start}  -> {typical_week, calendars, google}  (calendar week as blocks
+                    tagged with their source calendar, every calendar -> #rrggbb or "", and the
+                    names of those from Google accounts; the user maps calendars onto
+                    categories, nothing is saved)
+  POST /api/import-file <- {week_start, files: [.ics text]} -> same as /api/import
   POST /api/routine <- {categories, typical_week, notes} -> {path, text, calendars, notes}  (save, write the LLM
                     brief, create/recolour a Calendar-app calendar per category)
   GET  /api/calendar-colors -> {colors: {category: #rrggbb}}  (each category calendar's colour now)
@@ -38,6 +40,7 @@ from dayoptimizer.onboarding import ConfigError, save_user_config
 STATIC_DIR = Path(__file__).parent / "web_static"
 DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config.default.yaml"
 MAX_BODY = 256 * 1024
+MAX_FILE_BODY = 20 * 1024 * 1024  # exported calendars with years of history are big
 
 
 def _code_stamp() -> str:
@@ -164,7 +167,63 @@ def import_week(payload: object) -> dict:
         events = storage.events_between(start, start + timedelta(days=7))
     finally:
         storage.close()
-    return {"typical_week": events_to_week(events, week_start), "calendars": _colors(out, "CAL")}
+    rows = [l[len("CAL "):].split("\t") for l in out.splitlines() if l.startswith("CAL ")]
+    return {"typical_week": events_to_week(events, week_start),
+            "calendars": {r[0]: r[1] if len(r) > 1 else "" for r in rows},
+            "google": [r[0] for r in rows if len(r) > 2 and _is_google(r[2])]}
+
+
+def _is_google(account: str) -> bool:
+    # ponytail: macOS names a Google account "Google" or by its address; a
+    # Workspace account renamed to something else shows up under Apple
+    a = account.lower()
+    return "google" in a or a.endswith(("@gmail.com", "@googlemail.com"))
+
+
+def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str]:
+    """Events of one .ics file in the given week (repeats expanded), plus the
+    calendar's name and colour when the file carries them."""
+    import icalendar
+    import recurring_ical_events
+    from dayoptimizer.core.calendar import normalize_calendar
+    try:
+        cal = icalendar.Calendar.from_ical(text)
+    except ValueError:
+        raise ConfigError("That file isn't a calendar file (.ics).") from None
+    name = normalize_calendar(str(cal.get("X-WR-CALNAME") or ""))[:40] or "Imported calendar"
+    color = str(cal.get("X-APPLE-CALENDAR-COLOR") or "")[:7].lower()
+    color = color if len(color) == 7 and color[0] == "#" and all(c in "0123456789abcdef" for c in color[1:]) else ""
+    start = datetime.combine(week_start, time()).astimezone()
+    events = []
+    for ev in recurring_ical_events.of(cal).between(start, start + timedelta(days=7)):
+        try:
+            s, e = ev.start, ev.end
+        except icalendar.error.IncompleteComponent:
+            continue
+        all_day = not isinstance(s, datetime)
+        if all_day:
+            s, e = datetime.combine(s, time()), datetime.combine(e, time())
+        events.append(Event(id=str(ev.get("UID", "")), calendar=name, title=str(ev.get("SUMMARY", "")),
+                            start=s.astimezone(), end=e.astimezone(), all_day=all_day))
+    return events, name, color
+
+
+def import_file(payload: object) -> dict:
+    """POST /api/import-file <- {week_start, files: [ics text]}: the same answer as
+    /api/import, read from exported calendar files instead of the Calendar app."""
+    try:
+        week_start = date.fromisoformat(payload["week_start"])  # type: ignore[index]
+        files = payload["files"]  # type: ignore[index]
+    except (TypeError, KeyError, ValueError):
+        raise ConfigError("week_start must be a YYYY-MM-DD date and files a list.")
+    if not isinstance(files, list) or not 0 < len(files) <= 20 or not all(isinstance(f, str) for f in files):
+        raise ConfigError("Choose 1-20 calendar files (.ics).")
+    events, calendars = [], {}
+    for text in files:
+        found, name, color = ics_events(text, week_start)
+        events += found
+        calendars[name] = calendars.get(name) or color
+    return {"typical_week": events_to_week(events, week_start), "calendars": calendars, "google": []}
 
 
 class ApiError(RuntimeError):
@@ -276,9 +335,9 @@ def _calendar_lines(out: str, tag: str) -> list[str]:
     return [c for c in line[len(tag) + 1:].split("\t") if c]
 
 
-def _colors(out: str, tag: str = "COLOR") -> dict[str, str]:
-    return dict(l[len(tag) + 1:].split("\t", 1) for l in out.splitlines()
-                if l.startswith(tag + " ") and "\t" in l)
+def _colors(out: str) -> dict[str, str]:
+    return dict(l[len("COLOR "):].split("\t", 1) for l in out.splitlines()
+                if l.startswith("COLOR ") and "\t" in l)
 
 
 def create_category_calendars() -> dict:
@@ -412,7 +471,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.path = "/index.html"  # SPA fallback
         return super().do_GET()
 
-    def _write(self, action) -> None:
+    def _write(self, action, max_body: int = MAX_BODY) -> None:
         origin = self.headers.get("Origin")
         # CSRF guard: JSON-only (forces a CORS preflight we never answer) and same origin
         if (not self._host_ok()
@@ -421,7 +480,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(403, {"error": "forbidden"})
         length = self.headers.get("Content-Length", "")
         length = int(length) if length.isdigit() else 0
-        if not 0 < length <= MAX_BODY:
+        if not 0 < length <= max_body:
             return self._json(413, {"error": "body too large or empty"})
         try:
             return self._json(200, action(json.loads(self.rfile.read(length))))
@@ -442,6 +501,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     POST_ROUTES = {
         "/api/import": import_week,
+        "/api/import-file": import_file,
         "/api/routine": save_routine_brief,
         "/api/garmin/login": garmin_login,
         "/api/garmin/mfa": garmin_mfa,
@@ -452,7 +512,7 @@ class Handler(SimpleHTTPRequestHandler):
         action = self.POST_ROUTES.get(self.path)
         if action is None:
             return self._json(404, {"error": "not found"})
-        return self._write(action)
+        return self._write(action, MAX_FILE_BODY if action is import_file else MAX_BODY)
 
     def end_headers(self):
         # the page itself must be revalidated, or after an update the browser keeps

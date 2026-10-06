@@ -37,14 +37,22 @@ export class ApiError extends Error {
   }
 }
 
-/** Read one calendar week (Monday date) as blocks tagged with their calendar, plus every
- *  calendar the user has (name -> #rrggbb, "" when unknown). Nothing is saved. */
-export const importWeek = async (weekStart: string): Promise<{ week: ImportedWeek; calendars: Record<string, string> }> => {
-  const body = await post<{ typical_week?: unknown; calendars?: unknown }>("/api/import", { week_start: weekStart });
+export type ImportedCalendars = { week: ImportedWeek; calendars: Record<string, string>; google: string[] };
+
+const toImported = (body: { typical_week?: unknown; calendars?: unknown; google?: unknown }): ImportedCalendars => {
   if (typeof body.typical_week !== "object" || !body.typical_week) throw new ApiError("The calendar answer looked wrong. Try again.", "bad");
   const calendars = typeof body.calendars === "object" && body.calendars ? (body.calendars as Record<string, string>) : {};
-  return { week: body.typical_week as ImportedWeek, calendars };
+  return { week: body.typical_week as ImportedWeek, calendars, google: Array.isArray(body.google) ? body.google : [] };
 };
+
+/** Read one calendar week (Monday date) as blocks tagged with their calendar, plus every
+ *  calendar the user has (name -> #rrggbb, "" when unknown) and which come from Google. Nothing is saved. */
+export const importWeek = async (weekStart: string): Promise<ImportedCalendars> =>
+  toImported(await post("/api/import", { week_start: weekStart }));
+
+/** The same, read from exported .ics files (their text) instead of the Calendar app. */
+export const importFiles = async (weekStart: string, files: string[]): Promise<ImportedCalendars> =>
+  toImported(await post("/api/import-file", { week_start: weekStart, files }));
 
 /** POST JSON and return the body, or throw ApiError with the server's code. */
 async function post<T>(path: string, body: unknown): Promise<T> {

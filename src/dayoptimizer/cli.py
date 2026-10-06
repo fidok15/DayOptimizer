@@ -411,7 +411,7 @@ def cmd_stats(args, rules, config):
 def cmd_sync(args, rules, config):
     """Copy N days of the calendar into the local cache (used by the web import,
     which cannot touch EventKit itself). Prints SYNCED n or NO_ACCESS for the caller,
-    then CAL <name>\t<#hex> for every calendar, so the import can list empty ones too."""
+    then CAL <name>\t<#hex>\t<account> for every calendar, so the import can list empty ones too."""
     calendar = CalendarClient()
     if not calendar.request_access():
         print("NO_ACCESS")
@@ -422,8 +422,8 @@ def cmd_sync(args, rules, config):
     events = calendar.list_events(start, end)
     Storage(paths.db_path()).sync_events(events, start, end)
     print(f"SYNCED {len(events)}")
-    for name, color in calendar.all_calendars().items():
-        print(f"CAL {name}\t{color or ''}")
+    for name, (color, account) in calendar.all_calendars().items():
+        print(f"CAL {name}\t{color or ''}\t{account.replace(chr(9), ' ')}")
 
 def cmd_calendars(args, rules, config):
     """Create a calendar in the Calendar app for every category that lacks one

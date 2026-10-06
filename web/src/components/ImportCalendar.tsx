@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowClockwise, CalendarPlus, CaretLeft, CaretRight, CircleNotch, DownloadSimple, WarningCircle } from "@phosphor-icons/react";
-import { ApiError, importWeek, type ImportedWeek } from "../lib/api";
+import { ArrowClockwise, CalendarPlus, CaretLeft, CaretRight, CircleNotch, DownloadSimple, FileArrowUp, WarningCircle } from "@phosphor-icons/react";
+import { ApiError, importFiles, importWeek, type ImportedCalendars } from "../lib/api";
 import { categoryColor, freshColor } from "../lib/colors";
 import { toMin, uid } from "../lib/time";
 import { usePopover } from "../lib/usePopover";
@@ -26,10 +26,14 @@ const lastMondayISO = () => {
   return iso(d);
 };
 
-const weekLabel = (monday: string) => {
-  const f = (s: string) => fromIso(s).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  return `${f(monday)} – ${f(addDays(monday, 6))}`;
-};
+const weekdayOf = (s: string): Weekday => WEEKDAYS[(fromIso(s).getDay() + 6) % 7];
+const mondayOf = (s: string) => addDays(s, -WEEKDAYS.indexOf(weekdayOf(s)));
+
+const short = (s: string) => fromIso(s).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const dateLabel = (date: string, mode: View) =>
+  mode === "week"
+    ? `${short(mondayOf(date))} – ${short(addDays(mondayOf(date), 6))}`
+    : fromIso(date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
 // which category each calendar went into last time, so the next import is pre-filled
 // (a per-browser convenience: losing it only means picking again)
@@ -56,7 +60,39 @@ const primary =
 const arrow = "grid size-8 place-items-center rounded-full border border-line text-ink-dim transition hover:text-ink active:scale-[0.96]";
 
 type Failure = { message: string; code: string };
-type Scope = "week" | Weekday;
+type Source = "file" | "apple" | "google";
+const SOURCES: { id: Source; label: string }[] = [
+  { id: "file", label: "From file" },
+  { id: "apple", label: "Apple Calendar" },
+  { id: "google", label: "Google Calendar" },
+];
+const MODES: { id: View; label: string }[] = [
+  { id: "day", label: "Day" },
+  { id: "week", label: "Week" },
+];
+
+/** Pill switch in the style of the header's Day/Week toggle. */
+function Segmented<T extends string>(props: { label: string; options: { id: T; label: string }[]; value: T; onChange: (v: T) => void; pill: string }) {
+  return (
+    <div role="group" aria-label={props.label} className="inline-flex rounded-full border border-line p-0.5">
+      {props.options.map((o) => {
+        const active = o.id === props.value;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => props.onChange(o.id)}
+            className={`relative min-h-7 rounded-full px-3 py-1 text-[13px] font-medium transition active:scale-[0.98] ${active ? "text-on-dusk" : "text-ink-dim hover:text-ink"}`}
+          >
+            {active && <motion.span layoutId={props.pill} className="absolute inset-0 rounded-full bg-dusk" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
+            <span className="relative">{o.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function ImportCalendar(props: {
   categories: Categories;
@@ -67,30 +103,39 @@ export default function ImportCalendar(props: {
 }) {
   const { categories, onImport, onCategories, view, day } = props;
   const { open, setOpen, ref } = usePopover();
-  const [monday, setMonday] = useState(lastMondayISO);
-  const [scope, setScope] = useState<Scope>(view === "day" ? day : "week");
+  const [source, setSource] = useState<Source>("apple");
+  const [mode, setMode] = useState<View>(view);
+  // the date shown: in week mode only its week counts
+  const [date, setDate] = useState(() => addDays(lastMondayISO(), WEEKDAYS.indexOf(day)));
+  const [files, setFiles] = useState<{ names: string[]; texts: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [found, setFound] = useState<{ week: ImportedWeek; calendars: Record<string, string> } | null>(null);
+  const [found, setFound] = useState<ImportedCalendars | null>(null);
   const [include, setInclude] = useState<Record<string, boolean>>({});
   const [mapping, setMapping] = useState<Record<string, string>>({}); // calendar -> category | NEW | ""
   const [replace, setReplace] = useState(false);
 
   // opening the dialog starts from what the page shows: the whole week or the chosen day
   useEffect(() => {
-    if (open) setScope(view === "day" ? day : "week");
+    if (!open) return;
+    setMode(view);
+    setDate((d) => addDays(mondayOf(d), WEEKDAYS.indexOf(day)));
   }, [open, view, day]);
 
-  const days: Weekday[] = scope === "week" ? [...WEEKDAYS] : [scope];
+  const monday = mondayOf(date);
+  const days: Weekday[] = mode === "week" ? [...WEEKDAYS] : [weekdayOf(date)];
   const categoryNames = Object.keys(categories);
 
-  // every calendar: busiest first, empty ones (for this week/day) last
+  // the calendars of this tab: busiest first, empty ones (for this week/day) last
   const calendars = useMemo(() => {
+    if (!found) return [];
+    const google = new Set(found.google);
+    const shown = (cal: string) => source === "file" || (source === "google") === google.has(cal);
     const n: Record<string, number> = {};
-    for (const cal of Object.keys(found?.calendars ?? {})) n[cal] = 0;
-    for (const d of days) for (const b of found?.week[d] ?? []) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
+    for (const cal of Object.keys(found.calendars)) if (shown(cal)) n[cal] = 0;
+    for (const d of days) for (const b of found.week[d] ?? []) if (shown(b.calendar)) n[b.calendar] = (n[b.calendar] ?? 0) + 1;
     return Object.entries(n).sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
-  }, [found, scope]);
+  }, [found, source, mode, date]);
 
   const busy = calendars.filter(([, n]) => n > 0);
   const chosen = busy.filter(([cal]) => include[cal]);
@@ -98,10 +143,11 @@ export default function ImportCalendar(props: {
   const count = chosen.reduce((sum, [, n]) => sum + n, 0);
   const allOn = busy.length > 0 && chosen.length === busy.length;
 
-  const load = (week: string) => {
+  const load = (week: string, from: Source = source, texts = files?.texts) => {
+    if (from === "file" && !texts) return;
     setLoading(true);
     setFailure(null);
-    importWeek(week)
+    (from === "file" ? importFiles(week, texts!) : importWeek(week))
       .then((r) => {
         const remembered = readMap();
         const byLower = new Map(Object.keys(categories).map((c) => [c.toLowerCase(), c]));
@@ -123,9 +169,26 @@ export default function ImportCalendar(props: {
   };
 
   const shift = (n: number) => {
-    const next = addDays(monday, 7 * n);
-    setMonday(next);
-    if (found) load(next);
+    const next = addDays(date, mode === "week" ? 7 * n : n);
+    setDate(next);
+    if (found && mondayOf(next) !== monday) load(mondayOf(next));
+  };
+
+  // Apple and Google come from one read of the Calendar app; files are a read of their own
+  const pickSource = (next: Source) => {
+    if ((next === "file") !== (source === "file")) {
+      setFound(null);
+      setFailure(null);
+    }
+    setSource(next);
+  };
+
+  const pickFiles = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const chosen = [...list].slice(0, 20);
+    const texts = await Promise.all(chosen.map((f) => f.text()));
+    setFiles({ names: chosen.map((f) => f.name), texts });
+    load(monday, "file", texts);
   };
 
   const confirm = () => {
@@ -163,7 +226,8 @@ export default function ImportCalendar(props: {
     setFound(null);
   };
 
-  const target = scope === "week" ? "this week" : DAY_NAME[scope];
+  const target = mode === "week" ? "this week" : `on ${DAY_NAME[weekdayOf(date)]}`;
+  const dayName = DAY_NAME[weekdayOf(date)];
 
   return (
     <div ref={ref} className="relative">
@@ -191,36 +255,25 @@ export default function ImportCalendar(props: {
             <div>
               <h2 className="text-[15px] font-semibold tracking-tight">Fill your routine from your calendar</h2>
               <p className="mt-1 text-xs leading-snug text-ink-dim">
-                Copies events from Apple Calendar (and Google or other accounts added in macOS Settings) as a starting point.
-                Tick the calendars to copy and choose which of your categories each one goes into.
+                Copies events as a starting point. Tick the calendars to copy and choose which of your categories each one goes into.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <Segmented label="Import from" options={SOURCES} value={source} onChange={pickSource} pill="import-source" />
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Segmented label="Import a day or a week" options={MODES} value={mode} onChange={setMode} pill="import-mode" />
               <div className="flex items-center gap-1">
-                <button type="button" onClick={() => shift(-1)} disabled={loading} aria-label="Previous week" className={arrow}>
+                <button type="button" onClick={() => shift(-1)} disabled={loading} aria-label={mode === "week" ? "Previous week" : "Previous day"} className={arrow}>
                   <CaretLeft size={14} weight="bold" aria-hidden />
                 </button>
                 <span className="min-w-[8.5rem] text-center text-sm tabular-nums" aria-live="polite">
-                  {weekLabel(monday)}
+                  {dateLabel(date, mode)}
                 </span>
-                <button type="button" onClick={() => shift(1)} disabled={loading} aria-label="Next week" className={arrow}>
+                <button type="button" onClick={() => shift(1)} disabled={loading} aria-label={mode === "week" ? "Next week" : "Next day"} className={arrow}>
                   <CaretRight size={14} weight="bold" aria-hidden />
                 </button>
               </div>
-              <select
-                aria-label="Import the whole week or one day"
-                value={scope}
-                onChange={(e) => setScope(e.target.value as Scope)}
-                className="h-8 rounded-[10px] border border-line bg-linen px-2 text-sm text-ink outline-none focus:border-accent"
-              >
-                <option value="week">Whole week</option>
-                {WEEKDAYS.map((d) => (
-                  <option key={d} value={d}>
-                    Only {DAY_NAME[d]}
-                  </option>
-                ))}
-              </select>
             </div>
 
             {categoryNames.length === 0 && (
@@ -243,8 +296,36 @@ export default function ImportCalendar(props: {
 
             {!found ? (
               <>
-                {loading && <p className="text-xs text-ink-dim">Reading your calendar. The first time, macOS may ask for permission.</p>}
+                {source === "file" ? (
+                  <p className="text-xs leading-snug text-ink-dim">
+                    Choose one or more .ics files. From Google: calendar.google.com › Settings › Import &amp; export › Export (unzip it first).
+                    From Apple Calendar: File › Export.
+                  </p>
+                ) : (
+                  loading && <p className="text-xs text-ink-dim">Reading your calendar. The first time, macOS may ask for permission.</p>
+                )}
                 <div className="flex justify-end">
+                  {source === "file" ? (
+                    <label className={`${primary} cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent`}>
+                      {loading ? (
+                        <CircleNotch size={16} weight="bold" className="animate-spin motion-reduce:animate-none" aria-hidden />
+                      ) : (
+                        <FileArrowUp size={16} weight="bold" aria-hidden />
+                      )}
+                      Choose .ics files
+                      <input
+                        type="file"
+                        accept=".ics,text/calendar"
+                        multiple
+                        disabled={loading}
+                        className="sr-only"
+                        onChange={(e) => {
+                          void pickFiles(e.target.files);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  ) : (
                   <button type="button" onClick={() => load(monday)} disabled={loading} className={primary}>
                     {loading ? (
                       <CircleNotch size={16} weight="bold" className="animate-spin motion-reduce:animate-none" aria-hidden />
@@ -255,14 +336,25 @@ export default function ImportCalendar(props: {
                     )}
                     {failure ? "Try again" : "Load events"}
                   </button>
+                  )}
                 </div>
               </>
             ) : (
               <>
                 <fieldset disabled={loading} className={loading ? "opacity-60" : undefined}>
                   <legend className="sr-only">Calendars to import</legend>
-                  {busy.length === 0 ? (
-                    <p className="text-sm text-ink-dim">No timed events {target}. Pick another week, or draw it by hand.</p>
+                  {source === "file" && files && (
+                    <p className="mb-1.5 truncate text-xs text-ink-dim" title={files.names.join(", ")}>
+                      From {files.names.join(", ")}
+                    </p>
+                  )}
+                  {source === "google" && calendars.length === 0 ? (
+                    <p className="text-sm leading-snug text-ink-dim">
+                      No Google calendars on this Mac. Add your Google account in System Settings › Internet Accounts and load again,
+                      or export it from Google and use From file.
+                    </p>
+                  ) : busy.length === 0 ? (
+                    <p className="text-sm text-ink-dim">No timed events {target}. Try another {mode}, or draw it by hand.</p>
                   ) : (
                     <label className="mb-1 flex cursor-pointer items-center gap-2 px-1 text-sm font-medium">
                       <input
@@ -320,8 +412,8 @@ export default function ImportCalendar(props: {
                 </fieldset>
                 <div role="radiogroup" aria-label="How to import" className="flex flex-col gap-1 text-sm">
                   {[
-                    { v: false, label: scope === "week" ? "Add to my typical week" : `Add to my ${DAY_NAME[scope]}` },
-                    { v: true, label: scope === "week" ? "Replace my typical week" : `Replace my ${DAY_NAME[scope]}` },
+                    { v: false, label: mode === "week" ? "Add to my typical week" : `Add to my ${dayName}` },
+                    { v: true, label: mode === "week" ? "Replace my typical week" : `Replace my ${dayName}` },
                   ].map((o) => (
                     <label key={String(o.v)} className="flex cursor-pointer items-center gap-2 px-1">
                       <input

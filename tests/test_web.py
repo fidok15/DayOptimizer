@@ -289,7 +289,41 @@ def test_import_lists_every_calendar_with_colour(monkeypatch):
     exe.write_text("")
     os.chmod(exe, 0o755)
     monkeypatch.setattr(mcp_server, "_bundle_run",
-                        lambda a: "SYNCED 0\nCAL Reminder\t#ff2968\nCAL Birthdays\t\n")
+                        lambda a: "SYNCED 0\nCAL Reminder\t#ff2968\tiCloud\nCAL Birthdays\t\t\n"
+                                  "CAL Uni\t#4285f4\tjan@gmail.com\n")
     out = web.import_week({"week_start": "2026-09-21"})
-    assert out["calendars"] == {"Reminder": "#ff2968", "Birthdays": ""}
+    assert out["calendars"] == {"Reminder": "#ff2968", "Birthdays": "", "Uni": "#4285f4"}
+    assert out["google"] == ["Uni"]
     assert out["typical_week"]["mon"] == []
+
+
+ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+X-WR-CALNAME:📚 Uni
+X-APPLE-CALENDAR-COLOR:#1BADF8FF
+BEGIN:VEVENT
+UID:a
+SUMMARY:Lecture
+DTSTART:20260901T100000
+DTEND:20260901T113000
+RRULE:FREQ=WEEKLY
+END:VEVENT
+BEGIN:VEVENT
+UID:b
+SUMMARY:Holiday
+DTSTART;VALUE=DATE:20260924
+DTEND;VALUE=DATE:20260925
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+def test_import_file_expands_repeats_and_reads_calendar_name(server):
+    from dayoptimizer import web
+    out = web.import_file({"week_start": "2026-09-21", "files": [ICS]})
+    assert out["calendars"] == {"Uni": "#1badf8"}
+    assert out["typical_week"]["tue"] == [{"start": "10:00", "end": "11:30", "calendar": "Uni", "title": "Lecture"}]
+    assert sum(map(len, out["typical_week"].values())) == 1  # the all-day holiday is skipped
+    hdr = {"Content-Type": "application/json"}
+    assert _request(server, "POST", {"week_start": "2026-09-21", "files": ["nope"]}, hdr, "/api/import-file")[0] == 422
+    assert _request(server, "POST", {"week_start": "2026-09-21", "files": []}, hdr, "/api/import-file")[0] == 422
