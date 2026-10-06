@@ -160,7 +160,7 @@ def describe(rule: NoteRule) -> str:
 
 def skippable(rules: list[NoteRule], event) -> bool:
     """An event the user said may be planned over ("lectures, titles starting
-    with 'W -', can be skipped"): it neither blocks time nor gets moved."""
+    with 'Lecture -', can be skipped"): it neither blocks time nor gets moved."""
     title = event.title.strip().lower()
     return any(r.type == "skippable" and r.category == event.calendar
                and title.startswith(r.prefix.lower()) for r in rules)

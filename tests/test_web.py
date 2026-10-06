@@ -365,13 +365,13 @@ def test_a_rule_told_over_two_sentences_compiles_from_both(monkeypatch):
 
     class FakeLLM:
         def compile_notes(self, sentence, categories):
-            if '"W -"' in sentence and "skip" in sentence:
-                return llm.CompiledNotes(skippable=[llm.SkipRule(category="Uni", prefix="W -", source="x")])
+            if '"Lecture -"' in sentence and "skip" in sentence:
+                return llm.CompiledNotes(skippable=[llm.SkipRule(category="Uni", prefix="Lecture -", source="x")])
             return llm.CompiledNotes()
 
     monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
-    out = web.compile_notes('Lectures are Uni events starting with "W -". You may skip lectures.', ["Uni"])
-    assert out["rules"] == ['Uni: events starting with "W -" may be planned over']
+    out = web.compile_notes('Lectures are Uni events starting with "Lecture -". You may skip lectures.', ["Uni"])
+    assert out["rules"] == ['Uni: events starting with "Lecture -" may be planned over']
     assert out["not_compiled"] == []
 
 
@@ -381,5 +381,5 @@ def test_notes_may_name_a_calendar_that_is_not_a_category(monkeypatch):
     monkeypatch.setattr(web, "create_category_calendars", lambda: {"created": [], "all": ["School", "Work"]})
     monkeypatch.setattr(web, "compile_notes", lambda notes, cats: seen.setdefault("cats", cats) and {})
     monkeypatch.setattr("dayoptimizer.routine.save_routine", lambda text: "/tmp/x")
-    out = web.save_routine_brief(_state_payload(notes='School "W -" lectures can be skipped'))
+    out = web.save_routine_brief(_state_payload(notes='School "Lecture -" events can be skipped'))
     assert "School" in seen["cats"] and "all" not in out["calendars"]

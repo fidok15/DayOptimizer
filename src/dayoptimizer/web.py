@@ -377,7 +377,7 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
     results: list[tuple[str, list[dict]]] = []
     for parts in split_notes(notes):
         results.append((", ".join(parts), [row for part in parts for row in ask(part)]))
-    # one rule told over two sentences ('Lectures start with "W -". You may skip
+    # one rule told over two sentences ('Lectures start with "Lecture -". You may skip
     # them.') gives nothing sentence by sentence: two neighbours that both failed
     # are asked once more together
     i = 0

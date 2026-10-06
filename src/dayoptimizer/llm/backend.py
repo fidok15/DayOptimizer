@@ -233,7 +233,7 @@ _NOTES_SYSTEM = (
     '"gym three times a week at most" -> '
     '{"max_per_week":[{"source":"gym three times a week at most","category":"Gym","count":3}]}\n'
     '"Uni events starting with \\"L -\\" can be skipped" -> '
-    '{"skippable":[{"source":"Uni events starting with \\"L -\\" can be skipped","category":"Uni","prefix":"L -"}]}\n'
+    '{"skippable":[{"source":"Course events starting with \\"Optional:\\" can be skipped","category":"Course","prefix":"Optional:"}]}\n'
     '"no work after 18:00" -> '
     '{"not_after":[{"source":"no work after 18:00","time":"18:00","category":"Work"}]}\n'
     '"I want to feel less rushed" -> {"not_compiled":["I want to feel less rushed"]}\n'

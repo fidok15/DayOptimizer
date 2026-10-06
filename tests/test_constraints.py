@@ -85,10 +85,10 @@ def test_skippable_events_are_planned_over_and_never_moved():
     from dayoptimizer.core.models import Event
     from dayoptimizer.core.planner import plan_day
     from dayoptimizer.core.rules import RoutineBlock, load_rules
-    rules_rows = [{"type": "skippable", "category": "Important", "prefix": "W -", "source": 'lectures "W -" can be skipped'},
+    rules_rows = [{"type": "skippable", "category": "Important", "prefix": "Lecture -", "source": '"Lecture -" events can be skipped'},
                   {"type": "skippable", "category": "Important", "prefix": "", "source": "no prefix"}]
     parsed = parse_rules(rules_rows)
-    assert len(parsed) == 1 and describe(parsed[0]) == 'Important: events starting with "W -" may be planned over'
+    assert len(parsed) == 1 and describe(parsed[0]) == 'Important: events starting with "Lecture -" may be planned over'
     d = datetime(2026, 7, 3).astimezone()
     lecture = Event(id="w", calendar="Important", title="Lecture - Maths", start=d.replace(hour=8), end=d.replace(hour=10))
     lab = Event(id="l", calendar="Important", title="Lab - Maths", start=d.replace(hour=12), end=d.replace(hour=13))
@@ -106,6 +106,6 @@ def test_skippable_events_are_planned_over_and_never_moved():
 
 def test_a_skippable_prefix_the_user_never_wrote_is_dropped():
     from dayoptimizer.web import _clean_rule
-    row = {"type": "skippable", "category": "Uni", "prefix": "W -", "source": 'Uni "W -" lectures can be skipped'}
-    assert _clean_rule(row, ["Uni"])["prefix"] == "W -"
+    row = {"type": "skippable", "category": "Uni", "prefix": "Lecture -", "source": 'Uni "Lecture -" events can be skipped'}
+    assert _clean_rule(row, ["Uni"])["prefix"] == "Lecture -"
     assert _clean_rule({**row, "prefix": "C -"}, ["Uni"]) is None
