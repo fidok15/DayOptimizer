@@ -352,24 +352,34 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
     except LLMUnavailable as exc:
         return {"rules": [], "not_compiled": [], "error":
                 f"Your notes are saved, but turning them into rules needs a language model. {exc}"}
-    rows: list[dict] = []
-    unclear: list[str] = []
+    def ask(part: str) -> list[dict]:
+        try:
+            compiled = backend.compile_notes(part, categories)
+        except Exception:
+            return []
+        # the part we asked about is the source, whatever the model echoes back
+        mine = [_clean_rule({**row, "source": part}, categories) for row in compiled.rows()]
+        return [row for row in mine if row is not None and parse_rules([row])]
+
+    # (sentence, rules it gave); a part without a rule is usually the tail of one that
+    # has it ("Sunday 12-18 is family time, plan nothing"), so whole sentences are judged
+    results: list[tuple[str, list[dict]]] = []
     for parts in split_notes(notes):
-        found = []
-        for part in parts:
-            try:
-                compiled = backend.compile_notes(part, categories)
-            except Exception:
+        results.append((", ".join(parts), [row for part in parts for row in ask(part)]))
+    # one rule told over two sentences ('Lectures start with "W -". You may skip
+    # them.') gives nothing sentence by sentence: two neighbours that both failed
+    # are asked once more together
+    i = 0
+    while i < len(results) - 1:
+        if not results[i][1] and not results[i + 1][1]:
+            joined = f"{results[i][0]}. {results[i + 1][0]}"
+            found = ask(joined)
+            if found:
+                results[i:i + 2] = [(joined, found)]
                 continue
-            # the part we asked about is the source, whatever the model echoes back
-            mine = [_clean_rule({**row, "source": part}, categories) for row in compiled.rows()]
-            found += [row for row in mine if row is not None and parse_rules([row])]
-        # a part without a rule is usually the tail of one that has it
-        # ("Sunday 12-18 is family time, plan nothing") — report whole sentences only
-        if found:
-            rows += found
-        else:
-            unclear.append(", ".join(parts))
+        i += 1
+    rows = [row for _, found in results for row in found]
+    unclear = [sentence for sentence, found in results if not found]
     # keep only rules the planner really enforces, so the config can't hold a dud
     # rules dropped by dedupe (a second limit of the same kind) are reported too
     kept = parse_rules(rows)

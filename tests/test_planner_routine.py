@@ -239,3 +239,31 @@ def test_one_typical_day_with_gym_daily_still_obeys_the_weekly_notes():
             trained.append(day.strftime("%a"))
             history.setdefault("Gym", []).append(day)
     assert trained == ["Mon", "Wed"]
+
+
+def test_commute_is_planned_before_the_routine_and_the_routine_keeps_off_it():
+    morning = [RoutineBlock(6 * 60 + 45, 7 * 60 + 15, "Food", "Breakfast"),
+               RoutineBlock(13 * 60, 14 * 60, "Food", "Lunch")]
+    rules = dataclasses.replace(BASE, typical_week={4: morning}, transport_routes={"Uni": 45})
+    lecture = _ev("w", "Uni", 7, 9, title="Lecture - Maths", m1=30)
+    changes = plan_day(DAY, [lecture], None, rules, now=EARLY)
+    created = _created(changes)
+    assert ("Commute: Lecture - Maths", "06:45", "07:30") in created
+    breakfast = next(c for c in created if c[0] == "Breakfast")
+    assert breakfast[2] <= "06:45" or breakfast[1] >= "07:30"  # moved off the commute
+
+
+def test_a_commute_already_in_the_calendar_is_never_moved_away_from_its_class():
+    # a planner-made "Deep work" block of a higher-priority fixed category sits on the
+    # commute: the deep work must yield, the commute stays tied to the class
+    deep_cat = dataclasses.replace(BASE.categories["Learn"], movable=False, priority=9)
+    rules = dataclasses.replace(BASE, categories={**BASE.categories, "Deep work": deep_cat},
+                                typical_week={0: [RoutineBlock(7 * 60, 9 * 60, "Deep work", "Deep work")]},
+                                transport_routes={"Uni": 45})
+    lecture = _ev("w", "Uni", 9, 11, title="Lecture - Maths", m1=15)
+    commute = _ev("c", "Transport", 8, 9, title="Commute: Lecture - Maths", m1=30, m2=15)
+    deep = _ev("d", "Deep work", 7, 8, title="Deep work", m1=45, m2=45)
+    changes = plan_day(DAY, [lecture, commute, deep], None, rules, now=EARLY)
+    assert not [c for c in changes if c.event_id == "c"]  # the commute stays put
+    assert [c.kind for c in changes if c.event_id == "d"] == ["move"]
+    assert not [c for c in changes if c.kind == "create" and c.title == "Commute: Lecture - Maths"]

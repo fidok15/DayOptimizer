@@ -233,7 +233,9 @@ def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monke
     out = web.compile_notes("no lunch before 14. gym 3x a week\ninvented one; broken one. I want to feel less rushed. "
                             "Sunday 12:00-18:00 is family time, plan nothing", ["Food", "Gym"])
     assert asked == ["no lunch before 14", "gym 3x a week", "invented one", "broken one",
-                     "I want to feel less rushed", "Sunday 12:00-18:00 is family time", "plan nothing"]
+                     "I want to feel less rushed", "Sunday 12:00-18:00 is family time", "plan nothing",
+                     # neighbours that both failed are tried once more together
+                     "invented one. broken one", "broken one. I want to feel less rushed"]
     # "plan nothing" is the tail of a sentence that made a rule: not reported as unclear
     assert out["rules"] == ["Food: not before 14:00", "Gym: at most 3 time(s) a week",
                             "Sun 12:00-18:00: kept free"]
@@ -352,3 +354,19 @@ def test_routine_mode_roundtrip_and_validation():
     assert write_state(_state_payload())["routine_mode"] == "day"  # omitted: kept
     with pytest.raises(ConfigError):
         write_state(_state_payload(routine_mode="month"))
+
+
+def test_a_rule_told_over_two_sentences_compiles_from_both(monkeypatch):
+    from dayoptimizer.llm import backend as llm
+    from dayoptimizer import web
+
+    class FakeLLM:
+        def compile_notes(self, sentence, categories):
+            if '"W -"' in sentence and "skip" in sentence:
+                return llm.CompiledNotes(skippable=[llm.SkipRule(category="Uni", prefix="W -", source="x")])
+            return llm.CompiledNotes()
+
+    monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
+    out = web.compile_notes('Lectures are Uni events starting with "W -". You may skip lectures.', ["Uni"])
+    assert out["rules"] == ['Uni: events starting with "W -" may be planned over']
+    assert out["not_compiled"] == []

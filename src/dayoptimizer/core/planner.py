@@ -76,6 +76,10 @@ def _is_planner_managed(title: str, rules: Rules) -> bool:
     return (title in PLANNER_TITLES or title == rules.free_time_activity
             or title.startswith("Commute:") or title in rules.routine_titles)
 
+def _anchored(ev: Event) -> bool:
+    """A commute belongs to the event it leads to: moving it away is meaningless."""
+    return ev.calendar == "Transport" and ev.title.startswith("Commute:")
+
 def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
     """A block is effectively movable if its category is movable in config OR
     the planner itself created it (recognized by title): planner-created blocks
@@ -143,6 +147,11 @@ def resolve_conflicts(events, rules, day_start, day_end):
                     continue
                 mover, stay = other, sleep_block
                 requires_approval = False
+            elif _anchored(ev) != _anchored(conflict):
+                # a commute never moves: whatever sits on it does (with OK if it's fixed)
+                mover = conflict if _anchored(ev) else ev
+                stay = ev if mover is conflict else conflict
+                requires_approval = not _effectively_movable(rules, mover.calendar, mover.title)
             else:
                 ev_movable = _effectively_movable(rules, ev.calendar, ev.title)
                 other_movable = _effectively_movable(rules, conflict.calendar, conflict.title)
@@ -611,9 +620,11 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     run(adjust_gym(working, garmin, rules, day_start, day_end, now))
     if rules.has_routine:
         # the user's own week replaces the generic meal/gym/sleep/filler generators
+        # commutes first: they hang off the user's own events, and routine blocks
+        # must then find time around them rather than under them
+        run(insert_transport(working, rules))
         run(place_routine(day, working, rules, now, day_start, day_end, garmin, activities or (),
                           history))
-        run(insert_transport(working, rules))
         run(check_free_time(working, rules, day_start, day_end))
         return _dedupe_moves(changes)
     run(schedule_gym(working, rules, day_start, day_end, now, garmin, week_gym_count))
