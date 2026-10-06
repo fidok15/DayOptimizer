@@ -280,6 +280,18 @@ export default function ImportCalendar(props: {
             </div>
 
             <Segmented label="Import from" options={SOURCES} value={source} onChange={pickSource} pill="import-source" />
+            {/* opened by real buttons: Safari won't open the picker from a <label> around an sr-only input */}
+            <input
+              ref={picker}
+              type="file"
+              accept=".ics,text/calendar"
+              multiple
+              hidden
+              onChange={(e) => {
+                void pickFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Segmented label="Import a day or a week" options={MODES} value={mode} onChange={setMode} pill="import-mode" />
@@ -323,8 +335,6 @@ export default function ImportCalendar(props: {
                 )}
                 <div className="flex justify-end">
                   {source === "file" ? (
-                    <>
-                      {/* a real button opening a hidden input: Safari won't open the picker from a <label> around an sr-only input */}
                       <button type="button" onClick={() => picker.current?.click()} disabled={loading} className={`${primary} select-none`}>
                         {loading ? (
                           <CircleNotch size={16} weight="bold" className="animate-spin motion-reduce:animate-none" aria-hidden />
@@ -333,18 +343,6 @@ export default function ImportCalendar(props: {
                         )}
                         Choose .ics files
                       </button>
-                      <input
-                        ref={picker}
-                        type="file"
-                        accept=".ics,text/calendar"
-                        multiple
-                        hidden
-                        onChange={(e) => {
-                          void pickFiles(e.target.files);
-                          e.target.value = "";
-                        }}
-                      />
-                    </>
                   ) : (
                   <button type="button" onClick={() => load(monday)} disabled={loading} className={primary}>
                     {loading ? (
@@ -364,9 +362,14 @@ export default function ImportCalendar(props: {
                 <fieldset disabled={loading} className={loading ? "opacity-60" : undefined}>
                   <legend className="sr-only">Calendars to import</legend>
                   {source === "file" && files && (
-                    <p className="mb-1.5 truncate text-xs text-ink-dim" title={files.names.join(", ")}>
-                      From {files.names.join(", ")}
-                    </p>
+                    <div className="mb-1.5 flex items-center gap-2 text-xs text-ink-dim">
+                      <p className="min-w-0 flex-1 truncate" title={files.names.join(", ")}>
+                        From {files.names.join(", ")}
+                      </p>
+                      <button type="button" onClick={() => picker.current?.click()} className="shrink-0 font-medium text-ink underline decoration-line underline-offset-2 hover:decoration-accent">
+                        Change files
+                      </button>
+                    </div>
                   )}
                   {source === "google" && calendars.length === 0 ? (
                     <p className="text-sm leading-snug text-ink-dim">
