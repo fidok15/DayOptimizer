@@ -38,13 +38,21 @@ export class ApiError extends Error {
 }
 
 /** `span`: first and last event date in imported files (files only). */
-export type ImportedCalendars = { week: ImportedWeek; calendars: Record<string, string>; google: string[]; span?: [string, string] | null };
+export type ImportedCalendars = {
+  week: ImportedWeek;
+  calendars: Record<string, string>;
+  google: string[];
+  span?: [string, string] | null;
+  /** all-day events the import leaves out, with the weekdays they cover */
+  allDay: { calendar: string; title: string; days: Weekday[] }[];
+};
 
-const toImported = (body: { typical_week?: unknown; calendars?: unknown; google?: unknown; span?: unknown }): ImportedCalendars => {
+const toImported = (body: { typical_week?: unknown; calendars?: unknown; google?: unknown; span?: unknown; all_day?: unknown }): ImportedCalendars => {
   if (typeof body.typical_week !== "object" || !body.typical_week) throw new ApiError("The calendar answer looked wrong. Try again.", "bad");
   const calendars = typeof body.calendars === "object" && body.calendars ? (body.calendars as Record<string, string>) : {};
   const span = Array.isArray(body.span) && body.span.length === 2 ? (body.span as [string, string]) : null;
-  return { week: body.typical_week as ImportedWeek, calendars, google: Array.isArray(body.google) ? body.google : [], span };
+  const allDay = Array.isArray(body.all_day) ? (body.all_day as ImportedCalendars["allDay"]) : [];
+  return { week: body.typical_week as ImportedWeek, calendars, google: Array.isArray(body.google) ? body.google : [], span, allDay };
 };
 
 /** Read one calendar week (Monday date) as blocks tagged with their calendar, plus every

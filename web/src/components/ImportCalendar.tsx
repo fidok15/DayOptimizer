@@ -151,6 +151,8 @@ export default function ImportCalendar(props: {
     mode === "day" && found
       ? WEEKDAYS.filter((d) => !days.includes(d)).reduce((n, d) => n + (found.week[d] ?? []).filter((b) => shown(b.calendar)).length, 0)
       : 0;
+  // all-day events can't become blocks (no time): say which were left out
+  const skipped = found ? found.allDay.filter((e) => shown(e.calendar) && e.days.some((d) => days.includes(d))) : [];
   // a file whose events all lie outside the shown week: point to where they are
   const span = source === "file" && found?.span && busy.length === 0 && elsewhere === 0 ? found.span : null;
 
@@ -451,6 +453,13 @@ export default function ImportCalendar(props: {
                     })}
                   </ul>
                 </fieldset>
+                {skipped.length > 0 && (
+                  <p className="text-xs leading-snug text-ink-dim">
+                    Skipped {skipped.length} all-day {skipped.length === 1 ? "event" : "events"} (
+                    {skipped.slice(0, 3).map((e) => e.title || e.calendar).join(", ")}
+                    {skipped.length > 3 && ` and ${skipped.length - 3} more`}): a block needs a start and end time. Draw them by hand if they belong in your routine.
+                  </p>
+                )}
                 <div role="radiogroup" aria-label="How to import" className="flex flex-col gap-1 text-sm">
                   {[
                     { v: false, label: mode === "week" ? "Add to my typical week" : `Add to my ${dayName}` },

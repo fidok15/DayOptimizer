@@ -4,9 +4,10 @@ JSON API over the user's config.local.yaml. Binds to 127.0.0.1 only.
 API
   GET /api/state  -> {categories, typical_week, notes, defaults, day_start, day_end}
   PUT /api/state  <- {categories, typical_week, notes}  (validated, then saved)
-  POST /api/import <- {week_start}  -> {typical_week, calendars, google}  (calendar week as blocks
+  POST /api/import <- {week_start}  -> {typical_week, all_day, calendars, google}  (calendar week as blocks
                     tagged with their source calendar, every calendar -> #rrggbb or "", and the
-                    names of those from Google accounts; the user maps calendars onto
+                    names of those from Google accounts, plus the skipped all-day events as
+                    {calendar, title, days}; the user maps calendars onto
                     categories, nothing is saved)
   POST /api/import-file <- {week_start, files: [.ics text]} -> same as /api/import, plus
                     span: [first, last] event start dates in the files (null when empty)
@@ -140,6 +141,21 @@ def events_to_week(events: list[Event], week_start: date) -> dict[str, list[dict
     return week
 
 
+def all_day_in_week(events: list[Event], week_start: date) -> list[dict]:
+    """All-day events the import skips (a block needs a time), so the page can
+    say what was left out: {calendar, title, days: weekdays it covers}."""
+    out = []
+    for e in events:
+        if not e.all_day:
+            continue
+        # EventKit ends an all-day event at the next midnight or at 23:59 of its last day
+        last = (e.end - timedelta(microseconds=1)).date() if e.end.time() == time() else e.end.date()
+        days = [WEEKDAYS[i] for i in range(7) if e.start.date() <= week_start + timedelta(days=i) <= max(last, e.start.date())]
+        if days:
+            out.append({"calendar": e.calendar or "Calendar", "title": e.title[:60], "days": days})
+    return out
+
+
 def import_week(payload: object) -> dict:
     """Read one calendar week through the TCC app bundle (this process must not
     touch EventKit) and return it as blocks. Nothing is saved here."""
@@ -169,7 +185,7 @@ def import_week(payload: object) -> dict:
     finally:
         storage.close()
     rows = [l[len("CAL "):].split("\t") for l in out.splitlines() if l.startswith("CAL ")]
-    return {"typical_week": events_to_week(events, week_start),
+    return {"typical_week": events_to_week(events, week_start), "all_day": all_day_in_week(events, week_start),
             "calendars": {r[0]: r[1] if len(r) > 1 else "" for r in rows},
             "google": [r[0] for r in rows if len(r) > 2 and _is_google(r[2])]}
 
@@ -245,7 +261,8 @@ def import_file(payload: object) -> dict:
         for e in timed:
             calendars.setdefault(e.calendar, "")
     span = [min(starts).isoformat(), max(starts).isoformat()] if starts else None
-    return {"typical_week": events_to_week(events, week_start), "calendars": calendars, "google": [], "span": span}
+    return {"typical_week": events_to_week(events, week_start), "all_day": all_day_in_week(events, week_start),
+            "calendars": calendars, "google": [], "span": span}
 
 
 class ApiError(RuntimeError):

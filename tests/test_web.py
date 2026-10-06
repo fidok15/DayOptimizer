@@ -332,6 +332,7 @@ def test_import_file_expands_repeats_and_reads_calendar_name(server):
     assert out["span"] == ["2026-09-01", "2026-09-24"]
     assert out["typical_week"]["tue"] == [{"start": "10:00", "end": "11:30", "calendar": "Uni", "title": "Lecture"}]
     assert sum(map(len, out["typical_week"].values())) == 1  # all-day holiday and cancelled one skipped
+    assert out["all_day"] == [{"calendar": "Uni", "title": "Holiday", "days": ["thu"]}]
     hdr = {"Content-Type": "application/json"}
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": ["nope"]}, hdr, "/api/import-file")[0] == 422
     assert _request(server, "POST", {"week_start": "2026-09-21", "files": []}, hdr, "/api/import-file")[0] == 422
