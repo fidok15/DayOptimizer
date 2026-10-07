@@ -468,11 +468,12 @@ def _first_run() -> bool:
         return False
 
 def _iso_date(value: str) -> str:
-    try:
-        date.fromisoformat(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"'{value}' is not a date, use YYYY-MM-DD (e.g. 2026-09-28)")
-    return value
+    for fmt in ("%d-%m-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).date().isoformat()
+        except ValueError:
+            pass
+    raise argparse.ArgumentTypeError(f"'{value}' is not a date, use DD-MM-YYYY (e.g. 28-09-2026)")
 
 def _positive(value: str) -> int:
     if not value.isdigit() or int(value) < 1:
@@ -509,7 +510,7 @@ def main(argv: list[str] | None = None):
         formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", metavar="command")
     p_plan = sub.add_parser("plan", help="replan the day (or several days)")
-    p_plan.add_argument("--date", default=None, type=_iso_date, help="start date (YYYY-MM-DD, defaults to today)")
+    p_plan.add_argument("--date", default=None, type=_iso_date, help="start date (DD-MM-YYYY, defaults to today)")
     p_plan.add_argument("--week", nargs="?", const=7, type=_positive, default=None,
                         help="plan N days from the start date (default 7)")
     p_apply = sub.add_parser("apply", help="apply pending approval-required changes")
@@ -534,7 +535,7 @@ def main(argv: list[str] | None = None):
     p_cals = sub.add_parser("calendars", help="create a calendar in the Calendar app for each category")
     p_cals.add_argument("--read", action="store_true", help="only report each category calendar's colour")
     p_sync = sub.add_parser("sync", help="copy calendar events into the local cache")
-    p_sync.add_argument("--from", dest="start", required=True, type=_iso_date, help="first day (YYYY-MM-DD)")
+    p_sync.add_argument("--from", dest="start", required=True, type=_iso_date, help="first day (DD-MM-YYYY)")
     p_sync.add_argument("--days", type=_positive, default=7)
     p_web = sub.add_parser("setup", aliases=["web"],
                            help="describe your typical week in the browser (first run)")
