@@ -156,3 +156,8 @@ def test_a_local_model_plans_one_day_at_a_time_and_limits_carry_over():
     assert [(c.category, c.new_start.date()) for c in changes] == [("Gym", MON), ("Food", tue)]
     assert dropped == [] and len(backend.prompts) == 3
     assert "(plan this day)" in backend.prompts[1] and backend.prompts[1].count("(plan this day)") == 1
+
+
+def test_a_block_ending_at_midnight_may_say_00_00():
+    creates, problems = check(WeekPlan(blocks=[block(MON, "23:30", "00:00", "Food", "Late snack")]), events=())
+    assert problems == [] and creates[0].new_end == at(MON, "00:00") + timedelta(days=1)

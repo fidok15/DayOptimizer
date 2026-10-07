@@ -133,6 +133,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         label = f"{b.day} {b.start}-{b.end} {b.category}: {b.title}"
         day = wanted.get(b.day)
         start_m, end_m = _hhmm(b.start), _hhmm(b.end)
+        if end_m == 0 and start_m:
+            end_m = 1440
         if day is None:
             problems.append(f"{label}: {b.day} is not one of the days to plan")
             continue
