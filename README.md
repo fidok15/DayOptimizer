@@ -101,7 +101,19 @@ brew install ollama && brew services start ollama && ollama pull qwen3:8b
 
 Otherwise it uses Claude when `ANTHROPIC_API_KEY=...` is in a `.env` file in the
 DayOptimizer folder. `llm.backend` in the config forces one (`ollama`, `anthropic`,
-default `auto`). Bare `dayoptimizer` needs neither. Commands that touch
+default `auto`).
+
+**Planning days.** `dayoptimizer` and `dayoptimizer plan --date DD-MM-YYYY --week N`
+let a language model lay out the days: it reads your routine and notes as a
+guideline and fits each day around what is already in your calendar (commutes,
+classes, free days). Claude plans when `ANTHROPIC_API_KEY` is set; when there is
+no key or the API refuses it, the local Ollama model plans instead. The plan is
+checked before anything is written: no overlaps with your events (unless a note
+lets it plan over them), only your categories, and the rules from your notes; a
+plan that breaks one goes back to the model to fix. Blocks DayOptimizer writes
+carry "Planned by DayOptimizer" in their notes, so a replan replaces only its
+own blocks and never deletes yours. With no model at all it falls back to
+placing your routine by rule. Commands that touch
 the calendar run through DayOptimizer's app bundle automatically (see
 [macOS calendar permission](#macos-calendar-permission-tcc)).
 
