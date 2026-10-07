@@ -339,21 +339,25 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
     """Turn the free-text notes into rules the planner enforces on its own.
     Done once, here, so planning needs no LLM. Never fails the save."""
     from dayoptimizer.core.constraints import describe, parse_rules
-    from dayoptimizer.llm.backend import LLMUnavailable, make_backend
+    from dayoptimizer.llm import backend as llm
     local = _local()
     local.pop("note_rules", None)
     if not notes.strip():
         save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
         return {"rules": [], "not_compiled": [], "error": None}
-    try:
-        backend = make_backend(load_config_data(DEFAULT_CONFIG)["llm"])
-    except LLMUnavailable as exc:
+    backends = llm.planning_backends(load_config_data(DEFAULT_CONFIG)["llm"])
+    if not backends:
         return {"rules": [], "not_compiled": [], "error":
-                f"Your notes are saved, but turning them into rules needs a language model. {exc}"}
+                "Your notes are saved, but turning them into rules needs a language model: add "
+                "ANTHROPIC_API_KEY=... to the .env file in the DayOptimizer folder, or start Ollama."}
     def ask(part: str) -> list[dict]:
-        try:
-            compiled = backend.compile_notes(part, categories)
-        except Exception:
+        for backend in backends:
+            try:
+                compiled = backend.compile_notes(part, categories)
+                break
+            except Exception:
+                continue
+        else:
             return []
         mine = [_clean_rule({**row, "source": part}, categories) for row in compiled.rows()]
         return [row for row in mine if row is not None and parse_rules([row])]

@@ -230,7 +230,7 @@ def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monke
                 return llm.CompiledNotes(keep_free=[llm.FreeRule(start="12:00", end="18:00", weekday="sun", source="x")])
             return llm.CompiledNotes()
 
-    monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
+    monkeypatch.setattr(llm, "planning_backends", lambda cfg: [FakeLLM()])
     out = web.compile_notes("no lunch before 14. gym 3x a week\ninvented one; broken one. I want to feel less rushed. "
                             "Sunday 12:00-18:00 is family time, plan nothing", ["Food", "Gym"])
     assert asked == ["no lunch before 14", "gym 3x a week", "invented one", "broken one",
@@ -358,7 +358,7 @@ def test_a_rule_told_over_two_sentences_compiles_from_both(monkeypatch):
                 return llm.CompiledNotes(skippable=[llm.SkipRule(category="Uni", prefix="Lecture -", source="x")])
             return llm.CompiledNotes()
 
-    monkeypatch.setattr(llm, "make_backend", lambda cfg: FakeLLM())
+    monkeypatch.setattr(llm, "planning_backends", lambda cfg: [FakeLLM()])
     out = web.compile_notes('Lectures are Uni events starting with "Lecture -". You may skip lectures.', ["Uni"])
     assert out["rules"] == ['Uni: events starting with "Lecture -" may be planned over']
     assert out["not_compiled"] == []
