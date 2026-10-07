@@ -104,7 +104,7 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
     cli.paths.ensure_private_dir()
     monkeypatch.setattr(cli, "CalendarClient", Cal)
     monkeypatch.setattr(cli, "make_backend", lambda cfg: _LLM())
-    monkeypatch.setattr(cli, "_run_plan", lambda day, *a: planned.append(day) or ([], [], []))
+    monkeypatch.setattr(cli, "_plan_day", lambda day, *a: planned.append(day) or ([], [], []))
     events = json.dumps([
         {"category": "Meeting", "title": "Spotkanie", "start": "2026-09-22T14:00:00+02:00", "end": "2026-09-22T15:00:00+02:00"},
         {"category": "Gym", "title": "Siłownia", "start": "2026-09-22T15:00:00+02:00", "end": "2026-09-22T16:30:00+02:00"},

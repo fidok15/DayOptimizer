@@ -27,7 +27,7 @@ class OllamaBackend:
     def __init__(self, model: str = "qwen3:8b"):
         self.model = model
 
-    def _chat(self, system: str, user: str, schema: dict | None = None) -> str:
+    def _chat(self, system: str, user: str, schema: dict | None = None, timeout: int = 180) -> str:
         body = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -40,7 +40,7 @@ class OllamaBackend:
         req = Request(f"{_host()}/api/chat", data=json.dumps(body).encode(),
                       headers={"Content-Type": "application/json"})
         try:
-            with urlopen(req, timeout=180) as resp:
+            with urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read())["message"]["content"]
         except HTTPError as exc:
             detail = exc.read().decode(errors="replace")
@@ -59,6 +59,11 @@ class OllamaBackend:
         schema["$defs"]["NewEvent"]["properties"]["category"]["enum"] = list(categories)
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
+
+    def plan_week(self, system: str, prompt: str):
+        from dayoptimizer.llm.week_plan import WeekPlan
+        raw = self._chat(system, prompt, WeekPlan.model_json_schema(), timeout=900)
+        return WeekPlan.model_validate_json(raw)
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
         raw = self._chat(_NOTES_SYSTEM, compile_prompt(notes, categories), CompiledNotes.model_json_schema())

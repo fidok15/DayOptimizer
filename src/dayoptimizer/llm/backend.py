@@ -179,11 +179,26 @@ def make_backend(llm_config: dict) -> LLMBackend:
         return OllamaBackend(model=local)
     if choice in ("anthropic", "auto") and os.environ.get("ANTHROPIC_API_KEY"):
         from dayoptimizer.llm.anthropic_backend import AnthropicBackend
-        return AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5"))
+        return AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5-5"))
     raise LLMUnavailable(
         "Requests in plain words need a language model. Either run one locally for free:\n"
         f"  brew install ollama && brew services start ollama && ollama pull {local}\n"
         "or add ANTHROPIC_API_KEY=... to the .env file in the DayOptimizer folder.")
+
+
+def planning_backends(llm_config: dict) -> list:
+    """Who may plan, best first: the Anthropic API when a key is set, then the
+    local Ollama model when it runs. The caller tries the next one when a
+    backend fails (no key, a rejected key, no network)."""
+    from dayoptimizer.llm.ollama_backend import OllamaBackend, ollama_running
+    choice = llm_config.get("backend", "auto")
+    out = []
+    if choice in ("anthropic", "auto") and os.environ.get("ANTHROPIC_API_KEY"):
+        from dayoptimizer.llm.anthropic_backend import AnthropicBackend
+        out.append(AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5-5")))
+    if choice in ("ollama", "auto") and ollama_running():
+        out.append(OllamaBackend(model=llm_config.get("ollama_model", "qwen3:8b")))
+    return out
 
 
 _NOTES_SYSTEM = (

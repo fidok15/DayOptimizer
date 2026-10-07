@@ -123,6 +123,60 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     applied, errors = apply_changes(changes, calendar, storage, confirm)
     return changes, applied, errors
 
+def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
+    """Let a language model lay out the days (llm/week_plan.py checks its work).
+    Anthropic first, then the local Ollama model; None when neither can plan,
+    so the caller falls back to placing the routine by rule."""
+    from dayoptimizer.llm import backend as llm
+    from dayoptimizer.llm.week_plan import plan_days
+    from dayoptimizer.routine import render_routine
+    if not rules.has_routine:
+        return None
+    _, config = _load_config()
+    backends = llm.planning_backends(config.get("llm", {}))
+    if not backends:
+        console.print("No language model to plan with (no ANTHROPIC_API_KEY in .env, Ollama not "
+                      "running) — placing your routine by rule instead.", markup=False, style="yellow")
+        return None
+    week_start = days[0] - timedelta(days=days[0].weekday())
+    lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
+    hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
+    events = calendar.list_events(lo, hi)
+    now = datetime.now().astimezone()
+    planned = set(days)
+    history: dict[str, list[date]] = {}
+    for e in events:
+        if not e.all_day and (e.start.date() not in planned or e.start < now):
+            history.setdefault(e.calendar, []).append(e.start.date())
+    window = [e for e in events if e.start.date() >= week_start]
+    notes = config.get("notes") or ""
+    routine = render_routine(config["categories"], config.get("typical_week") or {}, notes)
+    health = None
+    if date.today() in planned:
+        garmin = _fetch_garmin(storage, date.today().isoformat())
+        health = summarize(garmin) if garmin else None
+    for backend in backends:
+        name = type(backend).__name__.removesuffix("Backend")
+        console.print(f"Planning with {name}...", style="dim")
+        try:
+            changes, summary, dropped = plan_days(backend, days, routine, list(config["categories"]),
+                                                  window, notes, rules.note_rules, now, health, history)
+        except Exception as exc:
+            console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
+                          markup=False, style="yellow")
+            continue
+        applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
+        return changes, applied, errors, summary, dropped
+    console.print("No language model could plan — placing your routine by rule instead.",
+                  markup=False, style="yellow")
+    return None
+
+def _plan_day(day: date, calendar, storage, rules, confirm=None):
+    result = _llm_plan([day], calendar, storage, rules, confirm)
+    if result is None:
+        return _run_plan(day, calendar, storage, rules, confirm)
+    return result[:3]
+
 _MISSING_CALENDAR_RE = re.compile(r"^calendar '(.+)' not found")
 
 def _summarize_errors(errors: list[str]) -> list[str]:
@@ -171,6 +225,19 @@ def cmd_plan(args, rules, config):
     storage = Storage(paths.db_path())
     start_day = date.fromisoformat(args.date) if args.date else date.today()
     days = args.week if args.week else 1
+    result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules)
+    if result is not None:
+        changes, applied, errors, summary, dropped = result
+        console.print(format_changes(changes), markup=False)
+        console.print(f"[green]Applied {len(applied)} changes.[/green]")
+        if summary:
+            console.print(summary, markup=False)
+        if dropped:
+            console.print(f"Left out {len(dropped)} block(s) that broke a rule:", markup=False, style="yellow")
+            for line in dropped:
+                console.print(f"  {line}", markup=False)
+        _print_errors(errors)
+        return
     for offset in range(days):
         day = start_day + timedelta(days=offset)
         if days > 1:
@@ -345,7 +412,7 @@ def cmd_add(args, rules, config):
     except LLMUnavailable:
         summarize = format_changes
     for day in sorted(days):
-        changes, applied, errors = _run_plan(day, calendar, storage, rules)
+        changes, applied, errors = _plan_day(day, calendar, storage, rules)
         if len(days) > 1:
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
         console.print(Markdown(summarize(changes)))

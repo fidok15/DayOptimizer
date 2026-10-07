@@ -5,7 +5,7 @@ from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_S
                                       DayRequest, compile_prompt, format_changes, request_prompt)
 
 class AnthropicBackend:
-    def __init__(self, model: str = "claude-sonnet-5"):
+    def __init__(self, model: str = "claude-sonnet-5-5"):
         self.model = model
         self.client = anthropic.Anthropic()
 
@@ -17,6 +17,22 @@ class AnthropicBackend:
             messages=[{"role": "user", "content": request_prompt(text, today, now, categories)}],
             output_format=DayRequest,
         )
+        return response.parsed_output
+
+    def plan_week(self, system: str, prompt: str):
+        from dayoptimizer.llm.week_plan import WeekPlan
+        with self.client.messages.stream(
+            model=self.model,
+            max_tokens=32000,
+            system=system,
+            thinking={"type": "adaptive"},
+            output_config={"effort": "high"},
+            messages=[{"role": "user", "content": prompt}],
+            output_format=WeekPlan,
+        ) as stream:
+            response = stream.get_final_message()
+        if response.stop_reason in ("refusal", "max_tokens"):
+            raise RuntimeError(f"the model stopped early ({response.stop_reason})")
         return response.parsed_output
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
