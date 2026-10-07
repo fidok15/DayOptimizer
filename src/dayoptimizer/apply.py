@@ -29,6 +29,8 @@ def apply_changes(changes, calendar, storage, confirm: Callable[[PlannedChange],
                 calendar.move_event(c.event_id, c.new_start, c.new_end)
             elif c.kind == "create":
                 calendar.create_event(c.category, c.title, c.new_start, c.new_end)
+            elif c.kind == "delete":
+                calendar.delete_event(c.event_id)
         except KeyError:
             msg = _missing(c)
             storage.log_change(f"[error] {c.kind} {c.category}: {c.title}", msg)

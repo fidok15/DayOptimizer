@@ -22,9 +22,12 @@ def _hex(nscolor) -> str:
     return "#%02x%02x%02x" % tuple(round(c * 255) for c in
                                    (rgb.redComponent(), rgb.greenComponent(), rgb.blueComponent()))
 
-def ek_to_event(identifier, calendar_title, title, start, end, location, all_day=False) -> Event:
+MARKER = "Planned by DayOptimizer"
+
+def ek_to_event(identifier, calendar_title, title, start, end, location, all_day=False,
+                managed=False) -> Event:
     return Event(id=identifier, calendar=normalize_calendar(calendar_title), title=title,
-                 start=start, end=end, location=location, all_day=all_day)
+                 start=start, end=end, location=location, all_day=all_day, managed=managed)
 
 class CalendarClient:
     def __init__(self):
@@ -65,6 +68,7 @@ class CalendarClient:
                 datetime.fromtimestamp(ev.endDate().timeIntervalSince1970()).astimezone(),
                 str(ev.location()) if ev.location() else None,
                 bool(ev.isAllDay()),
+                MARKER in str(ev.notes() or ""),
             ))
         return sorted(out, key=lambda e: e.start)
 
@@ -147,7 +151,20 @@ class CalendarClient:
         ev.setStartDate_(self._nsdate(start))
         ev.setEndDate_(self._nsdate(end))
         ev.setCalendar_(target)
+        ev.setNotes_(MARKER)
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")
         return str(ev.eventIdentifier())
+
+    def delete_event(self, event_id: str) -> None:
+        """Remove a block DayOptimizer created. Anything else is the user's
+        and is refused, whatever the caller asked."""
+        ev = self._store.eventWithIdentifier_(event_id)
+        if ev is None:
+            raise KeyError(f"Event {event_id} not found")
+        if MARKER not in str(ev.notes() or ""):
+            raise RuntimeError("not created by DayOptimizer, left alone")
+        ok, err = self._store.removeEvent_span_error_(ev, 0, None)
+        if not ok:
+            raise RuntimeError(f"Delete failed: {err}")

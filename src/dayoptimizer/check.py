@@ -43,7 +43,7 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     fetch Garmin, decide what to do, and act on it. Never touches fixed
     events without a human in the loop (confirm always denies)."""
     if plan_fn is None:
-        from dayoptimizer.cli import _run_plan as plan_fn
+        from dayoptimizer.cli import _plan_day as plan_fn
     if fetch_garmin_fn is None:
         from dayoptimizer.cli import _fetch_garmin as fetch_garmin_fn
 
@@ -54,7 +54,8 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     window_end = datetime.combine(today_date + timedelta(days=2), datetime.min.time()).astimezone()
     events = calendar.list_events(window_start, window_end)
     changed_events = storage.sync_events(events, window_start, window_end)
-    new_foreign_events = [e for e in changed_events if (not e.all_day or time_in_title(e.title))
+    new_foreign_events = [e for e in changed_events if not e.managed
+                          and (not e.all_day or time_in_title(e.title))
                           and _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
 
     garmin = fetch_garmin_fn(storage, today)

@@ -12,6 +12,7 @@ class Event:
     end: datetime
     location: str | None = None
     all_day: bool = False
+    managed: bool = False
 
 @dataclass
 class GarminSummary:
@@ -41,7 +42,7 @@ class Activity:
 
 @dataclass
 class PlannedChange:
-    kind: Literal["move", "create", "note"]
+    kind: Literal["move", "create", "delete", "note"]
     category: str
     title: str
     reason: str
