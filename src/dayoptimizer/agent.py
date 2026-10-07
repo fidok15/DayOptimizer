@@ -16,7 +16,24 @@ PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
 
-def build_plist(bundle_binary: str, runner: str, interval: int = 900) -> str:
+def _schedule(interval: int, at: list[str] | None) -> str:
+    """Every `interval` seconds, or only at the given HH:MM times each day."""
+    if not at:
+        return f"""    <key>StartInterval</key>
+    <integer>{interval}</integer>"""
+    times = "".join(f"""
+        <dict>
+            <key>Hour</key>
+            <integer>{int(t.split(':')[0])}</integer>
+            <key>Minute</key>
+            <integer>{int(t.split(':')[1])}</integer>
+        </dict>""" for t in at)
+    return f"""    <key>StartCalendarInterval</key>
+    <array>{times}
+    </array>"""
+
+
+def build_plist(bundle_binary: str, runner: str, interval: int = 900, at: list[str] | None = None) -> str:
     """Pure: render the launchd plist XML. No I/O."""
     log_path = escape(str(LAUNCHD_LOG_PATH))
     bundle_binary = escape(str(bundle_binary))
@@ -32,8 +49,7 @@ def build_plist(bundle_binary: str, runner: str, interval: int = 900) -> str:
         <string>{bundle_binary}</string>
         <string>{runner}</string>
     </array>
-    <key>StartInterval</key>
-    <integer>{interval}</integer>
+{_schedule(interval, at)}
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
@@ -73,13 +89,13 @@ finally:
 '''
 
 
-def install(interval: int = 900) -> str:
+def install(interval: int = 900, at: list[str] | None = None) -> str:
     """Write the runner script + plist and (re)bootstrap the launchd agent."""
     HOME_DIR.mkdir(parents=True, exist_ok=True)
     PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     RUNNER_PATH.write_text(build_runner(REPO_ROOT))
-    PLIST_PATH.write_text(build_plist(BUNDLE_BINARY, str(RUNNER_PATH), interval))
+    PLIST_PATH.write_text(build_plist(BUNDLE_BINARY, str(RUNNER_PATH), interval, at))
 
     uid = os.getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)],
@@ -88,7 +104,8 @@ def install(interval: int = 900) -> str:
                              capture_output=True)
 
     if result.returncode == 0:
-        return f"Installed agent {LABEL} (interval {interval}s)."
+        when = f"daily at {', '.join(at)}" if at else f"interval {interval}s"
+        return f"Installed agent {LABEL} ({when})."
     stderr = result.stderr.decode(errors="replace") if result.stderr else ""
     return f"Agent install failed ({result.returncode}): {stderr}"
 

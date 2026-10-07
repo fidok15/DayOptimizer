@@ -152,3 +152,16 @@ def test_status_not_running_when_returncode_nonzero():
         run.return_value = MagicMock(returncode=3, stdout=b"", stderr=b"Could not find")
         result = agent.status()
     assert result == "not loaded"
+
+def test_build_plist_runs_at_given_times_instead_of_an_interval():
+    import plistlib
+    xml = agent.build_plist("/a", "/b", at=["07:00", "13:30"])
+    data = plistlib.loads(xml.encode())
+    assert "StartInterval" not in data
+    assert data["StartCalendarInterval"] == [{"Hour": 7, "Minute": 0}, {"Hour": 13, "Minute": 30}]
+
+def test_cli_rejects_a_bad_agent_time():
+    import pytest
+    from dayoptimizer import cli
+    with pytest.raises(SystemExit):
+        cli.main(["agent", "install", "--at", "7am"])
