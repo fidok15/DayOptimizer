@@ -160,7 +160,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         console.print(f"Planning with {name}...", style="dim")
         try:
             changes, summary, dropped = plan_days(backend, days, routine, list(config["categories"]),
-                                                  window, notes, rules.note_rules, now, health, history)
+                                                  window, notes, rules.note_rules, now, health, history,
+                                                  {d for d in days if rules.typical_week.get(d.weekday())})
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
@@ -435,7 +436,7 @@ def cmd_chat(args, rules, config):
 def cmd_agent(args, rules, config):
     from dayoptimizer import agent
     if args.agent_command == "install":
-        console.print(agent.install(args.interval))
+        console.print(agent.install(args.interval, args.at))
     elif args.agent_command == "uninstall":
         console.print(agent.uninstall())
     elif args.agent_command == "status":
@@ -542,6 +543,11 @@ def _iso_date(value: str) -> str:
             pass
     raise argparse.ArgumentTypeError(f"'{value}' is not a date, use DD-MM-YYYY (e.g. 28-09-2026)")
 
+def _hhmm(value: str) -> str:
+    if not _HHMM.match(value):
+        raise argparse.ArgumentTypeError(f"'{value}' is not a time, use HH:MM (e.g. 07:30)")
+    return value
+
 def _positive(value: str) -> int:
     if not value.isdigit() or int(value) < 1:
         raise argparse.ArgumentTypeError(f"'{value}' must be a whole number of at least 1")
@@ -594,6 +600,8 @@ def main(argv: list[str] | None = None):
     p_agent_install = agent_sub.add_parser("install", help="install and start the agent")
     p_agent_install.add_argument("--interval", type=_positive, default=900,
                                  help="run interval in seconds (default 900)")
+    p_agent_install.add_argument("--at", action="append", type=_hhmm, default=None, metavar="HH:MM",
+                                 help="run only at this time each day instead (repeat for several)")
     agent_sub.add_parser("uninstall", help="stop and remove the agent")
     agent_sub.add_parser("status", help="agent status")
     p_garmin = sub.add_parser("garmin", help="Garmin Connect account")

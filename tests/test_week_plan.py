@@ -125,6 +125,7 @@ def test_cli_falls_back_to_the_next_model_when_one_fails(monkeypatch):
     class Rules:
         has_routine = True
         note_rules = []
+        typical_week = {}
 
     good = Fake(WeekPlan(blocks=[block(MON, "16:00", "17:00")]))
     monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [Broken(), good])
@@ -134,3 +135,24 @@ def test_cli_falls_back_to_the_next_model_when_one_fails(monkeypatch):
     changes, applied, errors, _, _ = cli._llm_plan([MON], cal, storage, Rules(), confirm=lambda c: True)
     assert cal.created == [("Food", "Lunch", at(MON, "16:00"))] and errors == []
     assert len(good.prompts) == 1
+
+
+def test_an_empty_plan_for_a_routine_day_is_a_problem():
+    creates, problems = validate(WeekPlan(), [MON], CATS, [], NOTES, [], NOW, None, {MON})
+    assert creates == [] and "no blocks planned" in problems[0]
+
+
+def test_a_local_model_plans_one_day_at_a_time_and_limits_carry_over():
+    rules = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 1, "source": "Gym once"}])
+    tue = MON + timedelta(days=1)
+
+    class Small(Fake):
+        one_day_at_a_time = True
+
+    backend = Small(WeekPlan(blocks=[block(MON, "18:00", "19:00", "Gym", "Gym")]),
+                    WeekPlan(blocks=[block(tue, "18:00", "19:00", "Gym", "Gym")]),
+                    WeekPlan(blocks=[block(tue, "12:00", "13:00")]))
+    changes, _, dropped = plan_days(backend, [MON, tue], "# routine", CATS, [], NOTES, rules, NOW)
+    assert [(c.category, c.new_start.date()) for c in changes] == [("Gym", MON), ("Food", tue)]
+    assert dropped == [] and len(backend.prompts) == 3
+    assert "(plan this day)" in backend.prompts[1] and backend.prompts[1].count("(plan this day)") == 1

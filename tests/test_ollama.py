@@ -59,3 +59,33 @@ def test_make_backend_prefers_local_then_api(monkeypatch):
 def test_request_prompt_has_now_and_categories():
     p = request_prompt("x", "2026-09-22", "Tuesday 09:00", ["Work"])
     assert "now: Tuesday 09:00" in p and "categories: Work" in p
+
+
+def test_ensure_running_starts_ollama_for_the_run_and_stops_it_after(monkeypatch):
+    import dayoptimizer.llm.ollama_backend as ob
+    from importlib import reload
+    ob = reload(ob)
+    up = iter([False, False, True])
+    started, stopped = [], []
+
+    class Proc:
+        def __init__(self, cmd, **kw):
+            started.append(cmd)
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            stopped.append(True)
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(ob, "ollama_running", lambda: next(up))
+    monkeypatch.setattr(ob, "ollama_binary", lambda: "/bin/ollama")
+    monkeypatch.setattr(ob.subprocess, "Popen", Proc)
+    monkeypatch.setattr(ob.atexit, "register", lambda fn: None)
+    ob.ensure_running()
+    assert started == [["/bin/ollama", "serve"]]
+    ob._stop_server()
+    assert stopped == [True]

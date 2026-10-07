@@ -1,7 +1,11 @@
 """Local LLM through Ollama's HTTP API (stdlib only). Calendar text never leaves the Mac."""
 from __future__ import annotations
+import atexit
 import json
 import os
+import shutil
+import subprocess
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from dayoptimizer.core.models import PlannedChange
@@ -23,11 +27,60 @@ def ollama_running() -> bool:
         return False
 
 
+def ollama_binary() -> str | None:
+    """The installed `ollama` command. The app bundle's PATH lacks Homebrew's
+    folders, so look there too."""
+    return shutil.which("ollama") or next(
+        (p for p in ("/opt/homebrew/bin/ollama", "/usr/local/bin/ollama") if os.access(p, os.X_OK)), None)
+
+
+def ollama_available() -> bool:
+    return ollama_running() or ollama_binary() is not None
+
+
+_server: subprocess.Popen | None = None
+
+
+def _stop_server() -> None:
+    global _server
+    if _server is not None and _server.poll() is None:
+        _server.terminate()
+        try:
+            _server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            _server.kill()
+    _server = None
+
+
+def ensure_running(wait: float = 30.0) -> None:
+    """Start Ollama for this run when it isn't up, and stop it again when the
+    process ends: the model takes gigabytes of memory, so it only lives while
+    DayOptimizer has work for it. A server someone else started is left alone."""
+    global _server
+    if ollama_running():
+        return
+    binary = ollama_binary()
+    if binary is None:
+        raise LLMUnavailable("Ollama isn't installed. Install it with:  brew install ollama")
+    _server = subprocess.Popen([binary, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    atexit.register(_stop_server)
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        if ollama_running():
+            return
+        time.sleep(0.3)
+    _stop_server()
+    raise LLMUnavailable("Ollama didn't start. Try it by hand:  ollama serve")
+
+
 class OllamaBackend:
+    one_day_at_a_time = True
+
     def __init__(self, model: str = "qwen3:8b"):
         self.model = model
 
     def _chat(self, system: str, user: str, schema: dict | None = None, timeout: int = 180) -> str:
+        ensure_running()
         body = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],

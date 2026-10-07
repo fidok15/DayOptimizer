@@ -188,15 +188,15 @@ def make_backend(llm_config: dict) -> LLMBackend:
 
 def planning_backends(llm_config: dict) -> list:
     """Who may plan, best first: the Anthropic API when a key is set, then the
-    local Ollama model when it runs. The caller tries the next one when a
+    local Ollama model when it is installed (started for the run if needed). The caller tries the next one when a
     backend fails (no key, a rejected key, no network)."""
-    from dayoptimizer.llm.ollama_backend import OllamaBackend, ollama_running
+    from dayoptimizer.llm.ollama_backend import OllamaBackend, ollama_available
     choice = llm_config.get("backend", "auto")
     out = []
     if choice in ("anthropic", "auto") and os.environ.get("ANTHROPIC_API_KEY"):
         from dayoptimizer.llm.anthropic_backend import AnthropicBackend
         out.append(AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5-5")))
-    if choice in ("ollama", "auto") and ollama_running():
+    if choice in ("ollama", "auto") and ollama_available():
         out.append(OllamaBackend(model=llm_config.get("ollama_model", "qwen3:8b")))
     return out
 

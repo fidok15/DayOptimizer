@@ -115,8 +115,10 @@ def _norm(text: str) -> str:
 
 def validate(plan: WeekPlan, days: list[date], categories: list[str], events: list[Event],
              notes: str, rules: list[NoteRule], now: datetime,
-             history: dict[str, list[date]] | None = None) -> tuple[list[PlannedChange], list[str]]:
-    """The blocks that keep every rule, as creates, and what was wrong with the rest."""
+             history: dict[str, list[date]] | None = None,
+             expect: set[date] | frozenset[date] = frozenset()) -> tuple[list[PlannedChange], list[str]]:
+    """The blocks that keep every rule, as creates, and what was wrong with the rest.
+    A day in `expect` (its routine has blocks) that comes back empty is a problem too."""
     problems: list[str] = []
     wanted = {d.isoformat(): d for d in days}
     note_text = _norm(notes)
@@ -160,6 +162,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         kept.append((start, end, b))
     kept, count_problems = _count_rules(kept, rules, history or {})
     problems += count_problems
+    filled = {s.date() for s, _, _ in kept}
+    problems += [f"{d.isoformat()}: no blocks planned for this day - return its full plan"
+                 for d in sorted(expect) if d in wanted.values() and d not in filled
+                 and datetime.combine(d, time(23, 59)).astimezone() > now]
     changes = [PlannedChange(kind="create", category=b.category, title=b.title, reason=b.why or "planned",
                              new_start=s, new_end=e) for s, e, b in kept]
     return changes, problems
@@ -209,10 +215,26 @@ def diff(creates: list[PlannedChange], previous: list[Event]) -> list[PlannedCha
 
 def plan_days(backend, days: list[date], routine: str, categories: list[str], events: list[Event],
               notes: str, rules: list[NoteRule], now: datetime, health: str | None = None,
-              history: dict[str, list[date]] | None = None,
+              history: dict[str, list[date]] | None = None, expect: set[date] | frozenset[date] = frozenset(),
               attempts: int = 3) -> tuple[list[PlannedChange], str, list[str]]:
     """Ask, check, send the problems back; at most `attempts` rounds.
-    Returns the calendar changes, the model's summary and what was dropped."""
+    Returns the calendar changes, the model's summary and what was dropped.
+    A small local model (`one_day_at_a_time`) gets one day per request; what it
+    planned for earlier days counts toward the weekly limits of later ones."""
+    if len(days) > 1 and getattr(backend, "one_day_at_a_time", False):
+        history = {c: list(ds) for c, ds in (history or {}).items()}
+        changes, summaries, dropped = [], [], []
+        for d in days:
+            ch, summary, dr = plan_days(backend, [d], routine, categories, events, notes, rules, now,
+                                        health, history, expect, attempts)
+            changes += ch
+            dropped += dr
+            if summary:
+                summaries.append(summary)
+            for c in ch:
+                if c.kind == "create" and c.new_start is not None:
+                    history.setdefault(c.category, []).append(c.new_start.date())
+        return changes, " ".join(summaries), dropped
     planned = set(days)
     previous = [e for e in events if e.managed and e.start.date() in planned and e.start >= now]
     prompt = build_prompt(days, routine, categories, [e for e in events if e not in previous],
@@ -220,7 +242,7 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
     request = prompt
     for attempt in range(attempts):
         plan = backend.plan_week(SYSTEM, request)
-        creates, problems = validate(plan, days, categories, events, notes, rules, now, history)
+        creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect)
         if not problems or attempt == attempts - 1:
             return diff(creates, previous), plan.summary, problems
         request = (prompt + "\n\n# Your previous answer\n" + plan.model_dump_json()
