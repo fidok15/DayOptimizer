@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
 from dayoptimizer.core.constraints import NoteRule, window_rule
 from dayoptimizer.core.models import Event, PlannedChange, Task
-from dayoptimizer.llm.task_rules import block_problem, minutes, task_lines, unplaced, window
+from dayoptimizer.llm.task_rules import block_problem, minutes, overdue, task_lines, unplaced, window
 
 DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -175,16 +175,20 @@ def free_time(day: date, events: list[Event], now: datetime) -> str:
     return _spans(day, free_gaps(day, events, now)) or "none"
 
 
-def _fits(tasks: list[Task], days: list[date], events: list[Event], now: datetime) -> dict[str, str]:
-    """Where each task's window meets the free time of the planned days."""
+def _fits(tasks: list[Task], days: list[date], events: list[Event], now: datetime,
+          left: dict[str, int]) -> dict[str, str]:
+    """Where each task's window meets free time long enough for one of its
+    blocks (a whole chunk, or the whole task when it can't be split)."""
     gaps = {d: free_gaps(d, events, now) for d in days}
     out = {}
     for t in tasks:
+        n = left.get(t.id, 0)
+        need = min(t.min_chunk_min, n) if t.min_chunk_min else n
         lo, hi = window(t, now)
         parts = []
         for d in days:
             spans = [(max(a, lo), b if hi is None else min(b, hi)) for a, b in gaps[d]]
-            spans = [(a, b) for a, b in spans if b > a]
+            spans = [(a, b) for a, b in spans if b > a and minutes(a, b) >= need]
             if spans:
                 parts.append(f"{DAY_NAMES[d.weekday()][:3]} {_spans(d, spans)}")
         out[t.id] = "; ".join(parts) or "nowhere in the days you plan"
@@ -227,7 +231,7 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
         if not mine and not prev:
             lines.append("- nothing")
         d += timedelta(days=1)
-    pending = task_lines(list(tasks), left or {}, now, _fits(list(tasks), days, taken, now))
+    pending = task_lines(list(tasks), left or {}, now, _fits(list(tasks), days, taken, now, left or {}))
     if pending:
         lines += ["", "# Tasks"] + pending
     return "\n".join(lines)
@@ -268,7 +272,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
              notes: str, rules: list[NoteRule], now: datetime,
              history: dict[str, list[date]] | None = None,
              expect: set[date] | frozenset[date] = frozenset(),
-             tasks: list[Task] = (), left: dict[str, int] | None = None) -> tuple[list[PlannedChange], list[str]]:
+             tasks: list[Task] = (), left: dict[str, int] | None = None,
+             report_unplaced: bool = False) -> tuple[list[PlannedChange], list[str]]:
     """The blocks that keep every rule, as creates, and what was wrong with the rest.
     A day in `expect` (its routine has blocks) that comes back empty is a problem too."""
     problems: list[str] = []
@@ -305,6 +310,11 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         if start < now:
             problems.append(f"{label}: starts before now ({now:%Y-%m-%d %H:%M})")
             continue
+        have = running.get(b.task_id, 0) if b.task_id is not None else 0
+        if 0 < have < minutes(start, end):
+            # a task block longer than what is left is cut, not refused: small models miscount
+            end = start + timedelta(minutes=have)
+            b = b.model_copy(update={"end": f"{(start_m + have) // 60:02d}:{(start_m + have) % 60:02d}"})
         clash = next((e for e in blocking if e.start < end and e.end > start), None)
         if clash is not None:
             problems.append(f"{label}: overlaps '{clash.title}' ({_fmt(clash)}) [{clash.id}]")
@@ -333,7 +343,14 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     after = {tid: n - used.get(tid, 0) for tid, n in left.items()}
     listed = {u.task_id for u in plan.unscheduled}
     problems += [f"unscheduled {u.task_id}: not one of the tasks" for u in plan.unscheduled if u.task_id not in by_id]
-    problems += unplaced(list(tasks), after, listed, max(days), now)
+    if not report_unplaced:
+        problems += unplaced(list(tasks), after, listed, max(days), now)
+    else:
+        # last round: what the model still didn't fit is reported by code, not left silent
+        for t in tasks:
+            if unplaced([t], after, listed, max(days), now):
+                when = "now (overdue)" if overdue(t, now) else f"{t.due:%a %Y-%m-%d %H:%M}"
+                plan.unscheduled.append(Unscheduled(task_id=t.id, reason=f"{after[t.id]} min did not fit before {when}"))
     filled = {s.date() for s, _, _ in kept}
     problems += [f"{d.isoformat()}: no blocks planned for this day - return its full plan"
                  for d in sorted(expect) if d in wanted.values() and d not in filled
@@ -416,9 +433,10 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         answer = backend.plan_week(system_prompt(few_shot), request, schema)
         plan = WeekPlan(blocks=good + answer.blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
+        last = attempt == attempts - 1
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
-                                     tasks=tasks, left=left)
-        if not problems or attempt == attempts - 1:
+                                     tasks=tasks, left=left, report_unplaced=last)
+        if not problems or last:
             return (creates, diff(creates, previous), plan.summary, problems,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
         accepted = {_change_key(c) for c in creates}

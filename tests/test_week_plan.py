@@ -392,7 +392,7 @@ def test_instructions_say_not_to_copy_events():
 def test_task_lines_say_where_the_task_fits():
     t = task(due=at(MON, "22:00"), not_before=at(MON, "12:30"))
     text = build_prompt([MON], "# routine", WCATS, [LECTURE, LAB], [], NOW, tasks=[t], left={"t1": 120})
-    assert "fits in: Mon 12:30-13:00, 15:00-22:00" in text
+    assert "fits in: Mon 15:00-22:00" in text  # 12:30-13:00 is shorter than a 60 min chunk
     full = [ev("x", "Job", "Shift", MON, "00:00", "23:59")]
     assert "fits in: nowhere in the days you plan" in build_prompt([MON], "# routine", WCATS, full, [], NOW,
                                                                    tasks=[t], left={"t1": 120})
@@ -417,3 +417,23 @@ def test_a_correction_shows_task_minutes_left_after_kept_blocks():
                                        tasks=[task()], left={"t1": 120})
     assert dropped == [] and len(changes) == 2
     assert "- [t1] Report (Work) 60 min left" in backend.prompts[1]
+
+
+def test_one_piece_task_fits_only_where_it_fits_whole():
+    t = task(min_chunk_min=None, due=at(MON, "23:00"))
+    text = build_prompt([MON], "# routine", WCATS, [LECTURE, LAB], [], NOW, tasks=[t], left={"t1": 120})
+    assert "fits in: Mon 00:00-10:00, 15:00-23:00" in text
+    assert "in one piece (one block of 120 min)" in text
+
+
+def test_a_too_long_task_block_is_cut_to_what_is_left():
+    creates, problems = tcheck(WeekPlan(blocks=[tblock("16:00", "18:00")]), [task()], left={"t1": 60})
+    assert problems == []
+    assert [(c.new_start, c.new_end) for c in creates] == [(at(MON, "16:00"), at(MON, "17:00"))]
+
+
+def test_after_the_last_round_code_reports_what_did_not_fit():
+    changes, _, dropped, unscheduled = plan_days(Fake(WeekPlan()), [MON], "# routine", WCATS, [LECTURE, LAB],
+                                                 NOTES, [], NOW, attempts=1, tasks=[task()], left={"t1": 120})
+    assert dropped == [] and changes == []
+    assert unscheduled == ["t1: 120 min did not fit before Mon 2030-10-14 22:00"]

@@ -54,7 +54,7 @@ def task_lines(tasks: list[Task], left: dict[str, int], now: datetime,
         if t.not_before is not None and t.not_before > now:
             parts.append(f"not before {t.not_before:%a %Y-%m-%d %H:%M}")
         split = t.min_chunk_min is not None and t.min_chunk_min < n
-        parts.append(f"chunks >= {t.min_chunk_min} min" if split else "in one piece")
+        parts.append(f"chunks >= {t.min_chunk_min} min" if split else f"in one piece (one block of {n} min)")
         parts.append(f"priority {t.priority}")
         if fits is not None and t.id in fits:
             parts.append(f"fits in: {fits[t.id]}")
