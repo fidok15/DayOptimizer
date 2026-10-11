@@ -130,7 +130,9 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     from dayoptimizer.llm import backend as llm
     from dayoptimizer.llm.week_plan import plan_days
     from dayoptimizer.routine import render_routine
-    if not rules.has_routine:
+    from dayoptimizer.llm.task_rules import remaining
+    tasks = storage.open_tasks()
+    if not rules.has_routine and not tasks:
         return None
     _, config = _load_config()
     backends = llm.planning_backends(config.get("llm", {}))
@@ -143,6 +145,10 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
     events = calendar.list_events(lo, hi)
     now = datetime.now().astimezone()
+    # ponytail: task progress is read from the last 30 days of blocks; a task
+    # worked on earlier than that would look less done. Store progress if that matters.
+    done_window = calendar.list_events(now - timedelta(days=30), now) if tasks else []
+    left = remaining(tasks, done_window, now)
     planned = set(days)
     history: dict[str, list[date]] = {}
     for e in events:
@@ -159,15 +165,16 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         name = type(backend).__name__.removesuffix("Backend")
         console.print(f"Planning with {name}...", style="dim")
         try:
-            changes, summary, dropped, _ = plan_days(backend, days, routine, list(config["categories"]),
-                                                     window, notes, rules.note_rules, now, health, history,
-                                                     {d for d in days if rules.typical_week.get(d.weekday())})
+            changes, summary, dropped, unscheduled = plan_days(
+                backend, days, routine, list(config["categories"]), window, notes, rules.note_rules, now,
+                health, history, {d for d in days if rules.typical_week.get(d.weekday())},
+                tasks=tasks, left=left)
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
             continue
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
-        return changes, applied, errors, summary, dropped
+        return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
     return None
@@ -228,7 +235,7 @@ def cmd_plan(args, rules, config):
     days = args.week if args.week else 1
     result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules)
     if result is not None:
-        changes, applied, errors, summary, dropped = result
+        changes, applied, errors, summary, dropped, unscheduled = result
         console.print(format_changes(changes), markup=False)
         console.print(f"[green]Applied {len(applied)} changes.[/green]")
         if summary:
@@ -236,6 +243,10 @@ def cmd_plan(args, rules, config):
         if dropped:
             console.print(f"Left out {len(dropped)} block(s) that broke a rule:", markup=False, style="yellow")
             for line in dropped:
+                console.print(f"  {line}", markup=False)
+        if unscheduled:
+            console.print("Tasks that didn't fit:", markup=False, style="yellow")
+            for line in unscheduled:
                 console.print(f"  {line}", markup=False)
         _print_errors(errors)
         return

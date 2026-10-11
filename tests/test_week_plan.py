@@ -132,7 +132,7 @@ def test_cli_falls_back_to_the_next_model_when_one_fails(monkeypatch):
     monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in CATS}, "llm": {}}))
     cal = Cal()
     storage = cli.Storage(":memory:")
-    changes, applied, errors, _, _ = cli._llm_plan([MON], cal, storage, Rules(), confirm=lambda c: True)
+    changes, applied, errors, _, _, _ = cli._llm_plan([MON], cal, storage, Rules(), confirm=lambda c: True)
     assert cal.created == [("Food", "Lunch", at(MON, "16:00"))] and errors == []
     assert len(good.prompts) == 1
 
@@ -246,3 +246,46 @@ def test_day_by_day_carries_task_minutes():
                                        tasks=[t], left={"t1": 120})
     assert dropped == [] and len(changes) == 2
     assert "- [t1] Report (Work) 60 min left" in backend.prompts[1]
+
+
+def test_cli_plans_open_tasks_even_without_a_routine(monkeypatch):
+    from dayoptimizer import cli
+
+    class Cal:
+        def __init__(self):
+            self.created = []
+
+        def list_events(self, start, end):
+            return []
+
+        def create_event(self, category, title, start, end, task_id=None):
+            self.created.append((title, start, task_id))
+
+    class NoRoutine:
+        has_routine = False
+        note_rules = []
+        typical_week = {}
+
+    backend = Fake(WeekPlan(blocks=[tblock("16:00", "18:00")],
+                            unscheduled=[]))
+    monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [backend])
+    monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in WCATS}, "llm": {}}))
+    storage = cli.Storage(":memory:")
+    storage.save_task(task())
+    cal = Cal()
+    changes, applied, errors, _, dropped, unscheduled = cli._llm_plan([MON], cal, storage, NoRoutine(),
+                                                                      confirm=lambda c: True)
+    assert cal.created == [("Report", at(MON, "16:00"), "t1")]
+    assert dropped == [] and unscheduled == [] and errors == []
+    assert "- [t1] Report (Work) 120 min left" in backend.prompts[0]
+
+
+def test_cli_without_routine_or_tasks_does_not_plan(monkeypatch):
+    from dayoptimizer import cli
+
+    class NoRoutine:
+        has_routine = False
+        note_rules = []
+        typical_week = {}
+
+    assert cli._llm_plan([MON], object(), cli.Storage(":memory:"), NoRoutine()) is None
