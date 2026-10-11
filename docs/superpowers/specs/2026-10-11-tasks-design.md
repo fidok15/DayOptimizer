@@ -75,10 +75,9 @@ removed on the next replan.
 - `dayoptimizer task list`: open tasks with remaining minutes and deadline.
 - `dayoptimizer task done <id>`.
 
-`task` joins `CALENDAR_COMMANDS` (it replans, so it needs the TCC bundle).
-Without any language model the task is saved and the user is told it will be
-placed once a model is available. Replanning with tasks works also when the
-user drew no routine.
+`task` parses in the terminal (like `ask`) and hands the replan to `plan`,
+which runs in the TCC bundle. Replanning with tasks works also when the user
+drew no routine.
 
 ## 3. Prompt
 
@@ -166,4 +165,6 @@ model, so it is not part of pytest. The first run records the baseline
 - Deadline in the past: saved, reported as overdue. Its window becomes
   now..end of the planned days (the deadline check is skipped), and the prompt
   marks it `OVERDUE` so the model places it first.
-- No model available: task saved, user told it will be placed later.
+- No model available when adding: nothing is saved (understanding the text
+  needs a model); the user is told how to get one. No model at replan time:
+  saved tasks stay and are placed on the next replan that has a model.
