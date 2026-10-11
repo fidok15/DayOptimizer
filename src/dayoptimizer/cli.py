@@ -431,6 +431,75 @@ def cmd_add(args, rules, config):
         _print_errors(errors)
     _print_pending(storage)
 
+def _task_line(t) -> str:
+    parts = [f"[{t.id}] {t.title} ({t.category}) {t.duration_min} min"]
+    if t.due is not None:
+        parts.append(f"due {t.due:%a %d.%m %H:%M}")
+    if t.not_before is not None:
+        parts.append(f"from {t.not_before:%a %d.%m}")
+    if t.min_chunk_min:
+        parts.append(f"chunks >= {t.min_chunk_min} min")
+    if t.priority != "normal":
+        parts.append(f"{t.priority} priority")
+    return ", ".join(parts)
+
+def cmd_task(args, rules, config):
+    """`dayoptimizer task "report for Friday, 3h"`: understand the task (here,
+    in the terminal), save it and replan the days up to its deadline, so the
+    planner places it into free time. `task list` / `task done t3`."""
+    from dayoptimizer.llm.task_request import task_from_request
+    words = list(args.words)
+    storage = Storage(paths.db_path())
+    if words == ["list"]:
+        tasks = storage.open_tasks()
+        if not tasks:
+            console.print('No open tasks. Add one:  dayoptimizer task "report for Friday, 3h"', markup=False)
+        for t in tasks:
+            console.print(_task_line(t), markup=False)
+        return
+    if len(words) == 2 and words[0] == "done":
+        if storage.mark_task_done(words[1]):
+            console.print(f"Done: {words[1]}. Its planned blocks go on the next plan.", markup=False, style="green")
+        else:
+            console.print(f"No task '{words[1]}'. See  dayoptimizer task list", markup=False, style="yellow")
+        return
+    if not rules.categories:
+        console.print("You have no categories yet, so there is nothing to file this under. "
+                      "Add some in  dayoptimizer setup  first.", markup=False, style="yellow")
+        return
+    now = datetime.now()
+    try:
+        req = make_backend(config["llm"]).parse_task(" ".join(words), now=f"{now:%A %Y-%m-%d %H:%M}",
+                                                     categories=list(rules.categories))
+    except LLMUnavailable as exc:
+        console.print(f"{exc}\nUnderstanding a task needs a language model.", markup=False, style="yellow")
+        return
+    except Exception as exc:
+        console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
+                      markup=False, style="yellow")
+        return
+    task, problem = task_from_request(req, list(rules.categories), now.date(), storage.next_task_id())
+    if task is None:
+        console.print(problem, markup=False, style="yellow")
+        return
+    console.print("New task:")
+    console.print(f"  {_task_line(task)}", markup=False)
+    if sys.stdin.isatty():
+        try:
+            answer = console.input("Save it and place it in your calendar? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"
+        if answer not in ("", "y", "yes", "t", "tak"):
+            console.print("Nothing saved.")
+            return
+    storage.save_task(task)
+    days = 7 if task.due is None else max(1, min(7, (task.due.date() - now.date()).days + 1))
+    if _in_bundle() or sys.platform != "darwin":
+        cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
+    else:
+        console.print("Placing it in your calendar...", style="dim")
+        console.print(_calendar_run(["plan", "--week", str(days)]), markup=False)
+
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
     console.print("[bold]DayOptimizer[/bold] — tell me about your day ('exit' to quit).")
@@ -569,7 +638,7 @@ def _ids(value: str) -> str:
         raise argparse.ArgumentTypeError(f"'{value}' should be pending ids like 3,4")
     return value
 
-_TAKES_WORDS = {"ask", "add", "agent", "garmin"}
+_TAKES_WORDS = {"ask", "add", "agent", "garmin", "task"}
 
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
@@ -604,6 +673,9 @@ def main(argv: list[str] | None = None):
     p_ask.add_argument("text")
     p_add = sub.add_parser("add")
     p_add.add_argument("events")
+    p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
+                                         'task list; task done t3')
+    p_task.add_argument("words", nargs="+")
     sub.add_parser("check", help="stateless background cycle (sleep, new events, stress)")
     sub.add_parser("stats", help="14-day Garmin trends and suggestions")
     p_agent = sub.add_parser("agent", help="manage the background agent (launchd)")
@@ -645,7 +717,7 @@ def main(argv: list[str] | None = None):
         console.print(_calendar_run(argv), markup=False)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add,
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "task": cmd_task,
      "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":
