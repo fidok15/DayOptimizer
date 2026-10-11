@@ -451,3 +451,60 @@ def test_tasks_that_cannot_be_worked_on_in_the_planned_days_are_not_shown():
     backend = Fake(WeekPlan())
     plan_days(backend, [MON], "# routine", WCATS, [], NOTES, [], NOW, tasks=[later], left={"t1": 120})
     assert backend.schemas[0]["$defs"]["Block"]["properties"]["task_id"] == {"type": "null", "default": None}
+
+
+def test_a_small_model_keeps_previous_blocks_it_did_not_mention():
+    class Small(Fake):
+        one_day_at_a_time = True
+
+    old = [ev("a", "Food", "Lunch", MON, "12:00", "13:00", managed=True),
+           ev("b", "Food", "Snack", MON, "16:00", "16:30", managed=True),
+           ev("c", "Food", "Dinner", MON, "18:00", "19:00", managed=True)]
+    backend = Small(WeekPlan(blocks=[block(MON, "17:00", "17:30", title="Snack"),
+                                     block(MON, "18:30", "19:30", "Gym", "Gym")]))
+    changes, _, dropped, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB] + old, NOTES, [], NOW)
+    assert dropped == []
+    assert sorted((c.kind, c.title) for c in changes) == [("create", "Gym"), ("create", "Snack"),
+                                                         ("delete", "Dinner"), ("delete", "Snack")]
+
+
+def test_tasks_stay_out_of_fixed_routine_time():
+    sleep = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep")]}
+    text = build_prompt([MON], "# routine", WCATS, [LECTURE, LAB], [], NOW, tasks=[task()], left={"t1": 120},
+                        reserved=sleep)
+    assert "fits in: Mon 07:00-10:00, 12:00-13:00, 15:00-22:00" in text
+    creates, problems = validate(WeekPlan(blocks=[tblock("05:00", "06:00")]), [MON], WCATS, [LECTURE, LAB], NOTES,
+                                 [], NOW, None, frozenset(), tasks=[task(due=None)], left={"t1": 120}, reserved=sleep)
+    assert creates == [] and "fixed routine 'Sleep'" in problems[0]
+
+
+def test_a_block_titled_like_an_open_task_counts_as_that_task():
+    creates, problems = tcheck(WeekPlan(blocks=[block(MON, "16:00", "18:00", "Work", "report")]), [task()])
+    assert problems == [] and creates[0].task_id == "t1"
+
+
+def test_cli_reserves_fixed_routine_blocks_for_tasks(monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+
+    class Cal:
+        def list_events(self, start, end):
+            return []
+
+        def create_event(self, category, title, start, end, task_id=None):
+            pass
+
+    class R:
+        has_routine = True
+        note_rules = []
+        typical_week = {MON.weekday(): [RoutineBlock(0, 420, "Sleep", "Sen"), RoutineBlock(720, 780, "Food", "Lunch")]}
+        categories = {"Sleep": CategoryRule(movable=False), "Food": CategoryRule(movable=True)}
+
+    backend = Fake(WeekPlan())
+    monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [backend])
+    monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in WCATS + ["Sleep"]},
+                                                             "llm": {}}))
+    storage = cli.Storage(":memory:")
+    storage.save_task(task(due=None))
+    cli._llm_plan([MON], Cal(), storage, R(), confirm=lambda c: True)
+    assert "fits in: Mon 07:00-24:00" in backend.prompts[0]
