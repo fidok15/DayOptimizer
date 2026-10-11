@@ -113,6 +113,13 @@ class OllamaBackend:
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
 
+    def parse_task(self, text: str, now: str, categories: list[str]):
+        from dayoptimizer.llm.task_request import TASK_SYSTEM, TaskRequest, task_prompt
+        schema = TaskRequest.model_json_schema()
+        schema["properties"]["category"]["enum"] = list(categories) + [""]
+        raw = self._chat(TASK_SYSTEM, task_prompt(text, now, categories), schema)
+        return TaskRequest.model_validate_json(raw)
+
     def plan_week(self, system: str, prompt: str):
         from dayoptimizer.llm.week_plan import WeekPlan
         raw = self._chat(system, prompt, WeekPlan.model_json_schema(), timeout=900)

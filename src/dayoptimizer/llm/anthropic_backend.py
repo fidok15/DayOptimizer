@@ -19,6 +19,17 @@ class AnthropicBackend:
         )
         return response.parsed_output
 
+    def parse_task(self, text: str, now: str, categories: list[str]):
+        from dayoptimizer.llm.task_request import TASK_SYSTEM, TaskRequest, task_prompt
+        response = self.client.messages.parse(
+            model=self.model,
+            max_tokens=1024,
+            system=TASK_SYSTEM,
+            messages=[{"role": "user", "content": task_prompt(text, now, categories)}],
+            output_format=TaskRequest,
+        )
+        return response.parsed_output
+
     def plan_week(self, system: str, prompt: str):
         from dayoptimizer.llm.week_plan import WeekPlan
         with self.client.messages.stream(
