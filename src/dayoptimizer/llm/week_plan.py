@@ -225,7 +225,8 @@ def _fmt(ev: Event) -> str:
 def build_prompt(days: list[date], routine: str, categories: list[str], events: list[Event],
                  previous: list[Event], now: datetime, health: str | None = None,
                  tasks: list[Task] = (), left: dict[str, int] | None = None,
-                 busy: list[Event] = (), reserved: Reserved | None = None) -> str:
+                 busy: list[Event] = (), reserved: Reserved | None = None,
+                 routine_days: dict | None = None) -> str:
     """`busy`: blocks already accepted this round; they take free time but are
     not listed as calendar events."""
     taken = list(events) + list(busy)
@@ -246,6 +247,10 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
         lines.append(f"## {DAY_NAMES[d.weekday()]} {d.isoformat()}{tag}")
         if d in days:
             lines.append(f"- free: {free_time(d, taken, now)}")
+            if routine_days and routine_days.get(d):
+                lines.append("- routine: " + ", ".join(
+                    f"{_spans(d, [(s, e)])} {cat}: {title}" + (" (fixed)" if fixed else "")
+                    for s, e, cat, title, fixed in routine_days[d]))
         for e in mine:
             where = f" @ {e.location}" if e.location else ""
             lines.append(f"- [{e.id}] {_fmt(e)} {e.calendar}: {e.title}{where}")
@@ -283,6 +288,10 @@ def plan_schema(categories: list[str], days: list[date], task_ids: list[str], no
     ids = [e.id for e in events if not e.managed and not e.all_day and e.start.date() in planned
            and skippable(list(rules), e)]
     props["blocks"]["maxItems"] = 30 * len(days)
+    # capped free text: a small model otherwise writes a summary until its answer is cut off
+    props["summary"]["maxLength"] = 300
+    block["why"]["maxLength"] = 80
+    block["title"]["maxLength"] = 60
     sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", notes or "") if len(_norm(x)) >= 10]
     if ids and sentences:
         defs["PlanOver"]["properties"]["event_id"]["enum"] = ids
@@ -484,8 +493,34 @@ def _unmentioned(blocks: list[Block], previous: list[Event], events: list[Event]
     return keep
 
 
+def _times(b: Block) -> tuple[datetime, datetime] | None:
+    s, e = _hhmm(b.start), _hhmm(b.end)
+    if s is None or e is None:
+        return None
+    midnight = datetime.combine(date.fromisoformat(b.day), time(0)).astimezone()
+    return midnight + timedelta(minutes=s), midnight + timedelta(minutes=e if e else 1440)
+
+
+def _forgotten_fixed(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime) -> list[Block]:
+    """Fixed routine blocks (sleep, ...) a small model left out, at their usual
+    time, where nothing else is: fixed means they don't move anyway."""
+    taken = [t for t in map(_times, blocks) if t] + [(e.start, e.end) for e in events
+                                                     if not e.all_day and (not e.managed or e.start < now)]
+    have = {(b.day, b.category, b.title) for b in blocks}
+    out = []
+    for d, spans in (routine_days or {}).items():
+        for s, e, cat, title, fixed in spans:
+            if not fixed or (d.isoformat(), cat, title) in have or s < now:
+                continue
+            if any(a < e and b > s for a, b in taken):
+                continue
+            out.append(Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, e)]).split("-")[1],
+                             category=cat, title=title))
+    return out
+
+
 def _plan_once(backend, days, routine, categories, events, notes, rules, now, health, history, expect,
-               attempts, tasks, left, few_shot, reserved=None):
+               attempts, tasks, left, few_shot, reserved=None, routine_days=None):
     """One request (plus corrections) for these days. A correction keeps the
     blocks that passed and asks only for the rest: a small model asked to redo
     the whole day tends to break what was already right. Returns the validated
@@ -495,7 +530,9 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     previous = [e for e in events if e.managed and e.start.date() in planned and e.start >= now]
     shown = [e for e in events if e not in previous]
     small = getattr(backend, "one_day_at_a_time", False)
-    prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved)
+    routine_days = {d: v for d, v in (routine_days or {}).items() if d in planned}
+    prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,
+                          routine_days=routine_days)
     open_ids = [t.id for t in _shown(list(tasks), days, shown, now, left or {}, reserved)]
     schema = plan_schema(categories, days, open_ids, notes, events, rules)
     note_text = _norm(notes)
@@ -507,6 +544,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         blocks = good + answer.blocks
         if small and not good:
             blocks += _unmentioned(answer.blocks, previous, events, now)
+            blocks += _forgotten_fixed(blocks, routine_days, events, now)
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
         last = attempt == attempts - 1
@@ -525,7 +563,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
             if c.task_id in still:
                 still[c.task_id] -= minutes(c.new_start, c.new_end)
         request = (build_prompt(days, routine, categories, shown, previous, now, health, tasks, still, placed,
-                                reserved)
+                                reserved, routine_days)
                    + "\n\n# Already placed - they stay, do not return them again\n"
                    + "\n".join(f"- {b.day} {b.start}-{b.end} {b.category}: {b.title}" for b in good)
                    + "\n\n# Problems with the rest of your answer - return only the new blocks of the corrected plan\n"
@@ -537,7 +575,8 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
               notes: str, rules: list[NoteRule], now: datetime, health: str | None = None,
               history: dict[str, list[date]] | None = None, expect: set[date] | frozenset[date] = frozenset(),
               attempts: int = 3, tasks: list[Task] = (), left: dict[str, int] | None = None,
-              few_shot: bool = True, reserved: Reserved | None = None) -> tuple[list[PlannedChange], str, list[str], list[str]]:
+              few_shot: bool = True, reserved: Reserved | None = None,
+              routine_days: dict | None = None) -> tuple[list[PlannedChange], str, list[str], list[str]]:
     """Ask, check, send the problems back; at most `attempts` rounds.
     Returns the calendar changes, the model's summary, what was dropped and the
     tasks it could not fit ("t2: reason").
@@ -551,7 +590,7 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
         for d in days:
             creates, ch, summary, dr, un = _plan_once(backend, [d], routine, categories, events, notes, rules,
                                                       now, health, history, expect, attempts, tasks, left,
-                                                      few_shot, reserved)
+                                                      few_shot, reserved, routine_days)
             changes += ch
             dropped += dr
             unscheduled += un
@@ -564,5 +603,5 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
         return changes, " ".join(summaries), dropped, unscheduled
     _, changes, summary, problems, unscheduled = _plan_once(backend, days, routine, categories, events, notes,
                                                            rules, now, health, history, expect, attempts,
-                                                           tasks, left, few_shot, reserved)
+                                                           tasks, left, few_shot, reserved, routine_days)
     return changes, summary, problems, unscheduled

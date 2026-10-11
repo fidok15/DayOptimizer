@@ -158,11 +158,13 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     # outside that is missed. Store progress per task if that matters.
     task_blocks = calendar.list_events(now - timedelta(days=30), now + timedelta(days=60)) if tasks else []
     left = remaining(tasks, task_blocks, now, planned)
-    reserved = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
-                     datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end), b.title or b.category)
-                    for b in rules.typical_week.get(d.weekday(), [])
-                    if not getattr(getattr(rules, "categories", {}).get(b.category), "movable", True)]
-                for d in days}
+    routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
+                         datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
+                         b.category, b.title or b.category,
+                         not getattr(getattr(rules, "categories", {}).get(b.category), "movable", True))
+                        for b in rules.typical_week.get(d.weekday(), [])]
+                    for d in days}
+    reserved = {d: [(s, e, title) for s, e, _, title, fixed in spans if fixed] for d, spans in routine_days.items()}
     history: dict[str, list[date]] = {}
     for e in events:
         if not e.all_day and (e.start.date() not in planned or e.start < now):
@@ -181,7 +183,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
             changes, summary, dropped, unscheduled = plan_days(
                 backend, days, routine, list(config["categories"]), window, notes, rules.note_rules, now,
                 health, history, {d for d in days if rules.typical_week.get(d.weekday())},
-                tasks=tasks, left=left, reserved=reserved)
+                tasks=tasks, left=left, reserved=reserved, routine_days=routine_days)
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")

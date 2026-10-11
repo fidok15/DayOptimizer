@@ -515,3 +515,30 @@ def test_cli_reserves_fixed_routine_blocks_for_tasks(monkeypatch):
     storage.save_task(task(due=None))
     cli._llm_plan([MON], Cal(), storage, R(), confirm=lambda c: True)
     assert "fits in: Mon 07:00-24:00" in backend.prompts[0]
+
+
+def test_plan_schema_keeps_free_text_short():
+    s = plan_schema(CATS, [MON], [], "", [])
+    assert s["properties"]["summary"]["maxLength"] == 300
+    assert s["$defs"]["Block"]["properties"]["why"]["maxLength"] == 80
+    assert s["$defs"]["Block"]["properties"]["title"]["maxLength"] == 60
+
+
+SLEEP_LUNCH = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Gym", "Sleep", True),
+                     (at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
+
+
+def test_each_day_to_plan_lists_its_routine():
+    text = build_prompt([MON], "# routine", CATS, [LECTURE, LAB], [], NOW, routine_days=SLEEP_LUNCH)
+    assert "- routine: 00:00-07:00 Gym: Sleep (fixed), 12:00-13:00 Food: Lunch" in text
+
+
+def test_a_small_model_gets_its_forgotten_fixed_routine_blocks_back():
+    class Small(Fake):
+        one_day_at_a_time = True
+
+    backend = Small(WeekPlan(blocks=[block(MON, "12:00", "13:00")]))
+    changes, _, dropped, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB], NOTES, [], NOW,
+                                       routine_days=SLEEP_LUNCH)
+    assert dropped == []
+    assert sorted((c.title, c.new_start) for c in changes) == [("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "00:00"))]
