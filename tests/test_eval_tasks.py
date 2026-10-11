@@ -11,7 +11,7 @@ spec.loader.exec_module(eval_tasks)
 
 def test_every_scenario_loads():
     paths = sorted((ROOT / "evals" / "tasks").glob("*.yaml"))
-    assert len(paths) == 10
+    assert len(paths) == 13
     for p in paths:
         s = eval_tasks.load(p)
         assert s["tasks"] and s["days"] and s["routine"].startswith("# My typical week")

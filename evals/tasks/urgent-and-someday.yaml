@@ -1,0 +1,10 @@
+now: "2030-10-18 09:00"
+days: [2030-10-18]
+routine: default
+events:
+  - {id: e1, calendar: Job, title: Workshop, day: 2030-10-18, start: "10:00", end: "16:00"}
+tasks:
+  - {id: t1, title: Learn guitar chords, category: Learn, duration_min: 60, priority: low}
+  - {id: t2, title: Fix server, category: Work, duration_min: 120, due: "2030-10-18 20:00", min_chunk_min: 60, priority: high}
+expect:
+  placed: [t2]
