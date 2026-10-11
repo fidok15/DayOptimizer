@@ -130,8 +130,21 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     from dayoptimizer.llm import backend as llm
     from dayoptimizer.llm.week_plan import plan_days
     from dayoptimizer.routine import render_routine
+    from dayoptimizer.core.models import PlannedChange
     from dayoptimizer.llm.task_rules import remaining
     tasks = storage.open_tasks()
+    week_start = days[0] - timedelta(days=days[0].weekday())
+    lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
+    hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
+    events = calendar.list_events(lo, hi)
+    now = datetime.now().astimezone()
+    # Blocks of a task that is done (or gone) are removed by code, with or without a model.
+    open_ids = {t.id for t in tasks}
+    stale = [e for e in events if e.managed and e.task_id and e.task_id not in open_ids and e.start >= now]
+    if stale:
+        apply_changes([PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
+                                     reason="its task is done") for e in stale], calendar, storage, lambda c: True)
+        events = [e for e in events if e not in stale]
     if not rules.has_routine and not tasks:
         return None
     _, config = _load_config()
@@ -140,16 +153,11 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         console.print("No language model to plan with (no ANTHROPIC_API_KEY in .env, Ollama not "
                       "running) — placing your routine by rule instead.", markup=False, style="yellow")
         return None
-    week_start = days[0] - timedelta(days=days[0].weekday())
-    lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
-    hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
-    events = calendar.list_events(lo, hi)
-    now = datetime.now().astimezone()
-    # ponytail: task progress is read from the last 30 days of blocks; a task
-    # worked on earlier than that would look less done. Store progress if that matters.
-    done_window = calendar.list_events(now - timedelta(days=30), now) if tasks else []
-    left = remaining(tasks, done_window, now)
     planned = set(days)
+    # ponytail: task blocks are read from 30 days back to 60 ahead; progress
+    # outside that is missed. Store progress per task if that matters.
+    task_blocks = calendar.list_events(now - timedelta(days=30), now + timedelta(days=60)) if tasks else []
+    left = remaining(tasks, task_blocks, now, planned)
     history: dict[str, list[date]] = {}
     for e in events:
         if not e.all_day and (e.start.date() not in planned or e.start < now):
@@ -458,10 +466,12 @@ def cmd_task(args, rules, config):
             console.print(_task_line(t), markup=False)
         return
     if len(words) == 2 and words[0] == "done":
-        if storage.mark_task_done(words[1]):
-            console.print(f"Done: {words[1]}. Its planned blocks go on the next plan.", markup=False, style="green")
-        else:
+        task = storage.get_task(words[1])
+        if task is None or not storage.mark_task_done(words[1]):
             console.print(f"No task '{words[1]}'. See  dayoptimizer task list", markup=False, style="yellow")
+            return
+        console.print(f"Done: {words[1]}. Removing its planned blocks...", markup=False, style="green")
+        _replan_for(task, rules, config)
         return
     if not rules.categories:
         console.print("You have no categories yet, so there is nothing to file this under. "
@@ -493,11 +503,17 @@ def cmd_task(args, rules, config):
             console.print("Nothing saved.")
             return
     storage.save_task(task)
-    days = 7 if task.due is None else max(1, min(7, (task.due.date() - now.date()).days + 1))
+    console.print("Placing it in your calendar...", style="dim")
+    _replan_for(task, rules, config)
+
+def _replan_for(task, rules, config):
+    """Replan from today up to the task's deadline (a week at most), in the
+    calendar bundle: that places a new task and removes a finished one's blocks."""
+    today = date.today()
+    days = 7 if task.due is None else max(1, min(7, (task.due.date() - today).days + 1))
     if _in_bundle() or sys.platform != "darwin":
         cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
     else:
-        console.print("Placing it in your calendar...", style="dim")
         console.print(_calendar_run(["plan", "--week", str(days)]), markup=False)
 
 def cmd_chat(args, rules, config):

@@ -10,14 +10,18 @@ def minutes(start: datetime, end: datetime) -> int:
     return int((end - start).total_seconds() // 60)
 
 
-def remaining(tasks: list[Task], events: list[Event], now: datetime) -> dict[str, int]:
-    """Minutes still to place for each open task: its length minus what its
-    blocks already took. A past block counts as done; one under way counts up
-    to now. Future blocks are the old plan and get replaced, so they don't count."""
+def remaining(tasks: list[Task], events: list[Event], now: datetime,
+              planned: set[date] | frozenset[date] = frozenset()) -> dict[str, int]:
+    """Minutes still to place for each open task: its length minus every block
+    of it that stays in the calendar. Past and running blocks stay (a running
+    one counts whole, the replan can't remove it), and so do future blocks on
+    days not being replanned. Only future blocks on `planned` days are the old
+    plan that gets replaced, so only they don't count."""
     left = {t.id: t.duration_min for t in tasks if not t.done}
     for e in events:
-        if e.managed and e.task_id in left and e.start < now:
-            left[e.task_id] = max(0, left[e.task_id] - minutes(e.start, min(e.end, now)))
+        if not (e.managed and e.task_id in left) or (e.start >= now and e.start.date() in planned):
+            continue
+        left[e.task_id] = max(0, left[e.task_id] - minutes(e.start, e.end))
     return left
 
 

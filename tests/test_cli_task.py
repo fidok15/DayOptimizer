@@ -61,3 +61,8 @@ def test_main_routes_task_words_to_the_task_command(monkeypatch):
     monkeypatch.setattr(cli, "_load_config", lambda: (RULES, CONFIG))
     cli.main(["task", "report", "for", "friday"])
     assert seen["words"] == ["report", "for", "friday"]
+
+
+def test_done_replans_so_its_blocks_go(monkeypatch):
+    run(monkeypatch, ["x"], TaskRequest(title="report", category="Work", duration_minutes=60, due_day="tomorrow"))
+    assert run(monkeypatch, ["done", "t1"]) == [["plan", "--week", "2"]]

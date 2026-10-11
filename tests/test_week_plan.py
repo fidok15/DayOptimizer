@@ -288,4 +288,61 @@ def test_cli_without_routine_or_tasks_does_not_plan(monkeypatch):
         note_rules = []
         typical_week = {}
 
-    assert cli._llm_plan([MON], object(), cli.Storage(":memory:"), NoRoutine()) is None
+    class Empty:
+        def list_events(self, start, end):
+            return []
+
+    assert cli._llm_plan([MON], Empty(), cli.Storage(":memory:"), NoRoutine()) is None
+
+
+def test_a_block_under_way_is_not_overlapped():
+    now = at(MON, "11:00")
+    running = ev("r", "Work", "Report", MON, "10:00", "12:00", managed=True)
+    creates, problems = validate(WeekPlan(blocks=[block(MON, "11:30", "12:30")]), [MON], CATS, [running],
+                                 NOTES, [], now)
+    assert creates == [] and "overlaps 'Report'" in problems[0]
+
+
+def test_day_by_day_counts_blocks_kept_as_they_were():
+    tue = MON + timedelta(days=1)
+
+    class Small(Fake):
+        one_day_at_a_time = True
+
+    kept = Event(id="k", calendar="Work", title="Report", start=at(MON, "16:00"), end=at(MON, "17:00"),
+                 managed=True, task_id="t1")
+    backend = Small(WeekPlan(blocks=[tblock("16:00", "17:00")]),
+                    WeekPlan(blocks=[tblock("16:00", "17:00", d=tue)]))
+    changes, _, dropped, _ = plan_days(backend, [MON, tue], "# routine", WCATS, [kept], NOTES, [], NOW,
+                                       tasks=[task(due=at(tue, "22:00"))], left={"t1": 120})
+    assert "- [t1] Report (Work) 60 min left" in backend.prompts[1]
+    assert [c.new_start for c in changes if c.kind == "create"] == [at(tue, "16:00")]
+
+
+def test_cli_removes_future_blocks_of_finished_tasks_without_a_model(monkeypatch):
+    from dayoptimizer import cli
+    stale = Event(id="s", calendar="Work", title="Report", start=at(MON, "16:00"), end=at(MON, "17:00"),
+                  managed=True, task_id="t1")
+
+    class Cal:
+        def __init__(self):
+            self.deleted = []
+
+        def list_events(self, start, end):
+            return [stale] if start <= stale.start < end else []
+
+        def delete_event(self, event_id):
+            self.deleted.append(event_id)
+
+    class NoRoutine:
+        has_routine = False
+        note_rules = []
+        typical_week = {}
+
+    monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in WCATS}, "llm": {}}))
+    storage = cli.Storage(":memory:")
+    storage.save_task(task())
+    storage.mark_task_done("t1")
+    cal = Cal()
+    assert cli._llm_plan([MON], cal, storage, NoRoutine(), confirm=lambda c: True) is None
+    assert cal.deleted == ["s"]

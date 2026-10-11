@@ -187,7 +187,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     for p in plan.plan_over:
         if p.event_id not in over:
             problems.append(f"plan_over {p.event_id}: \"{p.note}\" is not a sentence from the notes")
-    blocking = [e for e in events if not e.all_day and not e.managed and e.id not in over]
+    # a planner block already under way stays in the calendar, so it blocks like the user's events
+    blocking = [e for e in events if not e.all_day and (not e.managed or e.start < now) and e.id not in over]
     by_id = {t.id: t for t in tasks}
     left = dict(left or {})
     running = dict(left)
@@ -292,36 +293,11 @@ def diff(creates: list[PlannedChange], previous: list[Event]) -> list[PlannedCha
     return removed + out
 
 
-def plan_days(backend, days: list[date], routine: str, categories: list[str], events: list[Event],
-              notes: str, rules: list[NoteRule], now: datetime, health: str | None = None,
-              history: dict[str, list[date]] | None = None, expect: set[date] | frozenset[date] = frozenset(),
-              attempts: int = 3, tasks: list[Task] = (), left: dict[str, int] | None = None,
-              few_shot: bool = True) -> tuple[list[PlannedChange], str, list[str], list[str]]:
-    """Ask, check, send the problems back; at most `attempts` rounds.
-    Returns the calendar changes, the model's summary, what was dropped and the
-    tasks it could not fit ("t2: reason").
-    A small local model (`one_day_at_a_time`) gets one day per request; what it
-    planned for earlier days counts toward the weekly limits and the task
-    minutes of later ones."""
-    if len(days) > 1 and getattr(backend, "one_day_at_a_time", False):
-        history = {c: list(ds) for c, ds in (history or {}).items()}
-        left = dict(left or {})
-        changes, summaries, dropped, unscheduled = [], [], [], []
-        for d in days:
-            ch, summary, dr, un = plan_days(backend, [d], routine, categories, events, notes, rules, now,
-                                            health, history, expect, attempts, tasks=tasks, left=left,
-                                            few_shot=few_shot)
-            changes += ch
-            dropped += dr
-            unscheduled += un
-            if summary:
-                summaries.append(summary)
-            for c in ch:
-                if c.kind == "create" and c.new_start is not None:
-                    history.setdefault(c.category, []).append(c.new_start.date())
-                    if c.task_id in left:
-                        left[c.task_id] -= minutes(c.new_start, c.new_end)
-        return changes, " ".join(summaries), dropped, unscheduled
+def _plan_once(backend, days, routine, categories, events, notes, rules, now, health, history, expect,
+               attempts, tasks, left, few_shot):
+    """One request (plus corrections) for these days. Returns the validated
+    blocks, the calendar changes (blocks already in place are not repeated),
+    the summary, what was dropped and the tasks that did not fit."""
     planned = set(days)
     previous = [e for e in events if e.managed and e.start.date() in planned and e.start >= now]
     prompt = build_prompt(days, routine, categories, [e for e in events if e not in previous],
@@ -332,9 +308,44 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
                                      tasks=tasks, left=left)
         if not problems or attempt == attempts - 1:
-            return (diff(creates, previous), plan.summary, problems,
+            return (creates, diff(creates, previous), plan.summary, problems,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
         request = (prompt + "\n\n# Your previous answer\n" + plan.model_dump_json()
                    + "\n\n# It broke these rules - return the whole corrected plan\n"
                    + "\n".join(f"- {p}" for p in problems))
     raise AssertionError("unreachable")
+
+
+def plan_days(backend, days: list[date], routine: str, categories: list[str], events: list[Event],
+              notes: str, rules: list[NoteRule], now: datetime, health: str | None = None,
+              history: dict[str, list[date]] | None = None, expect: set[date] | frozenset[date] = frozenset(),
+              attempts: int = 3, tasks: list[Task] = (), left: dict[str, int] | None = None,
+              few_shot: bool = True) -> tuple[list[PlannedChange], str, list[str], list[str]]:
+    """Ask, check, send the problems back; at most `attempts` rounds.
+    Returns the calendar changes, the model's summary, what was dropped and the
+    tasks it could not fit ("t2: reason").
+    A small local model (`one_day_at_a_time`) gets one day per request; every
+    block a day ends up with (new or kept as it was) counts toward the weekly
+    limits and the task minutes of later days."""
+    if len(days) > 1 and getattr(backend, "one_day_at_a_time", False):
+        history = {c: list(ds) for c, ds in (history or {}).items()}
+        left = dict(left or {})
+        changes, summaries, dropped, unscheduled = [], [], [], []
+        for d in days:
+            creates, ch, summary, dr, un = _plan_once(backend, [d], routine, categories, events, notes, rules,
+                                                      now, health, history, expect, attempts, tasks, left,
+                                                      few_shot)
+            changes += ch
+            dropped += dr
+            unscheduled += un
+            if summary:
+                summaries.append(summary)
+            for c in creates:
+                history.setdefault(c.category, []).append(c.new_start.date())
+                if c.task_id in left:
+                    left[c.task_id] -= minutes(c.new_start, c.new_end)
+        return changes, " ".join(summaries), dropped, unscheduled
+    _, changes, summary, problems, unscheduled = _plan_once(backend, days, routine, categories, events, notes,
+                                                           rules, now, health, history, expect, attempts,
+                                                           tasks, left, few_shot)
+    return changes, summary, problems, unscheduled

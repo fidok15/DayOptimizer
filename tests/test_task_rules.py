@@ -22,10 +22,13 @@ def block(start, end, task_id="t1", d=MON):
                  managed=True, task_id=task_id)
 
 
-def test_remaining_subtracts_past_and_running_blocks():
+def test_remaining_counts_every_block_the_plan_will_not_replace():
+    tue = MON + timedelta(days=1)
     events = [block("07:00", "08:00"), block("09:30", "10:30"), block("12:00", "13:00"),
-              block("07:00", "08:00", task_id="t9")]
-    assert remaining([task()], events, NOW) == {"t1": 180 - 60 - 30}
+              block("12:00", "13:00", d=tue), block("07:00", "08:00", task_id="t9")]
+    # past and running blocks stay (count in full); a future block counts unless its day is replanned
+    assert remaining([task()], events, NOW, planned={MON}) == {"t1": 180 - 60 - 60 - 60}
+    assert remaining([task()], events, NOW, planned={MON, tue}) == {"t1": 180 - 60 - 60}
 
 
 def test_remaining_ignores_done_tasks_and_never_goes_negative():
