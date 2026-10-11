@@ -81,10 +81,11 @@ def test_diff_keeps_identical_blocks_and_deletes_the_rest_of_the_old_plan():
 
 class Fake:
     def __init__(self, *plans):
-        self.plans, self.prompts = list(plans), []
+        self.plans, self.prompts, self.schemas = list(plans), [], []
 
-    def plan_week(self, system, prompt):
+    def plan_week(self, system, prompt, schema=None):
         self.prompts.append(prompt)
+        self.schemas.append(schema)
         return self.plans.pop(0)
 
 
@@ -109,7 +110,7 @@ def test_cli_falls_back_to_the_next_model_when_one_fails(monkeypatch):
     from dayoptimizer import cli
 
     class Broken:
-        def plan_week(self, system, prompt):
+        def plan_week(self, system, prompt, schema=None):
             raise RuntimeError("invalid x-api-key")
 
     class Cal:
@@ -346,3 +347,43 @@ def test_cli_removes_future_blocks_of_finished_tasks_without_a_model(monkeypatch
     cal = Cal()
     assert cli._llm_plan([MON], cal, storage, NoRoutine(), confirm=lambda c: True) is None
     assert cal.deleted == ["s"]
+
+
+from dayoptimizer.llm.week_plan import plan_schema
+
+
+def test_plan_schema_allows_only_known_values():
+    s = plan_schema(CATS, [MON], ["t1"], NOTES, [LECTURE, LAB])
+    blk = s["$defs"]["Block"]["properties"]
+    assert blk["category"]["enum"] == CATS and blk["day"]["enum"] == [MON.isoformat()]
+    assert blk["task_id"] == {"anyOf": [{"enum": ["t1"]}, {"type": "null"}], "default": None}
+    over = s["$defs"]["PlanOver"]["properties"]
+    assert over["event_id"]["enum"] == ["lec", "lab"]
+    assert 'Lectures starting with "W -" may be planned over.' in over["note"]["enum"]
+    assert s["$defs"]["Unscheduled"]["properties"]["task_id"]["enum"] == ["t1"]
+
+
+def test_plan_schema_without_tasks_notes_or_events_forbids_them():
+    s = plan_schema(CATS, [MON], [], "", [])
+    assert s["$defs"]["Block"]["properties"]["task_id"] == {"type": "null", "default": None}
+    assert s["properties"]["plan_over"]["maxItems"] == 0
+    assert s["properties"]["unscheduled"]["maxItems"] == 0
+
+
+def test_plan_days_hands_the_model_its_schema():
+    backend = Fake(WeekPlan())
+    plan_days(backend, [MON], "# routine", CATS, [LECTURE], NOTES, [], NOW)
+    assert backend.schemas[0]["$defs"]["Block"]["properties"]["category"]["enum"] == CATS
+
+
+def test_prompt_gives_the_free_time_of_each_day_to_plan():
+    text = build_prompt([MON], "# routine", CATS, [LECTURE, LAB], [], NOW)
+    assert "- free: 00:00-10:00, 12:00-13:00, 15:00-24:00" in text
+    assert text.count("- free:") == 1
+    later = build_prompt([MON], "# routine", CATS, [LECTURE, LAB], [], at(MON, "12:30"))
+    assert "- free: 12:30-13:00, 15:00-24:00" in later
+
+
+def test_instructions_say_not_to_copy_events():
+    assert "never copy" in system_prompt(False)
+    assert "not copied" in system_prompt(True)

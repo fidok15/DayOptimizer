@@ -80,9 +80,9 @@ class Counting:
         self.inner, self.rounds = inner, 0
         self.one_day_at_a_time = getattr(inner, "one_day_at_a_time", False)
 
-    def plan_week(self, system, prompt):
+    def plan_week(self, system, prompt, schema=None):
         self.rounds += 1
-        return self.inner.plan_week(system, prompt)
+        return self.inner.plan_week(system, prompt, schema)
 
 
 def _backend(name: str, model: str | None):

@@ -89,3 +89,17 @@ def test_ensure_running_starts_ollama_for_the_run_and_stops_it_after(monkeypatch
     assert started == [["/bin/ollama", "serve"]]
     ob._stop_server()
     assert stopped == [True]
+
+
+def test_plan_week_uses_the_given_schema_and_caps_the_answer(monkeypatch):
+    sent = {}
+
+    def fake_urlopen(req, timeout):
+        sent.update(json.loads(req.data))
+        sent["timeout"] = timeout
+        return _Resp(json.dumps({"message": {"content": '{"blocks": []}'}}).encode())
+
+    monkeypatch.setattr(ob, "urlopen", fake_urlopen)
+    ob.OllamaBackend().plan_week("system", "prompt", {"title": "Limited"})
+    assert sent["format"] == {"title": "Limited"}
+    assert sent["options"]["num_predict"] == 2000 and sent["timeout"] == 300

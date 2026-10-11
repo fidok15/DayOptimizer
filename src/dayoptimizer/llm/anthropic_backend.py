@@ -30,7 +30,9 @@ class AnthropicBackend:
         )
         return response.parsed_output
 
-    def plan_week(self, system: str, prompt: str):
+    def plan_week(self, system: str, prompt: str, schema: dict | None = None):
+        # `schema` (the closed choices) is for small local models; the
+        # validator catches what Claude gets wrong, which is rare.
         from dayoptimizer.llm.week_plan import WeekPlan
         with self.client.messages.stream(
             model=self.model,

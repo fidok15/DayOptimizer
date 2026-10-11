@@ -51,6 +51,9 @@ SYSTEM = (
     "their categories and every event already in the calendar, and you return the blocks "
     "to add for each requested day.\n"
     "How to plan:\n"
+    "- Return only the blocks you add. Events already in the calendar stay where they are: never copy "
+    "them into blocks. Each day to plan lists its free time; every block goes inside it, unless a note "
+    "lets you plan over an event.\n"
     "- The routine is a guideline for the rhythm of a day (when they sleep, eat, work, rest), "
     "not a template to paste. Fit each day around what is already in the calendar: a day full "
     "of classes needs its meals, study and rest moved into the gaps, a free day can hold the "
@@ -97,7 +100,15 @@ TASK_RULES = (
 )
 
 EXAMPLES = (
-    "\nExamples (shortened: a real answer also has the rest of the day's plan):\n"
+    "\nExamples. A whole day first: Monday 2030-10-14, now 08:00, calendar "
+    "- [e1] 09:00-12:00 Uni: Lecture, free: 08:00-09:00, 12:00-24:00; routine lunch 13:00-13:30 (Food) and "
+    "sleep 23:00-24:00 (Sleep); task - [t5] Essay (Learn) 90 min left, due Mon 2030-10-14 20:00, in one "
+    "piece, priority normal. The lecture is not copied; only new blocks come back:\n"
+    '{"blocks":[{"day":"2030-10-14","start":"13:00","end":"13:30","category":"Food","title":"Lunch"},'
+    '{"day":"2030-10-14","start":"14:00","end":"15:30","category":"Learn","title":"Essay","task_id":"t5"},'
+    '{"day":"2030-10-14","start":"23:00","end":"24:00","category":"Sleep","title":"Sleep"}],'
+    '"plan_over":[],"unscheduled":[]}\n'
+    "Shorter ones (a real answer also has the rest of the day's plan):\n"
     "1) Monday 2030-10-14 planned, free 13:00-15:00 and 16:00-18:00. Task: "
     "- [t1] Report (Work) 180 min left, due Mon 2030-10-14 18:00, chunks >= 60 min, priority normal\n"
     '{"blocks":[{"day":"2030-10-14","start":"13:00","end":"15:00","category":"Work","title":"Report",'
@@ -132,6 +143,29 @@ def _hhmm(value: str) -> int | None:
     return total if total <= 1440 else None
 
 
+def free_time(day: date, events: list[Event], now: datetime) -> str:
+    """The day's gaps from now on: what the user's events (and planner blocks
+    already under way) leave free. A small model reads this far better than it
+    works the gaps out from the event list itself."""
+    midnight = datetime.combine(day, time(0)).astimezone()
+    end = midnight + timedelta(days=1)
+    cur = max(midnight, now)
+    busy = sorted((max(e.start, midnight), min(e.end, end)) for e in events
+                  if not e.all_day and (not e.managed or e.start < now) and e.start < end and e.end > midnight)
+    gaps = []
+    for s, e in busy:
+        if s > cur:
+            gaps.append((cur, s))
+        cur = max(cur, e)
+    if cur < end:
+        gaps.append((cur, end))
+
+    def clock(t: datetime) -> str:
+        m = minutes(midnight, t)
+        return f"{m // 60:02d}:{m % 60:02d}"
+    return ", ".join(f"{clock(a)}-{clock(b)}" for a, b in gaps) or "none"
+
+
 def _fmt(ev: Event) -> str:
     return f"{ev.start:%H:%M}-{ev.end:%H:%M}"
 
@@ -154,6 +188,8 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
         prev = sorted((e for e in previous if e.start.date() == d), key=lambda e: e.start)
         tag = " (plan this day)" if d in days else ""
         lines.append(f"## {DAY_NAMES[d.weekday()]} {d.isoformat()}{tag}")
+        if d in days:
+            lines.append(f"- free: {free_time(d, events, now)}")
         for e in mine:
             where = f" @ {e.location}" if e.location else ""
             lines.append(f"- [{e.id}] {_fmt(e)} {e.calendar}: {e.title}{where}")
@@ -170,6 +206,33 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
 
 def _norm(text: str) -> str:
     return " ".join(re.sub(r"[\"“”„'‘’]", "", text).lower().split())
+
+
+def plan_schema(categories: list[str], days: list[date], task_ids: list[str], notes: str,
+                events: list[Event]) -> dict:
+    """The answer's JSON schema with every closed choice spelled out, so a model
+    with constrained output (Ollama) can't invent categories, days, tasks,
+    events or note sentences; validate still checks everything."""
+    s = WeekPlan.model_json_schema()
+    defs, props = s["$defs"], s["properties"]
+    block = defs["Block"]["properties"]
+    block["category"]["enum"] = list(categories)
+    block["day"]["enum"] = [d.isoformat() for d in days]
+    block["task_id"] = ({"anyOf": [{"enum": list(task_ids)}, {"type": "null"}], "default": None}
+                        if task_ids else {"type": "null", "default": None})
+    planned = set(days)
+    ids = [e.id for e in events if not e.managed and not e.all_day and e.start.date() in planned]
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", notes or "") if len(_norm(x)) >= 10]
+    if ids and sentences:
+        defs["PlanOver"]["properties"]["event_id"]["enum"] = ids
+        defs["PlanOver"]["properties"]["note"]["enum"] = sentences
+    else:
+        props["plan_over"]["maxItems"] = 0
+    if task_ids:
+        defs["Unscheduled"]["properties"]["task_id"]["enum"] = list(task_ids)
+    else:
+        props["unscheduled"]["maxItems"] = 0
+    return s
 
 
 def validate(plan: WeekPlan, days: list[date], categories: list[str], events: list[Event],
@@ -302,9 +365,11 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     previous = [e for e in events if e.managed and e.start.date() in planned and e.start >= now]
     prompt = build_prompt(days, routine, categories, [e for e in events if e not in previous],
                           previous, now, health, tasks, left)
+    open_ids = [t.id for t in tasks if not t.done and (left or {}).get(t.id, 0) > 0]
+    schema = plan_schema(categories, days, open_ids, notes, events)
     request = prompt
     for attempt in range(attempts):
-        plan = backend.plan_week(system_prompt(few_shot), request)
+        plan = backend.plan_week(system_prompt(few_shot), request, schema)
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
                                      tasks=tasks, left=left)
         if not problems or attempt == attempts - 1:
