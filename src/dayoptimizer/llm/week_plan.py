@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
 from dayoptimizer.core.constraints import NoteRule, window_rule
 from dayoptimizer.core.models import Event, PlannedChange, Task
-from dayoptimizer.llm.task_rules import block_problem, minutes, task_lines, unplaced
+from dayoptimizer.llm.task_rules import block_problem, minutes, task_lines, unplaced, window
 
 DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -143,9 +143,9 @@ def _hhmm(value: str) -> int | None:
     return total if total <= 1440 else None
 
 
-def free_time(day: date, events: list[Event], now: datetime) -> str:
+def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datetime, datetime]]:
     """The day's gaps from now on: what the user's events (and planner blocks
-    already under way) leave free. A small model reads this far better than it
+    already under way) leave free. A small model reads these far better than it
     works the gaps out from the event list itself."""
     midnight = datetime.combine(day, time(0)).astimezone()
     end = midnight + timedelta(days=1)
@@ -159,11 +159,36 @@ def free_time(day: date, events: list[Event], now: datetime) -> str:
         cur = max(cur, e)
     if cur < end:
         gaps.append((cur, end))
+    return gaps
+
+
+def _spans(day: date, gaps: list[tuple[datetime, datetime]]) -> str:
+    midnight = datetime.combine(day, time(0)).astimezone()
 
     def clock(t: datetime) -> str:
         m = minutes(midnight, t)
         return f"{m // 60:02d}:{m % 60:02d}"
-    return ", ".join(f"{clock(a)}-{clock(b)}" for a, b in gaps) or "none"
+    return ", ".join(f"{clock(a)}-{clock(b)}" for a, b in gaps)
+
+
+def free_time(day: date, events: list[Event], now: datetime) -> str:
+    return _spans(day, free_gaps(day, events, now)) or "none"
+
+
+def _fits(tasks: list[Task], days: list[date], events: list[Event], now: datetime) -> dict[str, str]:
+    """Where each task's window meets the free time of the planned days."""
+    gaps = {d: free_gaps(d, events, now) for d in days}
+    out = {}
+    for t in tasks:
+        lo, hi = window(t, now)
+        parts = []
+        for d in days:
+            spans = [(max(a, lo), b if hi is None else min(b, hi)) for a, b in gaps[d]]
+            spans = [(a, b) for a, b in spans if b > a]
+            if spans:
+                parts.append(f"{DAY_NAMES[d.weekday()][:3]} {_spans(d, spans)}")
+        out[t.id] = "; ".join(parts) or "nowhere in the days you plan"
+    return out
 
 
 def _fmt(ev: Event) -> str:
@@ -172,7 +197,11 @@ def _fmt(ev: Event) -> str:
 
 def build_prompt(days: list[date], routine: str, categories: list[str], events: list[Event],
                  previous: list[Event], now: datetime, health: str | None = None,
-                 tasks: list[Task] = (), left: dict[str, int] | None = None) -> str:
+                 tasks: list[Task] = (), left: dict[str, int] | None = None,
+                 busy: list[Event] = ()) -> str:
+    """`busy`: blocks already accepted this round; they take free time but are
+    not listed as calendar events."""
+    taken = list(events) + list(busy)
     """Everything the model needs, grouped by day so it reads like a calendar."""
     first = days[0] - timedelta(days=days[0].weekday())
     last = max(days[-1], first + timedelta(days=6))
@@ -189,7 +218,7 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
         tag = " (plan this day)" if d in days else ""
         lines.append(f"## {DAY_NAMES[d.weekday()]} {d.isoformat()}{tag}")
         if d in days:
-            lines.append(f"- free: {free_time(d, events, now)}")
+            lines.append(f"- free: {free_time(d, taken, now)}")
         for e in mine:
             where = f" @ {e.location}" if e.location else ""
             lines.append(f"- [{e.id}] {_fmt(e)} {e.calendar}: {e.title}{where}")
@@ -198,7 +227,7 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
         if not mine and not prev:
             lines.append("- nothing")
         d += timedelta(days=1)
-    pending = task_lines(list(tasks), left or {}, now)
+    pending = task_lines(list(tasks), left or {}, now, _fits(list(tasks), days, taken, now))
     if pending:
         lines += ["", "# Tasks"] + pending
     return "\n".join(lines)
@@ -356,27 +385,55 @@ def diff(creates: list[PlannedChange], previous: list[Event]) -> list[PlannedCha
     return removed + out
 
 
+def _block_key(b: Block):
+    start = _hhmm(b.start)
+    return b.day, start, b.category, b.title, b.task_id
+
+
+def _change_key(c: PlannedChange):
+    midnight = datetime.combine(c.new_start.date(), time(0)).astimezone()
+    return c.new_start.date().isoformat(), minutes(midnight, c.new_start), c.category, c.title, c.task_id
+
+
 def _plan_once(backend, days, routine, categories, events, notes, rules, now, health, history, expect,
                attempts, tasks, left, few_shot):
-    """One request (plus corrections) for these days. Returns the validated
+    """One request (plus corrections) for these days. A correction keeps the
+    blocks that passed and asks only for the rest: a small model asked to redo
+    the whole day tends to break what was already right. Returns the validated
     blocks, the calendar changes (blocks already in place are not repeated),
     the summary, what was dropped and the tasks that did not fit."""
     planned = set(days)
     previous = [e for e in events if e.managed and e.start.date() in planned and e.start >= now]
-    prompt = build_prompt(days, routine, categories, [e for e in events if e not in previous],
-                          previous, now, health, tasks, left)
+    shown = [e for e in events if e not in previous]
+    prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left)
     open_ids = [t.id for t in tasks if not t.done and (left or {}).get(t.id, 0) > 0]
     schema = plan_schema(categories, days, open_ids, notes, events)
+    note_text = _norm(notes)
+    good: list[Block] = []
+    over: list[PlanOver] = []
     request = prompt
     for attempt in range(attempts):
-        plan = backend.plan_week(system_prompt(few_shot), request, schema)
+        answer = backend.plan_week(system_prompt(few_shot), request, schema)
+        plan = WeekPlan(blocks=good + answer.blocks, plan_over=over + answer.plan_over,
+                        unscheduled=answer.unscheduled, summary=answer.summary)
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
                                      tasks=tasks, left=left)
         if not problems or attempt == attempts - 1:
             return (creates, diff(creates, previous), plan.summary, problems,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
-        request = (prompt + "\n\n# Your previous answer\n" + plan.model_dump_json()
-                   + "\n\n# It broke these rules - return the whole corrected plan\n"
+        accepted = {_change_key(c) for c in creates}
+        good = [b for b in plan.blocks if _block_key(b) in accepted]
+        over = [p for p in plan.plan_over if len(_norm(p.note)) >= 10 and _norm(p.note) in note_text]
+        placed = [Event(id=f"placed-{i}", calendar=c.category, title=c.title, start=c.new_start, end=c.new_end)
+                  for i, c in enumerate(creates)]
+        still = dict(left or {})
+        for c in creates:
+            if c.task_id in still:
+                still[c.task_id] -= minutes(c.new_start, c.new_end)
+        request = (build_prompt(days, routine, categories, shown, previous, now, health, tasks, still, placed)
+                   + "\n\n# Already placed - they stay, do not return them again\n"
+                   + "\n".join(f"- {b.day} {b.start}-{b.end} {b.category}: {b.title}" for b in good)
+                   + "\n\n# Problems with the rest of your answer - return only the new blocks of the corrected plan\n"
                    + "\n".join(f"- {p}" for p in problems))
     raise AssertionError("unreachable")
 

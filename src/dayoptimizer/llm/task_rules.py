@@ -37,8 +37,10 @@ def window(task: Task, now: datetime) -> tuple[datetime, datetime | None]:
     return start, end
 
 
-def task_lines(tasks: list[Task], left: dict[str, int], now: datetime) -> list[str]:
-    """One line per task with minutes left, as the model reads them."""
+def task_lines(tasks: list[Task], left: dict[str, int], now: datetime,
+               fits: dict[str, str] | None = None) -> list[str]:
+    """One line per task with minutes left, as the model reads them; `fits`
+    adds where in the planned days its window and the free time overlap."""
     lines = []
     for t in tasks:
         n = left.get(t.id, 0)
@@ -54,6 +56,8 @@ def task_lines(tasks: list[Task], left: dict[str, int], now: datetime) -> list[s
         split = t.min_chunk_min is not None and t.min_chunk_min < n
         parts.append(f"chunks >= {t.min_chunk_min} min" if split else "in one piece")
         parts.append(f"priority {t.priority}")
+        if fits is not None and t.id in fits:
+            parts.append(f"fits in: {fits[t.id]}")
         lines.append(", ".join(parts))
     return lines
 

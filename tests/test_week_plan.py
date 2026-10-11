@@ -387,3 +387,33 @@ def test_prompt_gives_the_free_time_of_each_day_to_plan():
 def test_instructions_say_not_to_copy_events():
     assert "never copy" in system_prompt(False)
     assert "not copied" in system_prompt(True)
+
+
+def test_task_lines_say_where_the_task_fits():
+    t = task(due=at(MON, "22:00"), not_before=at(MON, "12:30"))
+    text = build_prompt([MON], "# routine", WCATS, [LECTURE, LAB], [], NOW, tasks=[t], left={"t1": 120})
+    assert "fits in: Mon 12:30-13:00, 15:00-22:00" in text
+    full = [ev("x", "Job", "Shift", MON, "00:00", "23:59")]
+    assert "fits in: nowhere in the days you plan" in build_prompt([MON], "# routine", WCATS, full, [], NOW,
+                                                                   tasks=[t], left={"t1": 120})
+
+
+def test_a_correction_keeps_the_good_blocks_and_asks_only_for_the_rest():
+    first = WeekPlan(blocks=[block(MON, "16:00", "17:00"), block(MON, "14:00", "14:30", title="Snack")])
+    second = WeekPlan(blocks=[block(MON, "17:00", "17:30", title="Snack")])
+    backend = Fake(first, second)
+    changes, _, dropped, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB], NOTES, [], NOW)
+    assert dropped == []
+    assert sorted((c.title, c.new_start) for c in changes) == [("Lunch", at(MON, "16:00")), ("Snack", at(MON, "17:00"))]
+    assert "Already placed" in backend.prompts[1] and "16:00-17:00 Food: Lunch" in backend.prompts[1]
+    assert "- free: 00:00-10:00, 12:00-13:00, 15:00-16:00, 17:00-24:00" in backend.prompts[1]
+
+
+def test_a_correction_shows_task_minutes_left_after_kept_blocks():
+    first = WeekPlan(blocks=[tblock("16:00", "17:00"), tblock("14:00", "15:00")])
+    second = WeekPlan(blocks=[tblock("18:00", "19:00")])
+    backend = Fake(first, second)
+    changes, _, dropped, _ = plan_days(backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+                                       tasks=[task()], left={"t1": 120})
+    assert dropped == [] and len(changes) == 2
+    assert "- [t1] Report (Work) 60 min left" in backend.prompts[1]

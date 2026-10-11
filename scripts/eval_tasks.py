@@ -101,28 +101,32 @@ def main(argv=None) -> int:
     p.add_argument("--few-shot", choices=["on", "off"], default="on")
     p.add_argument("--only", default=None, help="run one scenario by file name, without .yaml")
     p.add_argument("--model", default=None)
+    p.add_argument("--repeat", type=int, default=1, help="run each scenario N times (a local model varies)")
     a = p.parse_args(argv)
     inner = _backend(a.backend, a.model)
     paths = [x for x in sorted(SCENARIOS.glob("*.yaml")) if a.only in (None, x.stem)]
-    passed = 0
+    passed = runs = 0
     for path in paths:
         s = load(path)
-        backend = Counting(inner)
-        try:
-            changes, _, problems, unscheduled = plan_days(
-                backend, s["days"], s["routine"], s["categories"], s["events"], s["notes"], [], s["now"],
-                tasks=s["tasks"], left={t.id: t.duration_min for t in s["tasks"]}, few_shot=a.few_shot == "on")
-        except Exception as exc:
-            print(f"ERROR {s['name']}: {' '.join(str(exc).split())[:200]}")
-            continue
-        fails = score(s, changes, problems, unscheduled)
-        hard = [f for f in fails if not f.startswith("soft:")]
-        passed += not hard
-        print(f"{'PASS' if not hard else 'FAIL'} {s['name']} ({backend.rounds} rounds)")
-        for f in fails:
-            print(f"    {f}")
-    print(f"\n{passed}/{len(paths)} passed  backend={a.backend} few-shot={a.few_shot}")
-    return 0 if passed == len(paths) else 1
+        for _ in range(a.repeat):
+            backend = Counting(inner)
+            runs += 1
+            try:
+                changes, _, problems, unscheduled = plan_days(
+                    backend, s["days"], s["routine"], s["categories"], s["events"], s["notes"], [], s["now"],
+                    tasks=s["tasks"], left={t.id: t.duration_min for t in s["tasks"]},
+                    few_shot=a.few_shot == "on")
+            except Exception as exc:
+                print(f"ERROR {s['name']}: {' '.join(str(exc).split())[:200]}")
+                continue
+            fails = score(s, changes, problems, unscheduled)
+            hard = [f for f in fails if not f.startswith("soft:")]
+            passed += not hard
+            print(f"{'PASS' if not hard else 'FAIL'} {s['name']} ({backend.rounds} rounds)")
+            for f in fails:
+                print(f"    {f}")
+    print(f"\n{passed}/{runs} passed  backend={a.backend} few-shot={a.few_shot}")
+    return 0 if passed == runs else 1
 
 
 if __name__ == "__main__":
