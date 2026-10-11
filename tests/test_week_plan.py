@@ -92,7 +92,7 @@ def test_problems_go_back_to_the_model_until_the_plan_is_clean():
     bad = WeekPlan(blocks=[block(MON, "14:00", "14:30")])
     good = WeekPlan(blocks=[block(MON, "15:00", "15:30")], summary="ok")
     backend = Fake(bad, good)
-    changes, summary, dropped = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB], NOTES, [], NOW)
+    changes, summary, dropped, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB], NOTES, [], NOW)
     assert summary == "ok" and dropped == []
     assert [c.new_start for c in changes] == [at(MON, "15:00")]
     assert "L - Physics" in backend.prompts[1] and "corrected plan" in backend.prompts[1]
@@ -152,7 +152,7 @@ def test_a_local_model_plans_one_day_at_a_time_and_limits_carry_over():
     backend = Small(WeekPlan(blocks=[block(MON, "18:00", "19:00", "Gym", "Gym")]),
                     WeekPlan(blocks=[block(tue, "18:00", "19:00", "Gym", "Gym")]),
                     WeekPlan(blocks=[block(tue, "12:00", "13:00")]))
-    changes, _, dropped = plan_days(backend, [MON, tue], "# routine", CATS, [], NOTES, rules, NOW)
+    changes, _, dropped, _ = plan_days(backend, [MON, tue], "# routine", CATS, [], NOTES, rules, NOW)
     assert [(c.category, c.new_start.date()) for c in changes] == [("Gym", MON), ("Food", tue)]
     assert dropped == [] and len(backend.prompts) == 3
     assert "(plan this day)" in backend.prompts[1] and backend.prompts[1].count("(plan this day)") == 1
@@ -161,3 +161,88 @@ def test_a_local_model_plans_one_day_at_a_time_and_limits_carry_over():
 def test_a_block_ending_at_midnight_may_say_00_00():
     creates, problems = check(WeekPlan(blocks=[block(MON, "23:30", "00:00", "Food", "Late snack")]), events=())
     assert problems == [] and creates[0].new_end == at(MON, "00:00") + timedelta(days=1)
+
+
+from dayoptimizer.core.models import Task
+from dayoptimizer.llm.week_plan import Unscheduled, system_prompt
+
+WCATS = CATS + ["Work"]
+
+
+def task(**kw):
+    base = dict(id="t1", title="Report", category="Work", duration_min=120, due=at(MON, "22:00"),
+                min_chunk_min=60)
+    base.update(kw)
+    return Task(**base)
+
+
+def tblock(start, end, task_id="t1", title="Report", cat="Work", d=MON):
+    return Block(day=d.isoformat(), start=start, end=end, category=cat, title=title, task_id=task_id)
+
+
+def tcheck(plan, tasks, left=None, days=(MON,)):
+    left = left if left is not None else {t.id: t.duration_min for t in tasks}
+    return validate(plan, list(days), WCATS, [LECTURE, LAB], NOTES, [], NOW, None, frozenset(),
+                    tasks=tasks, left=left)
+
+
+def test_task_blocks_are_kept_and_carry_the_task_id():
+    creates, problems = tcheck(WeekPlan(blocks=[tblock("16:00", "17:00"), tblock("18:00", "19:00")]), [task()])
+    assert problems == []
+    assert [(c.task_id, c.new_start) for c in creates] == [("t1", at(MON, "16:00")), ("t1", at(MON, "18:00"))]
+
+
+def test_task_due_today_must_be_placed_or_listed():
+    _, problems = tcheck(WeekPlan(blocks=[tblock("16:00", "17:00")]), [task()])
+    assert len(problems) == 1 and problems[0].startswith("t1: 60 min")
+    listed = WeekPlan(blocks=[tblock("16:00", "17:00")],
+                      unscheduled=[Unscheduled(task_id="t1", reason="no more free time")])
+    assert tcheck(listed, [task()])[1] == []
+
+
+def test_chunk_and_left_rules_apply_in_order():
+    plan = WeekPlan(blocks=[tblock("16:00", "17:30"), tblock("18:00", "18:20"), tblock("19:00", "19:30")])
+    creates, problems = tcheck(plan, [task()])
+    assert [c.new_start for c in creates] == [at(MON, "16:00"), at(MON, "19:00")]
+    assert "minimum chunk of 60" in problems[0]
+
+
+def test_unknown_task_block_and_unscheduled_are_problems():
+    plan = WeekPlan(blocks=[tblock("16:00", "17:00", task_id="t9")],
+                    unscheduled=[Unscheduled(task_id="t8", reason="?")])
+    creates, problems = tcheck(plan, [task(due=None)])
+    assert creates == []
+    assert any("task t9 is not an open task" in p for p in problems)
+    assert any("unscheduled t8" in p for p in problems)
+
+
+def test_prompt_lists_tasks_and_system_prompt_switches_examples():
+    text = build_prompt([MON], "# routine", WCATS, [LECTURE], [], NOW, tasks=[task()], left={"t1": 90})
+    assert "# Tasks" in text and "- [t1] Report (Work) 90 min left" in text
+    assert "# Tasks" not in build_prompt([MON], "# routine", WCATS, [LECTURE], [], NOW)
+    assert "Examples" in system_prompt(True) and "Examples" not in system_prompt(False)
+    assert "task_id" in system_prompt(False)
+
+
+def test_unscheduled_reasons_come_back_from_plan_days():
+    plan = WeekPlan(blocks=[tblock("16:00", "17:00")],
+                    unscheduled=[Unscheduled(task_id="t1", reason="60 min missing")])
+    changes, _, dropped, unscheduled = plan_days(Fake(plan), [MON], "# routine", WCATS, [LECTURE, LAB], NOTES,
+                                                 [], NOW, tasks=[task()], left={"t1": 120})
+    assert dropped == [] and unscheduled == ["t1: 60 min missing"]
+    assert changes[0].task_id == "t1"
+
+
+def test_day_by_day_carries_task_minutes():
+    tue = MON + timedelta(days=1)
+
+    class Small(Fake):
+        one_day_at_a_time = True
+
+    t = task(due=at(tue, "22:00"), duration_min=120)
+    backend = Small(WeekPlan(blocks=[tblock("16:00", "17:00")]),
+                    WeekPlan(blocks=[tblock("16:00", "17:00", d=tue)]))
+    changes, _, dropped, _ = plan_days(backend, [MON, tue], "# routine", WCATS, [], NOTES, [], NOW,
+                                       tasks=[t], left={"t1": 120})
+    assert dropped == [] and len(changes) == 2
+    assert "- [t1] Report (Work) 60 min left" in backend.prompts[1]

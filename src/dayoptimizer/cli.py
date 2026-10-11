@@ -159,9 +159,9 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         name = type(backend).__name__.removesuffix("Backend")
         console.print(f"Planning with {name}...", style="dim")
         try:
-            changes, summary, dropped = plan_days(backend, days, routine, list(config["categories"]),
-                                                  window, notes, rules.note_rules, now, health, history,
-                                                  {d for d in days if rules.typical_week.get(d.weekday())})
+            changes, summary, dropped, _ = plan_days(backend, days, routine, list(config["categories"]),
+                                                     window, notes, rules.note_rules, now, health, history,
+                                                     {d for d in days if rules.typical_week.get(d.weekday())})
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
