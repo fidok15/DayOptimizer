@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
-from dayoptimizer.core.constraints import NoteRule, window_rule
+from dayoptimizer.core.constraints import NoteRule, skippable, window_rule
 from dayoptimizer.core.models import Event, PlannedChange, Task
 from dayoptimizer.llm.task_rules import block_problem, minutes, overdue, task_lines, unplaced, window
 
@@ -266,10 +266,12 @@ def _norm(text: str) -> str:
 
 
 def plan_schema(categories: list[str], days: list[date], task_ids: list[str], notes: str,
-                events: list[Event]) -> dict:
+                events: list[Event], rules: list[NoteRule] = ()) -> dict:
     """The answer's JSON schema with every closed choice spelled out, so a model
     with constrained output (Ollama) can't invent categories, days, tasks,
-    events or note sentences; validate still checks everything."""
+    events or note sentences; validate still checks everything. plan_over only
+    offers events a compiled note lets the planner plan over: offered every
+    event, a small model lists them over and over until its answer is cut off."""
     s = WeekPlan.model_json_schema()
     defs, props = s["$defs"], s["properties"]
     block = defs["Block"]["properties"]
@@ -278,11 +280,14 @@ def plan_schema(categories: list[str], days: list[date], task_ids: list[str], no
     block["task_id"] = ({"anyOf": [{"enum": list(task_ids)}, {"type": "null"}], "default": None}
                         if task_ids else {"type": "null", "default": None})
     planned = set(days)
-    ids = [e.id for e in events if not e.managed and not e.all_day and e.start.date() in planned]
+    ids = [e.id for e in events if not e.managed and not e.all_day and e.start.date() in planned
+           and skippable(list(rules), e)]
+    props["blocks"]["maxItems"] = 30 * len(days)
     sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", notes or "") if len(_norm(x)) >= 10]
     if ids and sentences:
         defs["PlanOver"]["properties"]["event_id"]["enum"] = ids
         defs["PlanOver"]["properties"]["note"]["enum"] = sentences
+        props["plan_over"]["maxItems"] = len(ids)
     else:
         props["plan_over"]["maxItems"] = 0
     if task_ids:
@@ -492,7 +497,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     small = getattr(backend, "one_day_at_a_time", False)
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved)
     open_ids = [t.id for t in _shown(list(tasks), days, shown, now, left or {}, reserved)]
-    schema = plan_schema(categories, days, open_ids, notes, events)
+    schema = plan_schema(categories, days, open_ids, notes, events, rules)
     note_text = _norm(notes)
     good: list[Block] = []
     over: list[PlanOver] = []

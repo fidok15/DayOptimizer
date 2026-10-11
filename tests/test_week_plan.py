@@ -352,13 +352,19 @@ def test_cli_removes_future_blocks_of_finished_tasks_without_a_model(monkeypatch
 from dayoptimizer.llm.week_plan import plan_schema
 
 
+SKIP = parse_rules([{"type": "skippable", "category": "Uni", "prefix": "W -",
+                     "source": 'Lectures starting with "W -" may be planned over.'}])
+
+
 def test_plan_schema_allows_only_known_values():
-    s = plan_schema(CATS, [MON], ["t1"], NOTES, [LECTURE, LAB])
+    s = plan_schema(CATS, [MON], ["t1"], NOTES, [LECTURE, LAB], SKIP)
     blk = s["$defs"]["Block"]["properties"]
     assert blk["category"]["enum"] == CATS and blk["day"]["enum"] == [MON.isoformat()]
     assert blk["task_id"] == {"anyOf": [{"enum": ["t1"]}, {"type": "null"}], "default": None}
     over = s["$defs"]["PlanOver"]["properties"]
-    assert over["event_id"]["enum"] == ["lec", "lab"]
+    assert over["event_id"]["enum"] == ["lec"]  # only events a note lets the planner plan over
+    assert s["properties"]["plan_over"]["maxItems"] == 1
+    assert s["properties"]["blocks"]["maxItems"] == 30
     assert 'Lectures starting with "W -" may be planned over.' in over["note"]["enum"]
     assert s["$defs"]["Unscheduled"]["properties"]["task_id"]["enum"] == ["t1"]
 
@@ -366,6 +372,7 @@ def test_plan_schema_allows_only_known_values():
 def test_plan_schema_without_tasks_notes_or_events_forbids_them():
     s = plan_schema(CATS, [MON], [], "", [])
     assert s["$defs"]["Block"]["properties"]["task_id"] == {"type": "null", "default": None}
+    assert plan_schema(CATS, [MON], [], NOTES, [LECTURE, LAB])["properties"]["plan_over"]["maxItems"] == 0
     assert s["properties"]["plan_over"]["maxItems"] == 0
     assert s["properties"]["unscheduled"]["maxItems"] == 0
 
