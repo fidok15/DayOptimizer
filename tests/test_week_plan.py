@@ -437,3 +437,17 @@ def test_after_the_last_round_code_reports_what_did_not_fit():
                                                  NOTES, [], NOW, attempts=1, tasks=[task()], left={"t1": 120})
     assert dropped == [] and changes == []
     assert unscheduled == ["t1: 120 min did not fit before Mon 2030-10-14 22:00"]
+
+
+def test_surplus_block_of_a_fully_placed_task_is_dropped_quietly():
+    creates, problems = tcheck(WeekPlan(blocks=[tblock("16:00", "18:00"), tblock("19:00", "20:00")]), [task()])
+    assert problems == [] and [c.new_start for c in creates] == [at(MON, "16:00")]
+
+
+def test_tasks_that_cannot_be_worked_on_in_the_planned_days_are_not_shown():
+    tue = MON + timedelta(days=1)
+    later = task(not_before=at(tue, "00:00"), due=at(tue, "18:00"))
+    assert "[t1]" not in build_prompt([MON], "# routine", WCATS, [], [], NOW, tasks=[later], left={"t1": 120})
+    backend = Fake(WeekPlan())
+    plan_days(backend, [MON], "# routine", WCATS, [], NOTES, [], NOW, tasks=[later], left={"t1": 120})
+    assert backend.schemas[0]["$defs"]["Block"]["properties"]["task_id"] == {"type": "null", "default": None}

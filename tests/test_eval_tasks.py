@@ -32,3 +32,11 @@ def test_score_hard_and_soft():
     assert eval_tasks.score(s, swapped, [], []) == ["soft: t2 should start before t1"]
     short = [create("t2", (9, 0), (10, 30))]
     assert eval_tasks.score(s, short, ["x broke"], []) == ["rule: x broke", "t1: placed 0 of 90 min"]
+
+
+def test_outcome_ignores_dropped_blocks_but_clean_does_not():
+    s = eval_tasks.load(ROOT / "evals" / "tasks" / "priority-order.yaml")
+    ok = [create("t2", (9, 0), (10, 30)), create("t1", (10, 30), (12, 0))]
+    fails = eval_tasks.score(s, ok, ["2030-10-14 22:00-22:30 Home: Taxes: ends after the deadline"], [])
+    assert eval_tasks.outcome_ok(fails) and not eval_tasks.clean(fails)
+    assert not eval_tasks.outcome_ok(eval_tasks.score(s, ok[:1], [], []))

@@ -191,8 +191,21 @@ def _fits(tasks: list[Task], days: list[date], events: list[Event], now: datetim
             spans = [(a, b) for a, b in spans if b > a and minutes(a, b) >= need]
             if spans:
                 parts.append(f"{DAY_NAMES[d.weekday()][:3]} {_spans(d, spans)}")
-        out[t.id] = "; ".join(parts) or "nowhere in the days you plan"
+        out[t.id] = "; ".join(parts) or NOWHERE
     return out
+
+
+NOWHERE = "nowhere in the days you plan"
+
+
+def _shown(tasks: list[Task], days: list[date], events: list[Event], now: datetime,
+           left: dict[str, int]) -> list[Task]:
+    """Tasks the model should see for these days: ones it can work on, plus
+    ones due within them (so it reports them when they don't fit). A task that
+    can only start later is left out, or a small model places it anyway."""
+    fits = _fits(tasks, days, events, now, left)
+    return [t for t in tasks if left.get(t.id, 0) > 0 and (
+        fits[t.id] != NOWHERE or overdue(t, now) or (t.due is not None and t.due.date() <= max(days)))]
 
 
 def _fmt(ev: Event) -> str:
@@ -231,7 +244,8 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
         if not mine and not prev:
             lines.append("- nothing")
         d += timedelta(days=1)
-    pending = task_lines(list(tasks), left or {}, now, _fits(list(tasks), days, taken, now, left or {}))
+    visible = _shown(list(tasks), days, taken, now, left or {})
+    pending = task_lines(visible, left or {}, now, _fits(visible, days, taken, now, left or {}))
     if pending:
         lines += ["", "# Tasks"] + pending
     return "\n".join(lines)
@@ -311,6 +325,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
             problems.append(f"{label}: starts before now ({now:%Y-%m-%d %H:%M})")
             continue
         have = running.get(b.task_id, 0) if b.task_id is not None else 0
+        if b.task_id in by_id and not by_id[b.task_id].done and have <= 0:
+            continue  # the task is already placed in full: a surplus block is noise, not a problem
         if 0 < have < minutes(start, end):
             # a task block longer than what is left is cut, not refused: small models miscount
             end = start + timedelta(minutes=have)
@@ -423,7 +439,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     previous = [e for e in events if e.managed and e.start.date() in planned and e.start >= now]
     shown = [e for e in events if e not in previous]
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left)
-    open_ids = [t.id for t in tasks if not t.done and (left or {}).get(t.id, 0) > 0]
+    open_ids = [t.id for t in _shown(list(tasks), days, shown, now, left or {})]
     schema = plan_schema(categories, days, open_ids, notes, events)
     note_text = _norm(notes)
     good: list[Block] = []

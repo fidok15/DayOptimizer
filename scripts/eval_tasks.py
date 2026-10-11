@@ -3,9 +3,10 @@
     uv run python scripts/eval_tasks.py --backend ollama --few-shot off
     uv run python scripts/eval_tasks.py --backend anthropic --only overdue
 
-Hard failures (a broken rule, a task not placed or not reported) fail the
-scenario; soft ones (order, block length) are printed but don't. Run it with
---few-shot off and on to see what the worked examples add."""
+A scenario passes when its tasks are placed or reported as expected (the
+outcome); it is "clean" when, on top of that, the validator had to drop none
+of the model's blocks. Soft misses (order, block length) are printed only.
+Run it with --few-shot off and on to see what the worked examples add."""
 from __future__ import annotations
 import argparse
 from datetime import date, datetime
@@ -73,6 +74,17 @@ def score(s: dict, changes, problems: list[str], unscheduled: list[str]) -> list
     return fails
 
 
+def outcome_ok(fails: list[str]) -> bool:
+    """Tasks placed or reported as expected; blocks the validator dropped
+    don't reach the calendar, so they don't spoil the outcome."""
+    return not [f for f in fails if not f.startswith(("soft:", "rule:"))]
+
+
+def clean(fails: list[str]) -> bool:
+    """The outcome, and the model's answer needed no block dropped."""
+    return outcome_ok(fails) and not [f for f in fails if f.startswith("rule:")]
+
+
 class Counting:
     """Counts the rounds plan_days needed (1 = right the first time)."""
 
@@ -105,7 +117,7 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     inner = _backend(a.backend, a.model)
     paths = [x for x in sorted(SCENARIOS.glob("*.yaml")) if a.only in (None, x.stem)]
-    passed = runs = 0
+    passed = tidy = runs = 0
     for path in paths:
         s = load(path)
         for _ in range(a.repeat):
@@ -120,12 +132,13 @@ def main(argv=None) -> int:
                 print(f"ERROR {s['name']}: {' '.join(str(exc).split())[:200]}")
                 continue
             fails = score(s, changes, problems, unscheduled)
-            hard = [f for f in fails if not f.startswith("soft:")]
-            passed += not hard
-            print(f"{'PASS' if not hard else 'FAIL'} {s['name']} ({backend.rounds} rounds)")
+            passed += outcome_ok(fails)
+            tidy += clean(fails)
+            mark = "PASS" if outcome_ok(fails) else "FAIL"
+            print(f"{mark}{' clean' if clean(fails) else ''} {s['name']} ({backend.rounds} rounds)")
             for f in fails:
                 print(f"    {f}")
-    print(f"\n{passed}/{runs} passed  backend={a.backend} few-shot={a.few_shot}")
+    print(f"\n{passed}/{runs} outcome correct, {tidy}/{runs} clean  backend={a.backend} few-shot={a.few_shot}")
     return 0 if passed == runs else 1
 
 
