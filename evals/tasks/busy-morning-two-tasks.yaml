@@ -1,0 +1,11 @@
+now: "2030-10-14 08:00"
+days: [2030-10-14]
+routine: default
+events:
+  - {id: e1, calendar: Job, title: Workshop, day: 2030-10-14, start: "08:00", end: "12:00"}
+  - {id: e2, calendar: Friends, title: Dinner out, day: 2030-10-14, start: "20:00", end: "22:00"}
+tasks:
+  - {id: t1, title: Send invoice, category: Work, duration_min: 60, due: "2030-10-14 18:00"}
+  - {id: t2, title: Flashcards, category: Learn, duration_min: 90, due: "2030-10-14 23:00", min_chunk_min: 45}
+expect:
+  placed: [t1, t2]

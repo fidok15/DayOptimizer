@@ -1,0 +1,11 @@
+now: "2030-10-14 08:00"
+days: [2030-10-14]
+routine: default
+events:
+  - {id: e1, calendar: Uni, title: Lecture, day: 2030-10-14, start: "14:00", end: "18:00"}
+tasks:
+  - {id: t1, title: Taxes, category: Home, duration_min: 90, due: "2030-10-14 23:00", priority: normal}
+  - {id: t2, title: Bug fix, category: Work, duration_min: 90, due: "2030-10-14 23:00", priority: high}
+expect:
+  placed: [t1, t2]
+  before: [[t2, t1]]

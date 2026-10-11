@@ -1,0 +1,11 @@
+now: "2030-10-14 08:00"
+days: [2030-10-14]
+routine: default
+events:
+  - {id: e1, calendar: Job, title: Shift, day: 2030-10-14, start: "09:00", end: "13:00"}
+  - {id: e2, calendar: Job, title: Shift, day: 2030-10-14, start: "13:30", end: "19:00"}
+  - {id: e3, calendar: Uni, title: Evening class, day: 2030-10-14, start: "19:30", end: "22:00"}
+tasks:
+  - {id: t1, title: Essay, category: Learn, duration_min: 120, due: "2030-10-14 22:00", min_chunk_min: 60}
+expect:
+  unscheduled: [t1]
