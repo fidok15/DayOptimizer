@@ -591,3 +591,20 @@ def test_a_small_model_gets_its_forgotten_meal_back_near_its_usual_time():
                                        routine_days=lunch)
     assert dropped == []
     assert [(c.title, c.new_start, c.new_end) for c in changes] == [("Lunch", at(MON, "15:30"), at(MON, "16:30"))]
+
+
+def test_a_category_with_only_a_time_rule_does_not_let_filler_blocks_through():
+    rules = parse_rules([{"type": "not_after", "category": "Food", "time": "21:00", "source": "x"}])
+    plan = WeekPlan(blocks=[block(MON, "17:00", "18:00", "Food", "Free time")])
+    creates, problems = validate(plan, [MON], CATS, [LECTURE, LAB], NOTES, rules, NOW, routine_days=SLEEP_LUNCH)
+    assert creates == [] and problems == []
+
+
+def test_a_routine_block_the_model_put_on_an_event_is_refilled_once_and_a_second_sleep_is_not_forgotten():
+    routine = {MON: SLEEP_LUNCH[MON] + [(at(MON, "23:00"), at(MON, "23:59"), "Gym", "Sleep", True)]}
+    backend = Small(WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "14:00", "14:30")]),
+                    WeekPlan(blocks=[block(MON, "15:00", "15:30")]), WeekPlan())
+    changes, _, _, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB], NOTES, [], NOW,
+                                 routine_days=routine)
+    assert sorted((c.title, c.new_start) for c in changes) == [
+        ("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "00:00")), ("Sleep", at(MON, "23:00"))]

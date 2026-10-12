@@ -336,7 +336,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     kept: list[tuple[datetime, datetime, Block]] = []
     open_by_name = {(t.category, t.title.strip().casefold()): t.id for t in tasks if not t.done}
     fixed = [x for spans in (reserved or {}).values() for x in spans]
-    counted = {r.category for r in rules}
+    counted = {r.category for r in rules if r.type in ("max_per_week", "min_gap_days")}
     for b in sorted(plan.blocks, key=lambda b: (b.day, b.start)):
         if b.task_id is None and (b.category, b.title.strip().casefold()) in open_by_name:
             # a block named like an open task is that task's work, so it counts toward it
@@ -363,8 +363,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         usual = [minutes(rs, re_) for rs, re_, cat, title, _ in (routine_days or {}).get(day, [])
                  if cat == b.category and title.strip().casefold() == b.title.strip().casefold()]
         if b.task_id is None and (routine_days or {}).get(day) and b.category not in counted:
-            if not usual:
-                continue
+            same = sum(1 for _, _, k in kept if k.task_id is None and k.category == b.category
+                       and k.title.strip().casefold() == b.title.strip().casefold() and k.day == b.day)
+            if not usual or same >= len(usual):
+                continue  # made up, or a second copy of a routine block the day already has
             if minutes(start, end) > max(usual):
                 end = start + timedelta(minutes=max(usual))
                 b = b.model_copy(update={"end": f"{(start_m + max(usual)) // 60:02d}:{(start_m + max(usual)) % 60:02d}"})
@@ -530,11 +532,14 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     the free time nearest its usual time, up to two hours either way."""
     taken = [t for t in map(_times, blocks) if t] + [(e.start, e.end) for e in events
                                                      if not e.all_day and (not e.managed or e.start < now)]
-    have = {(b.day, b.category, b.title) for b in blocks}
+    busy = [(e.start, e.end) for e in events if not e.all_day and (not e.managed or e.start < now)]
+    # a block the model placed on top of an event will be refused, so it doesn't count as there
+    have = [(b.day, b.category, b.title, t[0]) for b, t in ((b, _times(b)) for b in blocks)
+            if t and not any(x < t[1] and y > t[0] for x, y in busy)]
     out = []
     for d, spans in (routine_days or {}).items():
         for s, e, cat, title, fixed in spans:
-            if (d.isoformat(), cat, title) in have:
+            if any(h[:3] == (d.isoformat(), cat, title) and abs(h[3] - s) <= timedelta(hours=2) for h in have):
                 continue
             day_end = datetime.combine(d, time(0)).astimezone() + timedelta(days=1)
             shifts = [0] if fixed else [0] + [m for k in range(15, 121, 15) for m in (-k, k)]
