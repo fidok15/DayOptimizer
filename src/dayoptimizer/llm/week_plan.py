@@ -560,15 +560,15 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     """Task minutes the model left out, placed by code in the earliest free time
     that keeps the task's chunks and the notes. Only on a run's last chance for
     the task (its deadline day, or the last day planned when the deadline is
-    later), only on days with a routine (so sleep is known), and never for a
-    task without a deadline: a replan that pushed a task out must not lose it,
-    but code should not front-load the week."""
+    later or there is none) and only on days with a routine (so sleep is
+    known): a replan that pushed a task out must not lose it, but code should
+    not front-load the week."""
     out = []
     taken = list(taken)
-    for t in sorted((t for t in tasks if t.due is not None and not t.done and not overdue(t, now)),
-                    key=lambda t: t.due):
+    for t in sorted((t for t in tasks if not t.done and not overdue(t, now)),
+                    key=lambda t: (t.due is None, t.due or now)):
         need = after.get(t.id, 0)
-        last = min(t.due.date(), fill_until)
+        last = min(t.due.date(), fill_until) if t.due else fill_until
         if need <= 0 or last not in days:
             continue
         lo, hi = window(t, now)
@@ -576,7 +576,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
         for d in [x for x in sorted(days) if x <= last and routine_days.get(x)] * 2:
             midnight = datetime.combine(d, time(0)).astimezone()
             for a, b in free_gaps(d, taken, now):
-                a, b = max(a, lo), min(b, hi)
+                a, b = max(a, lo), b if hi is None else min(b, hi)
                 while need > 0 and minutes(a, b) >= (chunk := min(t.min_chunk_min or t.duration_min, need)):
                     s_m = minutes(midnight, a)
                     # the longest piece from here the notes allow (a "not after" cuts it short)

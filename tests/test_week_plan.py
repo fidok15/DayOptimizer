@@ -618,3 +618,10 @@ def test_code_puts_the_last_short_piece_of_a_task_in_an_earlier_small_gap():
                                  left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
     assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [
         (at(MON, "12:00"), at(MON, "12:30")), (at(MON, "15:00"), at(MON, "16:30"))]
+
+
+def test_a_task_without_a_deadline_is_not_lost_when_a_replan_pushes_it_out():
+    backend = Small(WeekPlan(), WeekPlan(), WeekPlan())
+    changes, _, _, _ = plan_days(backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+                                 tasks=[task(due=None)], left={"t1": 120}, routine_days=sleep_only(MON))
+    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(MON, "07:00"), at(MON, "09:00"))]
