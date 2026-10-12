@@ -608,3 +608,13 @@ def test_a_routine_block_the_model_put_on_an_event_is_refilled_once_and_a_second
                                  routine_days=routine)
     assert sorted((c.title, c.new_start) for c in changes) == [
         ("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "00:00")), ("Sleep", at(MON, "23:00"))]
+
+
+def test_code_puts_the_last_short_piece_of_a_task_in_an_earlier_small_gap():
+    busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, ev("b", "Uni", "Call", MON, "12:30", "13:00"),
+            LAB, ev("c", "Uni", "Evening", MON, "16:30", "23:59")]
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
+    creates, problems = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(TUE, "12:00"))],
+                                 left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
+    assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [
+        (at(MON, "12:00"), at(MON, "12:30")), (at(MON, "15:00"), at(MON, "16:30"))]

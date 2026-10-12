@@ -571,13 +571,13 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
         last = min(t.due.date(), fill_until)
         if need <= 0 or last not in days:
             continue
-        chunk = min(t.min_chunk_min or t.duration_min, need)
         lo, hi = window(t, now)
-        for d in sorted(x for x in days if x <= last and routine_days.get(x)):
+        # two passes: the short last piece may fit a gap the full chunk skipped
+        for d in [x for x in sorted(days) if x <= last and routine_days.get(x)] * 2:
             midnight = datetime.combine(d, time(0)).astimezone()
             for a, b in free_gaps(d, taken, now):
                 a, b = max(a, lo), min(b, hi)
-                while need > 0 and minutes(a, b) >= chunk:
+                while need > 0 and minutes(a, b) >= (chunk := min(t.min_chunk_min or t.duration_min, need)):
                     s_m = minutes(midnight, a)
                     # the longest piece from here the notes allow (a "not after" cuts it short)
                     n = next((n for n in range(min(need, minutes(a, b)), chunk - 1, -15)
