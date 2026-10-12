@@ -1,0 +1,10 @@
+now: "2030-10-14 08:00"
+days: [2030-10-14]
+routine: default
+events:
+  - {id: e1, calendar: Job, title: Meeting, day: 2030-10-14, start: "09:00", end: "12:00"}
+  - {id: e2, calendar: Uni, title: Class, day: 2030-10-14, start: "14:00", end: "17:00"}
+tasks:
+  - {id: t1, title: Report, category: Work, duration_min: 180, due: "2030-10-14 22:00", min_chunk_min: 60}
+expect:
+  placed: [t1]

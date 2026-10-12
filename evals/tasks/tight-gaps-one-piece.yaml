@@ -1,0 +1,12 @@
+now: "2030-10-17 08:00"
+days: [2030-10-17]
+routine: default
+events:
+  - {id: e1, calendar: Job, title: Standup, day: 2030-10-17, start: "09:00", end: "09:30"}
+  - {id: e2, calendar: Job, title: Review, day: 2030-10-17, start: "10:15", end: "12:00"}
+  - {id: e3, calendar: Job, title: Planning, day: 2030-10-17, start: "14:00", end: "18:30"}
+  - {id: e4, calendar: Friends, title: Cinema, day: 2030-10-17, start: "19:30", end: "23:00"}
+tasks:
+  - {id: t1, title: Call bank, category: Home, duration_min: 45, due: "2030-10-17 13:00"}
+expect:
+  placed: [t1]

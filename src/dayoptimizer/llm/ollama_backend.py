@@ -79,7 +79,8 @@ class OllamaBackend:
     def __init__(self, model: str = "qwen3:8b"):
         self.model = model
 
-    def _chat(self, system: str, user: str, schema: dict | None = None, timeout: int = 180) -> str:
+    def _chat(self, system: str, user: str, schema: dict | None = None, timeout: int = 180,
+              num_predict: int | None = None) -> str:
         ensure_running()
         body = {
             "model": self.model,
@@ -88,6 +89,8 @@ class OllamaBackend:
             "think": False,
             "options": {"temperature": 0},
         }
+        if num_predict:
+            body["options"]["num_predict"] = num_predict
         if schema:
             body["format"] = schema
         req = Request(f"{_host()}/api/chat", data=json.dumps(body).encode(),
@@ -113,9 +116,19 @@ class OllamaBackend:
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
 
-    def plan_week(self, system: str, prompt: str):
+    def parse_task(self, text: str, now: str, categories: list[str]):
+        from dayoptimizer.llm.task_request import TASK_SYSTEM, TaskRequest, task_prompt
+        schema = TaskRequest.model_json_schema()
+        schema["properties"]["category"]["enum"] = list(categories) + [""]
+        raw = self._chat(TASK_SYSTEM, task_prompt(text, now, categories), schema)
+        return TaskRequest.model_validate_json(raw)
+
+    def plan_week(self, system: str, prompt: str, schema: dict | None = None):
+        """`schema` is the answer schema with the allowed values filled in
+        (week_plan.plan_schema). The answer is capped so a model that starts
+        repeating itself stops instead of running for many minutes."""
         from dayoptimizer.llm.week_plan import WeekPlan
-        raw = self._chat(system, prompt, WeekPlan.model_json_schema(), timeout=900)
+        raw = self._chat(system, prompt, schema or WeekPlan.model_json_schema(), timeout=300, num_predict=2000)
         return WeekPlan.model_validate_json(raw)
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:

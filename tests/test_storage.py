@@ -187,3 +187,44 @@ def test_damaged_db_is_set_aside_and_recreated(tmp_path):
     assert s.get_garmin("2026-07-03").sleep_score == 70
     assert len(list(tmp_path.glob("t.db.corrupt-*"))) == 1
     assert db.stat().st_mode & 0o777 == 0o600
+
+
+from dayoptimizer.core.models import Task
+
+
+def _task(tid="t1", **kw):
+    return Task(id=tid, title="Report", category="Work", duration_min=180,
+                due=datetime(2030, 10, 18, 17, tzinfo=timezone.utc), **kw)
+
+
+def test_task_roundtrip_and_ids(tmp_path):
+    s = Storage(tmp_path / "t.db")
+    assert s.next_task_id() == "t1"
+    s.save_task(_task(min_chunk_min=60, priority="high"))
+    got = s.get_task("t1")
+    assert got == _task(min_chunk_min=60, priority="high")
+    assert s.next_task_id() == "t2"
+    assert s.get_task("t9") is None
+
+
+def test_open_tasks_sorted_and_done_left_out(tmp_path):
+    s = Storage(tmp_path / "t.db")
+    for tid in ("t10", "t2", "t3"):
+        s.save_task(_task(tid))
+    assert s.mark_task_done("t3") is True
+    assert s.mark_task_done("t99") is False
+    assert [t.id for t in s.open_tasks()] == ["t2", "t10"]
+
+
+def test_old_rows_without_task_id_still_load(tmp_path):
+    s = Storage(tmp_path / "t.db")
+    old_event = {"id": "a", "calendar": "Gym", "title": "Workout", "start": "2026-07-03T17:00:00+00:00",
+                 "end": "2026-07-03T18:00:00+00:00", "location": None, "all_day": False, "managed": False}
+    s._conn.execute("INSERT INTO events_cache(id, data, last_seen) VALUES(?, ?, ?)",
+                    ("a", json.dumps(old_event), "2026-07-03"))
+    old_change = {"kind": "move", "category": "Gym", "title": "Workout", "reason": "r", "event_id": "a",
+                  "new_start": None, "new_end": None, "requires_approval": True}
+    s._conn.execute("INSERT INTO pending_changes(ts, data) VALUES(?, ?)", ("2026-07-03", json.dumps(old_change)))
+    s._conn.commit()
+    assert s.events_on("2026-07-03")[0].task_id is None
+    assert s.get_pending()[0][1].task_id is None

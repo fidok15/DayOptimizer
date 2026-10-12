@@ -238,3 +238,11 @@ def test_vanished_event_is_not_blamed_on_a_missing_calendar():
     cal.move_event.side_effect = KeyError("Event g1 not found")
     _, errors = apply_changes([_move()], cal, store, confirm=lambda c: True)
     assert "no longer in the calendar" in errors[0]
+
+
+def test_create_for_a_task_passes_its_id():
+    cal, store = MagicMock(), MagicMock()
+    ch = PlannedChange(kind="create", category="Work", title="Report", reason="task",
+                       new_start=datetime(2026, 7, 3, 9), new_end=datetime(2026, 7, 3, 10), task_id="t3")
+    apply_changes([ch], cal, store, confirm=lambda c: True)
+    cal.create_event.assert_called_once_with("Work", "Report", ch.new_start, ch.new_end, task_id="t3")

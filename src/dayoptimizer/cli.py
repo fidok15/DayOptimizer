@@ -130,7 +130,22 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     from dayoptimizer.llm import backend as llm
     from dayoptimizer.llm.week_plan import plan_days
     from dayoptimizer.routine import render_routine
-    if not rules.has_routine:
+    from dayoptimizer.core.models import PlannedChange
+    from dayoptimizer.llm.task_rules import remaining
+    tasks = storage.open_tasks()
+    week_start = days[0] - timedelta(days=days[0].weekday())
+    lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
+    hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
+    events = calendar.list_events(lo, hi)
+    now = datetime.now().astimezone()
+    # Blocks of a task that is done (or gone) are removed by code, with or without a model.
+    open_ids = {t.id for t in tasks}
+    stale = [e for e in events if e.managed and e.task_id and e.task_id not in open_ids and e.start >= now]
+    if stale:
+        apply_changes([PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
+                                     reason="its task is done") for e in stale], calendar, storage, lambda c: True)
+        events = [e for e in events if e not in stale]
+    if not rules.has_routine and not tasks:
         return None
     _, config = _load_config()
     backends = llm.planning_backends(config.get("llm", {}))
@@ -138,12 +153,18 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         console.print("No language model to plan with (no ANTHROPIC_API_KEY in .env, Ollama not "
                       "running) — placing your routine by rule instead.", markup=False, style="yellow")
         return None
-    week_start = days[0] - timedelta(days=days[0].weekday())
-    lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
-    hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
-    events = calendar.list_events(lo, hi)
-    now = datetime.now().astimezone()
     planned = set(days)
+    # ponytail: task blocks are read from 30 days back to 60 ahead; progress
+    # outside that is missed. Store progress per task if that matters.
+    task_blocks = calendar.list_events(now - timedelta(days=30), now + timedelta(days=60)) if tasks else []
+    left = remaining(tasks, task_blocks, now, planned)
+    routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
+                         datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
+                         b.category, b.title or b.category,
+                         not getattr(getattr(rules, "categories", {}).get(b.category), "movable", True))
+                        for b in rules.typical_week.get(d.weekday(), [])]
+                    for d in days}
+    reserved = {d: [(s, e, title) for s, e, _, title, fixed in spans if fixed] for d, spans in routine_days.items()}
     history: dict[str, list[date]] = {}
     for e in events:
         if not e.all_day and (e.start.date() not in planned or e.start < now):
@@ -159,15 +180,16 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         name = type(backend).__name__.removesuffix("Backend")
         console.print(f"Planning with {name}...", style="dim")
         try:
-            changes, summary, dropped = plan_days(backend, days, routine, list(config["categories"]),
-                                                  window, notes, rules.note_rules, now, health, history,
-                                                  {d for d in days if rules.typical_week.get(d.weekday())})
+            changes, summary, dropped, unscheduled = plan_days(
+                backend, days, routine, list(config["categories"]), window, notes, rules.note_rules, now,
+                health, history, {d for d in days if rules.typical_week.get(d.weekday())},
+                tasks=tasks, left=left, reserved=reserved, routine_days=routine_days)
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
             continue
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
-        return changes, applied, errors, summary, dropped
+        return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
     return None
@@ -228,7 +250,7 @@ def cmd_plan(args, rules, config):
     days = args.week if args.week else 1
     result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules)
     if result is not None:
-        changes, applied, errors, summary, dropped = result
+        changes, applied, errors, summary, dropped, unscheduled = result
         console.print(format_changes(changes), markup=False)
         console.print(f"[green]Applied {len(applied)} changes.[/green]")
         if summary:
@@ -236,6 +258,10 @@ def cmd_plan(args, rules, config):
         if dropped:
             console.print(f"Left out {len(dropped)} block(s) that broke a rule:", markup=False, style="yellow")
             for line in dropped:
+                console.print(f"  {line}", markup=False)
+        if unscheduled:
+            console.print("Tasks that didn't fit:", markup=False, style="yellow")
+            for line in unscheduled:
                 console.print(f"  {line}", markup=False)
         _print_errors(errors)
         return
@@ -420,6 +446,83 @@ def cmd_add(args, rules, config):
         _print_errors(errors)
     _print_pending(storage)
 
+def _task_line(t) -> str:
+    parts = [f"[{t.id}] {t.title} ({t.category}) {t.duration_min} min"]
+    if t.due is not None:
+        parts.append(f"due {t.due:%a %d.%m %H:%M}")
+    if t.not_before is not None:
+        parts.append(f"from {t.not_before:%a %d.%m}")
+    if t.min_chunk_min:
+        parts.append(f"chunks >= {t.min_chunk_min} min")
+    if t.priority != "normal":
+        parts.append(f"{t.priority} priority")
+    return ", ".join(parts)
+
+def cmd_task(args, rules, config):
+    """`dayoptimizer task "report for Friday, 3h"`: understand the task (here,
+    in the terminal), save it and replan the days up to its deadline, so the
+    planner places it into free time. `task list` / `task done t3`."""
+    from dayoptimizer.llm.task_request import task_from_request
+    words = list(args.words)
+    storage = Storage(paths.db_path())
+    if words == ["list"]:
+        tasks = storage.open_tasks()
+        if not tasks:
+            console.print('No open tasks. Add one:  dayoptimizer task "report for Friday, 3h"', markup=False)
+        for t in tasks:
+            console.print(_task_line(t), markup=False)
+        return
+    if len(words) == 2 and words[0] == "done":
+        task = storage.get_task(words[1])
+        if task is None or not storage.mark_task_done(words[1]):
+            console.print(f"No task '{words[1]}'. See  dayoptimizer task list", markup=False, style="yellow")
+            return
+        console.print(f"Done: {words[1]}. Removing its planned blocks...", markup=False, style="green")
+        _replan_for(task, rules, config)
+        return
+    if not rules.categories:
+        console.print("You have no categories yet, so there is nothing to file this under. "
+                      "Add some in  dayoptimizer setup  first.", markup=False, style="yellow")
+        return
+    now = datetime.now()
+    try:
+        req = make_backend(config["llm"]).parse_task(" ".join(words), now=f"{now:%A %Y-%m-%d %H:%M}",
+                                                     categories=list(rules.categories))
+    except LLMUnavailable as exc:
+        console.print(f"{exc}\nUnderstanding a task needs a language model.", markup=False, style="yellow")
+        return
+    except Exception as exc:
+        console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
+                      markup=False, style="yellow")
+        return
+    task, problem = task_from_request(req, list(rules.categories), now.date(), storage.next_task_id())
+    if task is None:
+        console.print(problem, markup=False, style="yellow")
+        return
+    console.print("New task:")
+    console.print(f"  {_task_line(task)}", markup=False)
+    if sys.stdin.isatty():
+        try:
+            answer = console.input("Save it and place it in your calendar? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"
+        if answer not in ("", "y", "yes", "t", "tak"):
+            console.print("Nothing saved.")
+            return
+    storage.save_task(task)
+    console.print("Placing it in your calendar...", style="dim")
+    _replan_for(task, rules, config)
+
+def _replan_for(task, rules, config):
+    """Replan from today up to the task's deadline (a week at most), in the
+    calendar bundle: that places a new task and removes a finished one's blocks."""
+    today = date.today()
+    days = 7 if task.due is None else max(1, min(7, (task.due.date() - today).days + 1))
+    if _in_bundle() or sys.platform != "darwin":
+        cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
+    else:
+        console.print(_calendar_run(["plan", "--week", str(days)]), markup=False)
+
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
     console.print("[bold]DayOptimizer[/bold] — tell me about your day ('exit' to quit).")
@@ -558,7 +661,7 @@ def _ids(value: str) -> str:
         raise argparse.ArgumentTypeError(f"'{value}' should be pending ids like 3,4")
     return value
 
-_TAKES_WORDS = {"ask", "add", "agent", "garmin"}
+_TAKES_WORDS = {"ask", "add", "agent", "garmin", "task"}
 
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
@@ -593,6 +696,9 @@ def main(argv: list[str] | None = None):
     p_ask.add_argument("text")
     p_add = sub.add_parser("add")
     p_add.add_argument("events")
+    p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
+                                         'task list; task done t3')
+    p_task.add_argument("words", nargs="+")
     sub.add_parser("check", help="stateless background cycle (sleep, new events, stress)")
     sub.add_parser("stats", help="14-day Garmin trends and suggestions")
     p_agent = sub.add_parser("agent", help="manage the background agent (launchd)")
@@ -634,7 +740,7 @@ def main(argv: list[str] | None = None):
         console.print(_calendar_run(argv), markup=False)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add,
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "task": cmd_task,
      "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":

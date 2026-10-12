@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import time
 from datetime import datetime
 from dayoptimizer.core.models import Event
@@ -24,10 +25,21 @@ def _hex(nscolor) -> str:
 
 MARKER = "Planned by DayOptimizer"
 
+TASK_TAG = "Task: "
+_TASK_RE = re.compile(r"^Task: (\S+)$", re.M)
+
+
+def task_id_from_notes(notes: str) -> str | None:
+    """Which task a planner block works on (the line `create_event` writes)."""
+    m = _TASK_RE.search(notes or "")
+    return m.group(1) if m else None
+
+
 def ek_to_event(identifier, calendar_title, title, start, end, location, all_day=False,
-                managed=False) -> Event:
+                managed=False, task_id=None) -> Event:
     return Event(id=identifier, calendar=normalize_calendar(calendar_title), title=title,
-                 start=start, end=end, location=location, all_day=all_day, managed=managed)
+                 start=start, end=end, location=location, all_day=all_day, managed=managed,
+                 task_id=task_id)
 
 class CalendarClient:
     def __init__(self):
@@ -60,6 +72,8 @@ class CalendarClient:
         ek_events = self._store.eventsMatchingPredicate_(pred) or []
         out = []
         for ev in ek_events:
+            notes = str(ev.notes() or "")
+            managed = MARKER in notes
             out.append(ek_to_event(
                 str(ev.eventIdentifier()),
                 str(ev.calendar().title()),
@@ -68,7 +82,8 @@ class CalendarClient:
                 datetime.fromtimestamp(ev.endDate().timeIntervalSince1970()).astimezone(),
                 str(ev.location()) if ev.location() else None,
                 bool(ev.isAllDay()),
-                MARKER in str(ev.notes() or ""),
+                managed,
+                task_id_from_notes(notes) if managed else None,
             ))
         return sorted(out, key=lambda e: e.start)
 
@@ -138,7 +153,8 @@ class CalendarClient:
             raise KeyError(f"couldn't recolour '{name}' ({err})")
         return True
 
-    def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime) -> str:
+    def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime,
+                     task_id: str | None = None) -> str:
         EventKit = self._EventKit
         target = self._find_calendar(calendar_name)
         if target is None:
@@ -151,7 +167,7 @@ class CalendarClient:
         ev.setStartDate_(self._nsdate(start))
         ev.setEndDate_(self._nsdate(end))
         ev.setCalendar_(target)
-        ev.setNotes_(MARKER)
+        ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else ""))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")

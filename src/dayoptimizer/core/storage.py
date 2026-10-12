@@ -6,7 +6,7 @@ import sys
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from dayoptimizer.core.models import Activity, Event, GarminSummary, PlannedChange
+from dayoptimizer.core.models import Activity, Event, GarminSummary, PlannedChange, Task
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS garmin_daily (date TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS pending_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 """
 
 
@@ -28,6 +29,16 @@ def _event_from_json(payload: dict) -> Event:
     payload["start"] = datetime.fromisoformat(payload["start"])
     payload["end"] = datetime.fromisoformat(payload["end"])
     return Event(**payload)
+
+_TASK_TIMES = ("due", "not_before")
+
+
+def _task_from_json(payload: dict) -> Task:
+    payload = dict(payload)
+    for k in _TASK_TIMES:
+        if payload.get(k):
+            payload[k] = datetime.fromisoformat(payload[k])
+    return Task(**payload)
 
 class Storage:
     def __init__(self, db_path: str | Path):
@@ -208,6 +219,36 @@ class Storage:
         self._conn.execute(
             f"DELETE FROM pending_changes WHERE id IN ({','.join('?' * len(ids))})", ids)
         self._conn.commit()
+
+    def save_task(self, task: Task) -> None:
+        payload = asdict(task)
+        for k in _TASK_TIMES:
+            if payload[k] is not None:
+                payload[k] = payload[k].isoformat()
+        self._conn.execute(
+            "INSERT INTO tasks(id, data) VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+            (task.id, json.dumps(payload)))
+        self._conn.commit()
+
+    def get_task(self, task_id: str) -> Task | None:
+        row = self._conn.execute("SELECT data FROM tasks WHERE id=?", (task_id,)).fetchone()
+        return _task_from_json(json.loads(row[0])) if row else None
+
+    def open_tasks(self) -> list[Task]:
+        tasks = [_task_from_json(json.loads(r[0])) for r in self._conn.execute("SELECT data FROM tasks")]
+        return sorted((t for t in tasks if not t.done), key=lambda t: int(t.id[1:]))
+
+    def next_task_id(self) -> str:
+        ids = [r[0] for r in self._conn.execute("SELECT id FROM tasks")]
+        return f"t{max((int(i[1:]) for i in ids), default=0) + 1}"
+
+    def mark_task_done(self, task_id: str) -> bool:
+        task = self.get_task(task_id)
+        if task is None:
+            return False
+        task.done = True
+        self.save_task(task)
+        return True
 
     def close(self) -> None:
         self._conn.close()

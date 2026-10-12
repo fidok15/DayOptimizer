@@ -13,6 +13,7 @@ class Event:
     location: str | None = None
     all_day: bool = False
     managed: bool = False
+    task_id: str | None = None
 
 @dataclass
 class GarminSummary:
@@ -50,3 +51,19 @@ class PlannedChange:
     new_start: datetime | None = None
     new_end: datetime | None = None
     requires_approval: bool = False
+    task_id: str | None = None
+
+
+@dataclass
+class Task:
+    """Work with a length the planner places into free time, before `due`
+    and not before `not_before`. `min_chunk_min` None = one piece."""
+    id: str
+    title: str
+    category: str
+    duration_min: int
+    due: datetime | None = None
+    not_before: datetime | None = None
+    min_chunk_min: int | None = None
+    priority: Literal["low", "normal", "high"] = "normal"
+    done: bool = False

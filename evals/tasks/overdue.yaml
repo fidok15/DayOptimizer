@@ -1,0 +1,9 @@
+now: "2030-10-14 10:00"
+days: [2030-10-14]
+routine: default
+events:
+  - {id: e1, calendar: Uni, title: Lecture, day: 2030-10-14, start: "11:00", end: "13:00"}
+tasks:
+  - {id: t1, title: Pay rent, category: Home, duration_min: 30, due: "2030-10-13 20:00"}
+expect:
+  placed: [t1]

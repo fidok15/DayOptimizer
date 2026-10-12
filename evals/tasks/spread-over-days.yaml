@@ -1,0 +1,13 @@
+now: "2030-10-14 08:00"
+days: [2030-10-14, 2030-10-15, 2030-10-16]
+routine: default
+events:
+  - {id: e1, calendar: Uni, title: Lectures, day: 2030-10-14, start: "09:00", end: "13:00"}
+  - {id: e2, calendar: Uni, title: Lectures, day: 2030-10-15, start: "09:00", end: "13:00"}
+  - {id: e3, calendar: Uni, title: Lectures, day: 2030-10-16, start: "09:00", end: "13:00"}
+tasks:
+  - {id: t1, title: Thesis chapter, category: Learn, duration_min: 360, due: "2030-10-16 20:00",
+     min_chunk_min: 60}
+expect:
+  placed: [t1]
+  max_block_min: 180

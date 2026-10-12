@@ -121,3 +121,18 @@ def test_set_color_recolours_only_when_different(monkeypatch):
     assert client.set_color("Work", "#C2C2C2") is False
     assert client.set_color("Work", "#4fb286") is True and work.color() == "#4fb286"
     assert client.set_color("Nope", "#4fb286") is False
+
+
+from dayoptimizer.core.calendar import task_id_from_notes
+
+
+def test_task_id_from_notes():
+    assert task_id_from_notes("Planned by DayOptimizer\nTask: t12") == "t12"
+    assert task_id_from_notes("Planned by DayOptimizer") is None
+    assert task_id_from_notes("") is None
+
+
+def test_ek_to_event_carries_task_id():
+    e = ek_to_event("X", "Work", "Report", datetime(2026, 7, 3, 9), datetime(2026, 7, 3, 10), None,
+                    managed=True, task_id="t3")
+    assert e.task_id == "t3" and e.managed
