@@ -311,9 +311,15 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
              history: dict[str, list[date]] | None = None,
              expect: set[date] | frozenset[date] = frozenset(),
              tasks: list[Task] = (), left: dict[str, int] | None = None,
-             report_unplaced: bool = False, reserved: Reserved | None = None) -> tuple[list[PlannedChange], list[str]]:
+             report_unplaced: bool = False, reserved: Reserved | None = None,
+             routine_days: dict | None = None, fill_until: date | None = None,
+             ) -> tuple[list[PlannedChange], list[str]]:
     """The blocks that keep every rule, as creates, and what was wrong with the rest.
-    A day in `expect` (its routine has blocks) that comes back empty is a problem too."""
+    A day in `expect` (its routine has blocks) that comes back empty is a problem too.
+    On a day with a routine, a block that is neither a task, a routine block nor
+    in a category the notes count is dropped quietly, and a routine block is cut
+    to its usual length: small models pad free time with made-up blocks.
+    With `fill_until`, task minutes the model left out are placed by code (see `_fill`)."""
     problems: list[str] = []
     wanted = {d.isoformat(): d for d in days}
     note_text = _norm(notes)
@@ -330,6 +336,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     kept: list[tuple[datetime, datetime, Block]] = []
     open_by_name = {(t.category, t.title.strip().casefold()): t.id for t in tasks if not t.done}
     fixed = [x for spans in (reserved or {}).values() for x in spans]
+    counted = {r.category for r in rules}
     for b in sorted(plan.blocks, key=lambda b: (b.day, b.start)):
         if b.task_id is None and (b.category, b.title.strip().casefold()) in open_by_name:
             # a block named like an open task is that task's work, so it counts toward it
@@ -353,6 +360,14 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         if start < now:
             problems.append(f"{label}: starts before now ({now:%Y-%m-%d %H:%M})")
             continue
+        usual = [minutes(rs, re_) for rs, re_, cat, title, _ in (routine_days or {}).get(day, [])
+                 if cat == b.category and title.strip().casefold() == b.title.strip().casefold()]
+        if b.task_id is None and (routine_days or {}).get(day) and b.category not in counted:
+            if not usual:
+                continue
+            if minutes(start, end) > max(usual):
+                end = start + timedelta(minutes=max(usual))
+                b = b.model_copy(update={"end": f"{(start_m + max(usual)) // 60:02d}:{(start_m + max(usual)) % 60:02d}"})
         have = running.get(b.task_id, 0) if b.task_id is not None else 0
         if b.task_id in by_id and not by_id[b.task_id].done and have <= 0:
             continue  # the task is already placed in full: a surplus block is noise, not a problem
@@ -386,11 +401,19 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         kept.append((start, end, b))
     kept, count_problems = _count_rules(kept, rules, history or {})
     problems += count_problems
-    used: dict[str, int] = {}
-    for s, e, b in kept:
-        if b.task_id is not None:
-            used[b.task_id] = used.get(b.task_id, 0) + minutes(s, e)
-    after = {tid: n - used.get(tid, 0) for tid, n in left.items()}
+
+    def leftover():
+        used: dict[str, int] = {}
+        for s, e, b in kept:
+            if b.task_id is not None:
+                used[b.task_id] = used.get(b.task_id, 0) + minutes(s, e)
+        return {tid: n - used.get(tid, 0) for tid, n in left.items()}
+    after = leftover()
+    if fill_until is not None:
+        taken = blocking + [Event(id="kept", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in kept]
+        kept += _fill(list(tasks), after, days, fill_until, taken + _reserved_events(reserved), rules, now,
+                      routine_days or {})
+        after = leftover()
     listed = {u.task_id for u in plan.unscheduled}
     problems += [f"unscheduled {u.task_id}: not one of the tasks" for u in plan.unscheduled if u.task_id not in by_id]
     if not report_unplaced:
@@ -501,26 +524,77 @@ def _times(b: Block) -> tuple[datetime, datetime] | None:
     return midnight + timedelta(minutes=s), midnight + timedelta(minutes=e if e else 1440)
 
 
-def _forgotten_fixed(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime) -> list[Block]:
-    """Fixed routine blocks (sleep, ...) a small model left out, at their usual
-    time, where nothing else is: fixed means they don't move anyway."""
+def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime) -> list[Block]:
+    """Routine blocks a small model left out. A fixed one (sleep, ...) goes
+    back at its usual time where nothing else is; a movable one (a meal) at
+    the free time nearest its usual time, up to two hours either way."""
     taken = [t for t in map(_times, blocks) if t] + [(e.start, e.end) for e in events
                                                      if not e.all_day and (not e.managed or e.start < now)]
     have = {(b.day, b.category, b.title) for b in blocks}
     out = []
     for d, spans in (routine_days or {}).items():
         for s, e, cat, title, fixed in spans:
-            if not fixed or (d.isoformat(), cat, title) in have or s < now:
+            if (d.isoformat(), cat, title) in have:
                 continue
-            if any(a < e and b > s for a, b in taken):
+            day_end = datetime.combine(d, time(0)).astimezone() + timedelta(days=1)
+            shifts = [0] if fixed else [0] + [m for k in range(15, 121, 15) for m in (-k, k)]
+            for m in shifts:
+                a, b = s + timedelta(minutes=m), e + timedelta(minutes=m)
+                if a >= now and a.date() == d and b <= day_end and not any(x < b and y > a for x, y in taken):
+                    break
+            else:
                 continue
-            out.append(Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, e)]).split("-")[1],
+            taken.append((a, b))
+            out.append(Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, b)]).split("-")[1],
                              category=cat, title=title))
     return out
 
 
+def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
+          rules: list[NoteRule], now: datetime, routine_days: dict) -> list[tuple[datetime, datetime, Block]]:
+    """Task minutes the model left out, placed by code in the earliest free time
+    that keeps the task's chunks and the notes. Only on a run's last chance for
+    the task (its deadline day, or the last day planned when the deadline is
+    later), only on days with a routine (so sleep is known), and never for a
+    task without a deadline: a replan that pushed a task out must not lose it,
+    but code should not front-load the week."""
+    out = []
+    taken = list(taken)
+    for t in sorted((t for t in tasks if t.due is not None and not t.done and not overdue(t, now)),
+                    key=lambda t: t.due):
+        need = after.get(t.id, 0)
+        last = min(t.due.date(), fill_until)
+        if need <= 0 or last not in days:
+            continue
+        chunk = min(t.min_chunk_min or t.duration_min, need)
+        lo, hi = window(t, now)
+        for d in sorted(x for x in days if x <= last and routine_days.get(x)):
+            midnight = datetime.combine(d, time(0)).astimezone()
+            for a, b in free_gaps(d, taken, now):
+                a, b = max(a, lo), min(b, hi)
+                while need > 0 and minutes(a, b) >= chunk:
+                    s_m = minutes(midnight, a)
+                    # the longest piece from here the notes allow (a "not after" cuts it short)
+                    n = next((n for n in range(min(need, minutes(a, b)), chunk - 1, -15)
+                              if window_rule(rules, t.category, s_m, s_m + n, d.weekday()) is None), None)
+                    if n is None:
+                        a += timedelta(minutes=15)
+                        continue
+                    end = a + timedelta(minutes=n)
+                    out.append((a, end, Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, end)]).split("-")[1],
+                                              category=t.category, title=t.title, task_id=t.id, why="placed by code")))
+                    taken.append(Event(id="filled", calendar=t.category, title=t.title, start=a, end=end))
+                    need -= n
+                    a = end
+                if need <= 0:
+                    break
+            if need <= 0:
+                break
+    return out
+
+
 def _plan_once(backend, days, routine, categories, events, notes, rules, now, health, history, expect,
-               attempts, tasks, left, few_shot, reserved=None, routine_days=None):
+               attempts, tasks, left, few_shot, reserved=None, routine_days=None, fill_until=None):
     """One request (plus corrections) for these days. A correction keeps the
     blocks that passed and asks only for the rest: a small model asked to redo
     the whole day tends to break what was already right. Returns the validated
@@ -544,12 +618,13 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         blocks = good + answer.blocks
         if small and not good:
             blocks += _unmentioned(answer.blocks, previous, events, now)
-            blocks += _forgotten_fixed(blocks, routine_days, events, now)
+            blocks += _forgotten_routine(blocks, routine_days, events, now)
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
         last = attempt == attempts - 1
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
-                                     tasks=tasks, left=left, report_unplaced=last, reserved=reserved)
+                                     tasks=tasks, left=left, report_unplaced=last, reserved=reserved,
+                                     routine_days=routine_days, fill_until=fill_until)
         if not problems or last:
             return (creates, diff(creates, previous), plan.summary, problems,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
@@ -590,7 +665,7 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
         for d in days:
             creates, ch, summary, dr, un = _plan_once(backend, [d], routine, categories, events, notes, rules,
                                                       now, health, history, expect, attempts, tasks, left,
-                                                      few_shot, reserved, routine_days)
+                                                      few_shot, reserved, routine_days, max(days))
             changes += ch
             dropped += dr
             unscheduled += un
@@ -603,5 +678,6 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
         return changes, " ".join(summaries), dropped, unscheduled
     _, changes, summary, problems, unscheduled = _plan_once(backend, days, routine, categories, events, notes,
                                                            rules, now, health, history, expect, attempts,
-                                                           tasks, left, few_shot, reserved, routine_days)
+                                                           tasks, left, few_shot, reserved, routine_days,
+                                                           max(days))
     return changes, summary, problems, unscheduled

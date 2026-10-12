@@ -542,3 +542,52 @@ def test_a_small_model_gets_its_forgotten_fixed_routine_blocks_back():
                                        routine_days=SLEEP_LUNCH)
     assert dropped == []
     assert sorted((c.title, c.new_start) for c in changes) == [("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "00:00"))]
+
+
+class Small(Fake):
+    one_day_at_a_time = True
+
+
+TUE = MON + timedelta(days=1)
+
+
+def sleep_only(*days):
+    return {d: [(at(d, "00:00"), at(d, "07:00"), "Gym", "Sleep", True)] for d in days}
+
+
+def test_code_places_the_task_minutes_the_model_left_out_when_this_is_their_last_planned_day():
+    # a replan of Monday only: the task is due Wednesday, but Monday is all that is being planned
+    backend = Small(WeekPlan(), WeekPlan(), WeekPlan())
+    changes, _, dropped, unscheduled = plan_days(
+        backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+        tasks=[task(due=at(MON + timedelta(days=2), "17:00"))], left={"t1": 120},
+        reserved={MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep")]}, routine_days=sleep_only(MON))
+    work = [(c.new_start, c.new_end, c.task_id) for c in changes if c.task_id]
+    assert work == [(at(MON, "07:00"), at(MON, "09:00"), "t1")]
+    assert unscheduled == []
+
+
+def test_code_fills_a_task_on_its_last_planned_day_not_the_first():
+    backend = Small(*[WeekPlan() for _ in range(6)])
+    changes, _, _, unscheduled = plan_days(
+        backend, [MON, TUE], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+        tasks=[task(due=at(TUE, "22:00"))], left={"t1": 120}, routine_days=sleep_only(MON, TUE))
+    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(TUE, "07:00"), at(TUE, "09:00"))]
+    assert unscheduled == []
+
+
+def test_blocks_outside_the_routine_are_dropped_and_routine_blocks_keep_their_length():
+    plan = WeekPlan(blocks=[block(MON, "17:00", "18:00", "Food", "Food"), block(MON, "15:00", "17:00")])
+    creates, problems = validate(plan, [MON], CATS, [LECTURE, LAB], NOTES, [], NOW, routine_days=SLEEP_LUNCH)
+    assert problems == []
+    assert [(c.title, c.new_start, c.new_end) for c in creates] == [("Lunch", at(MON, "15:00"), at(MON, "16:00"))]
+
+
+def test_a_small_model_gets_its_forgotten_meal_back_near_its_usual_time():
+    lunch = {MON: [(at(MON, "15:00"), at(MON, "16:00"), "Food", "Lunch", False)]}
+    call = ev("call", "Uni", "Call", MON, "15:00", "15:30")
+    backend = Small(WeekPlan())
+    changes, _, dropped, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB, call], NOTES, [], NOW,
+                                       routine_days=lunch)
+    assert dropped == []
+    assert [(c.title, c.new_start, c.new_end) for c in changes] == [("Lunch", at(MON, "15:30"), at(MON, "16:30"))]
