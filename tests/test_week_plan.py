@@ -555,14 +555,19 @@ def sleep_only(*days):
     return {d: [(at(d, "00:00"), at(d, "07:00"), "Gym", "Sleep", True)] for d in days}
 
 
-def test_code_places_the_task_minutes_the_model_left_out_when_this_is_their_last_planned_day():
-    # a replan of Monday only: the task is due Wednesday, but Monday is all that is being planned
+# a task block the planner had put at 10:00, now under a lecture that came later
+PUSHED = Event(id="old", calendar="Work", title="Report", start=at(MON, "10:00"), end=at(MON, "12:00"),
+               managed=True, task_id="t1")
+
+
+def test_code_puts_back_task_minutes_a_replan_pushed_out():
+    # a replan of Monday only: the task is due Wednesday, its Monday block is now under a lecture
     backend = Small(WeekPlan(), WeekPlan(), WeekPlan())
     changes, _, dropped, unscheduled = plan_days(
-        backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+        backend, [MON], "# routine", WCATS, [LECTURE, LAB, PUSHED], NOTES, [], NOW,
         tasks=[task(due=at(MON + timedelta(days=2), "17:00"))], left={"t1": 120},
         reserved={MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep")]}, routine_days=sleep_only(MON))
-    work = [(c.new_start, c.new_end, c.task_id) for c in changes if c.task_id]
+    work = [(c.new_start, c.new_end, c.task_id) for c in changes if c.task_id and c.kind == "create"]
     assert work == [(at(MON, "07:00"), at(MON, "09:00"), "t1")]
     assert unscheduled == []
 
@@ -614,7 +619,7 @@ def test_code_puts_the_last_short_piece_of_a_task_in_an_earlier_small_gap():
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, ev("b", "Uni", "Call", MON, "12:30", "13:00"),
             LAB, ev("c", "Uni", "Evening", MON, "16:30", "23:59")]
     plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
-    creates, problems = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(TUE, "12:00"))],
+    creates, problems = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(MON, "23:00"))],
                                  left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
     assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [
         (at(MON, "12:00"), at(MON, "12:30")), (at(MON, "15:00"), at(MON, "16:30"))]
@@ -622,6 +627,43 @@ def test_code_puts_the_last_short_piece_of_a_task_in_an_earlier_small_gap():
 
 def test_a_task_without_a_deadline_is_not_lost_when_a_replan_pushes_it_out():
     backend = Small(WeekPlan(), WeekPlan(), WeekPlan())
-    changes, _, _, _ = plan_days(backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+    changes, _, _, _ = plan_days(backend, [MON], "# routine", WCATS, [LECTURE, LAB, PUSHED], NOTES, [], NOW,
                                  tasks=[task(due=None)], left={"t1": 120}, routine_days=sleep_only(MON))
-    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(MON, "07:00"), at(MON, "09:00"))]
+    assert [(c.new_start, c.new_end) for c in changes if c.task_id and c.kind == "create"] == [
+        (at(MON, "07:00"), at(MON, "09:00"))]
+
+
+def test_code_does_not_pile_a_later_task_onto_a_one_day_plan():
+    backend = Small(WeekPlan(), WeekPlan(), WeekPlan())
+    changes, _, _, _ = plan_days(backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+                                 tasks=[task(duration_min=600, due=at(MON + timedelta(days=5), "17:00"))],
+                                 left={"t1": 600}, routine_days=sleep_only(MON))
+    assert [c for c in changes if c.task_id] == []
+
+
+def test_code_placed_task_blocks_keep_the_weekly_notes():
+    rules = parse_rules([{"type": "max_per_week", "category": "Work", "count": 1, "source": "work once a week"}])
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
+    creates, _ = validate(plan, [MON], WCATS, [LECTURE, LAB], NOTES, rules, NOW,
+                          history={"Work": [TUE]}, tasks=[task()], left={"t1": 120},
+                          routine_days=sleep_only(MON), fill_until=MON)
+    assert [c for c in creates if c.task_id] == []
+
+
+def test_a_commute_right_before_an_event_with_a_place_is_not_filler():
+    gym = Event(id="g", calendar="Uni", title="Gym class", start=at(MON, "17:00"), end=at(MON, "18:00"),
+                location="Gym street 1")
+    plan = WeekPlan(blocks=[block(MON, "16:30", "17:00", "Commute", "Commute")])
+    creates, problems = validate(plan, [MON], CATS, [LECTURE, LAB, gym], NOTES, [], NOW, routine_days=SLEEP_LUNCH)
+    assert problems == [] and [c.title for c in creates] == ["Commute"]
+
+
+def test_a_fixed_block_the_model_put_on_an_event_still_comes_back_at_its_usual_time():
+    routine = {MON: [(at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False),
+                     (at(MON, "22:00"), at(MON, "23:59"), "Gym", "Sleep", True)]}
+    late = ev("late", "Uni", "Late lab", MON, "21:00", "22:00")
+    backend = Small(WeekPlan(blocks=[block(MON, "12:00", "13:00"), block(MON, "21:00", "23:00", "Gym", "Sleep")]),
+                    WeekPlan(), WeekPlan())
+    changes, _, _, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB, late], NOTES, [], NOW,
+                                 routine_days=routine)
+    assert sorted((c.title, c.new_start) for c in changes) == [("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "22:00"))]
