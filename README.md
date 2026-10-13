@@ -300,15 +300,29 @@ If you ever rebuild your `.venv` (e.g. after upgrading Python), rerun
   history, change log), your local config, and Garmin OAuth tokens — stays
   under `~/.dayoptimizer`, which is created with mode `0700` (only your user
   account can read it).
+- With a local Ollama model, planning stays on your Mac. When Claude plans
+  (`ANTHROPIC_API_KEY` set), the Anthropic API receives your routine, notes,
+  open tasks and the week's events (titles, times, locations). Garmin data
+  stays local in the terminal app.
 - In plugin mode, event titles and health summaries are sent to Claude as
   part of your conversation (i.e., to the Anthropic API) so Claude can
-  explain and discuss your plan. Nothing is sent anywhere else.
+  explain and discuss your plan.
+- Calendar invites from other people are planning input like your own
+  events. The planner only adds blocks and removes blocks it created
+  itself (marked "Planned by DayOptimizer" in the notes); it never deletes
+  your events, and it moves events in Fixed categories only after you agree.
+- Calendar access is granted to `~/.dayoptimizer/DayOptimizer.app`, which is
+  a copy of the project's Python. Any program running as your user can
+  start that bundle with its own script and read your calendar without a
+  new prompt. Remove the grant in System Settings → Privacy & Security →
+  Calendars when you stop using DayOptimizer.
 - Garmin credentials are used exactly once, at `uv run dayoptimizer garmin login`
   time, by the unofficial `garminconnect` library to obtain OAuth tokens.
   Your password itself is never written to disk — only the resulting OAuth
   tokens are stored, under `~/.dayoptimizer/garmin`.
 - Nothing else leaves your machine. There is no telemetry, analytics, or
-  external server component.
+  external server component. The setup page listens on 127.0.0.1 only and
+  refuses requests from other websites.
 
 ## Configuration
 
