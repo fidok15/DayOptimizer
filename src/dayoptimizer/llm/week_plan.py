@@ -10,6 +10,7 @@ listed; what is still wrong after the last try is dropped, not written.
 """
 from __future__ import annotations
 import re
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
 from dayoptimizer.core.constraints import NoteRule, skippable, window_rule
@@ -454,19 +455,23 @@ def _shares_slot(a: Block, b: Block) -> bool:
     return a.category == b.category and (a.task_id is None) != (b.task_id is None)
 
 
+def _minus(span: tuple[datetime, datetime], cuts) -> list[tuple[datetime, datetime]]:
+    pieces = [span]
+    for cs, ce in cuts:
+        pieces = [x for a, z in pieces for x in ((a, min(z, cs)), (max(a, ce), z)) if x[1] > x[0]]
+    return pieces
+
+
 def _yield_to_tasks(kept: list[tuple[datetime, datetime, Block]]) -> list[tuple[datetime, datetime, Block]]:
-    """Cut each non-task block around the task blocks of its category; pieces
-    under 15 minutes go."""
+    """Cut each non-task block around the task blocks that overlap it; pieces
+    under 15 minutes go. Only allowed overlaps reach here: a task in its
+    category's routine time (validate, _fill)."""
     out = []
     for s, e, b in kept:
         if b.task_id is not None:
             out.append((s, e, b))
             continue
-        pieces = [(s, e)]
-        for ts, te, t in kept:
-            if t.task_id is not None and t.category == b.category:
-                pieces = [x for a, z in pieces for x in ((a, min(z, ts)), (max(a, te), z)) if x[1] > x[0]]
-        for a, z in pieces:
+        for a, z in _minus((s, e), [(ts, te) for ts, te, t in kept if t.task_id is not None]):
             if minutes(a, z) >= 15:
                 d = date.fromisoformat(b.day)
                 out.append((a, z, b if (a, z) == (s, e) else
@@ -606,6 +611,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     as free (the routine block yields to the task)."""
     out = []
     taken = list(taken)
+    fixed_cats = {cat for spans in routine_days.values() for _, _, cat, _, fixed in spans if fixed}
     for t in sorted((t for t in tasks if not t.done and not overdue(t, now)),
                     key=lambda t: (t.due is None, t.due or now)):
         need = after.get(t.id, 0)
@@ -618,7 +624,15 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
         # two passes: the short last piece may fit a gap the full chunk skipped
         for d in [x for x in sorted(days) if x <= last and routine_days.get(x)] * 2:
             midnight = datetime.combine(d, time(0)).astimezone()
-            busy = [e for e in taken if not (e.id == "kept" and e.task_id is None and e.calendar == t.category)]
+            # in the user's routine time for this task's category, the model's other
+            # blocks yield too (small models move them there); fixed categories never do
+            slots = [(a, b) for a, b, cat, _, _ in routine_days.get(d, []) if cat == t.category]
+            busy = []
+            for e in taken:
+                if e.id != "kept" or e.task_id is not None or e.calendar in fixed_cats - {t.category}:
+                    busy.append(e)
+                elif e.calendar != t.category:
+                    busy += [replace(e, start=a, end=b) for a, b in _minus((e.start, e.end), slots)]
             for a, b in free_gaps(d, busy + _reserved_events(reserved, t.category), now):
                 a, b = max(a, lo), b if hi is None else min(b, hi)
                 while need > 0 and minutes(a, b) >= (chunk := min(t.min_chunk_min or t.duration_min, need)):

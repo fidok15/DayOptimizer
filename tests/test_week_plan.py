@@ -709,3 +709,34 @@ def test_code_fills_a_task_into_its_categorys_routine_when_the_day_is_full():
     work = sorted((c.new_start, c.new_end, c.title) for c in changes if c.category == "Work")
     assert work == [(at(MON, "15:00"), at(MON, "17:00"), "Report"), (at(MON, "17:00"), at(MON, "23:59"), "Deep work")]
     assert unscheduled == []
+
+
+def test_code_takes_back_routine_time_the_model_gave_to_other_blocks():
+    deep = (at(MON, "07:00"), at(MON, "10:00"), "Work", "Deep work", True)
+    routine = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Gym", "Sleep", True), deep,
+                     (at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
+    # the model squeezed Deep work and moved Lunch into its time; the rest of the day is taken
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "07:30", "08:00"),
+                            block(MON, "08:00", "08:45", "Work", "Deep work")])
+    busy = [LECTURE, LAB, ev("noon", "Uni", "Seminar", MON, "12:00", "13:00"),
+            ev("eve", "Uni", "Evening", MON, "15:00", "23:59")]
+    creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW,
+                          tasks=[task(min_chunk_min=None, due=at(MON, "23:00"))], left={"t1": 120},
+                          routine_days=routine, fill_until=MON,
+                          reserved={MON: [(deep[0], deep[1], "Deep work", "Work")]})
+    assert sorted((c.new_start, c.new_end, c.title) for c in creates) == [
+        (at(MON, "00:00"), at(MON, "07:00"), "Sleep"), (at(MON, "07:00"), at(MON, "09:00"), "Report")]
+
+
+def test_code_never_takes_routine_time_from_a_fixed_category():
+    deep = (at(MON, "07:00"), at(MON, "10:00"), "Work", "Deep work", True)
+    routine = {MON: [(at(MON, "00:00"), at(MON, "06:00"), "Gym", "Sleep", True),
+                     (at(MON, "06:00"), at(MON, "06:30"), "Commute", "Bus", True), deep]}
+    # the model moved the bus into Deep work time: a fixed category's block stays, so 2h don't fit
+    plan = WeekPlan(blocks=[block(MON, "00:00", "06:00", "Gym", "Sleep"), block(MON, "08:00", "08:30", "Commute", "Bus")])
+    busy = [LECTURE, LAB, ev("eve", "Uni", "Evening", MON, "12:00", "23:59")]
+    creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW,
+                          tasks=[task(min_chunk_min=None, due=at(MON, "23:00"))], left={"t1": 120},
+                          routine_days=routine, fill_until=MON,
+                          reserved={MON: [(s, e, t, c) for s, e, c, t, _ in routine[MON]]})
+    assert [(c.new_start, c.new_end) for c in creates if c.task_id] == []
