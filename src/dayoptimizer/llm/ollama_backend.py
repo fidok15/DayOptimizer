@@ -8,6 +8,7 @@ import subprocess
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from dayoptimizer import paths
 from dayoptimizer.core.models import PlannedChange
 from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
                                       DayRequest, LLMUnavailable, compile_prompt, format_changes,
@@ -62,7 +63,8 @@ def ensure_running(wait: float = 30.0) -> None:
     binary = ollama_binary()
     if binary is None:
         raise LLMUnavailable("Ollama isn't installed. Install it with:  brew install ollama")
-    _server = subprocess.Popen([binary, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with open(paths.ensure_private_dir() / "ollama.log", "a") as log:  # the child keeps its own handle
+        _server = subprocess.Popen([binary, "serve"], stdout=log, stderr=log)
     atexit.register(_stop_server)
     deadline = time.monotonic() + wait
     while time.monotonic() < deadline:

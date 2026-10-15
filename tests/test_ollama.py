@@ -87,6 +87,7 @@ def test_ensure_running_starts_ollama_for_the_run_and_stops_it_after(monkeypatch
     monkeypatch.setattr(ob.atexit, "register", lambda fn: None)
     ob.ensure_running()
     assert started == [["/bin/ollama", "serve"]]
+    assert (ob.paths.app_dir() / "ollama.log").exists()
     ob._stop_server()
     assert stopped == [True]
 
