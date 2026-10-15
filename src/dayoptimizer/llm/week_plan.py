@@ -438,7 +438,9 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         for t in tasks:
             if unplaced([t], after, listed, max(days), now):
                 when = "now (overdue)" if overdue(t, now) else f"{t.due:%a %Y-%m-%d %H:%M}"
-                plan.unscheduled.append(Unscheduled(task_id=t.id, reason=f"{after[t.id]} min did not fit before {when}"))
+                hint = ("; it is one piece and no free or {cat} time is that long: add it again in chunks "
+                        "(e.g. '... 2h, in 60-minute chunks')").format(cat=t.category) if t.min_chunk_min is None else ""
+                plan.unscheduled.append(Unscheduled(task_id=t.id, reason=f"{after[t.id]} min did not fit before {when}{hint}"))
     filled = {s.date() for s, _, _ in kept}
     problems += [f"{d.isoformat()}: no blocks planned for this day - return its full plan"
                  for d in sorted(expect) if d in wanted.values() and d not in filled
