@@ -8,6 +8,7 @@ from __future__ import annotations
 import fcntl
 import os
 import subprocess
+import threading
 from datetime import date as date_type
 from pathlib import Path
 import yaml
@@ -36,8 +37,10 @@ def _valid_date(s: str) -> bool:
         return False
 
 
-def _bundle_run(args: list[str]) -> str:
-    """Run a CLI command through the TCC app bundle and return its log output."""
+def _bundle_run(args: list[str], timeout: int | None = 300, echo=None) -> str:
+    """Run a CLI command through the TCC app bundle and return its log output.
+    With `echo`, the log is handed to it as it grows and only the part not yet
+    echoed is returned; `timeout=None` waits for the bundle to finish."""
     home = paths.ensure_private_dir()
     bundle_exe = home / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle_exe, os.X_OK):
@@ -48,17 +51,39 @@ def _bundle_run(args: list[str]) -> str:
         (home / "cli_args").write_text("\n".join(args) + "\n")
         log = home / "cli.log"
         log.unlink(missing_ok=True)
+        shown = 0
+
+        def show():
+            nonlocal shown
+            text = log.read_text() if log.exists() else ""
+            if len(text) > shown:
+                echo(text[shown:])
+                shown = len(text)
+
+        stop = threading.Event()
+
+        def follow():
+            while not stop.wait(0.5):
+                show()
+
+        follower = threading.Thread(target=follow, daemon=True)
+        if echo:
+            follower.start()
         try:
             subprocess.run(
                 ["open", "-W", "-a", str(home / "DayOptimizer.app"),
                  "--args", str(home / "cli_runner.py")],
-                check=False, capture_output=True, timeout=300)
+                check=False, capture_output=True, timeout=timeout)
         except subprocess.TimeoutExpired:
-            return "Calendar operation timed out after 300s."
+            return f"Calendar operation timed out after {timeout}s."
+        finally:
+            stop.set()
+            if echo:
+                follower.join()
         if not log.exists():
             return ("Calendar run produced no output — the app bundle may have failed "
                     "to launch. Rerun scripts/setup-bundle.sh if this persists.")
-        return log.read_text()
+        return log.read_text()[shown:]
 
 
 def get_events(date: str) -> str:

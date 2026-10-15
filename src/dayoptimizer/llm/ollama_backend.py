@@ -87,7 +87,8 @@ class OllamaBackend:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
             "think": False,
-            "options": {"temperature": 0},
+            # ponytail: fixed 8192 fits the week prompt (~2.7k) plus a capped 2000-token answer; size it from the prompt if plans grow
+            "options": {"temperature": 0, "num_ctx": 8192},
         }
         if num_predict:
             body["options"]["num_predict"] = num_predict
