@@ -443,7 +443,7 @@ def test_after_the_last_round_code_reports_what_did_not_fit():
     changes, _, dropped, unscheduled = plan_days(Fake(WeekPlan()), [MON], "# routine", WCATS, [LECTURE, LAB],
                                                  NOTES, [], NOW, attempts=1, tasks=[task()], left={"t1": 120})
     assert dropped == [] and changes == []
-    assert unscheduled == ["t1: 120 min did not fit before Mon 2030-10-14 22:00"]
+    assert unscheduled == ["t1: 'Report' doesn't fit before Mon 2030-10-14 22:00 - missing 120 min"]
 
 
 def test_surplus_block_of_a_fully_placed_task_is_dropped_quietly():
@@ -752,3 +752,34 @@ def test_code_fills_a_task_over_an_event_the_notes_let_it_plan_over():
     creates, _ = validate(sleep, [MON], WCATS, busy, NOTES, rules, NOW, tasks=[task(due=at(MON, "23:00"))],
                           left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
     assert [(c.new_start, c.new_end) for c in creates if c.task_id] == [(at(MON, "10:00"), at(MON, "12:00"))]
+
+
+def test_a_day_the_model_fails_twice_is_planned_by_rule_and_the_rest_by_the_model():
+    from dayoptimizer.llm.backend import LLMTimeout
+
+    class Flaky(Small):
+        def plan_week(self, system, prompt, schema=None):
+            plan = super().plan_week(system, prompt, schema)
+            if isinstance(plan, Exception):
+                raise plan
+            return plan
+
+    backend = Flaky(LLMTimeout("too slow"), ValueError("bad json"), WeekPlan(blocks=[block(TUE, "12:00", "13:00")]))
+    changes, summary, _, unscheduled = plan_days(
+        backend, [MON, TUE], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW, attempts=1,
+        tasks=[task(due=at(MON, "22:00"))], left={"t1": 120},
+        routine_days=sleep_only(MON) | {TUE: sleep_only(TUE)[TUE] + [(at(TUE, "12:00"), at(TUE, "13:00"), "Food", "Lunch", False)]})
+    assert sorted((c.title, c.new_start) for c in changes) == [
+        ("Lunch", at(TUE, "12:00")), ("Report", at(MON, "07:00")), ("Sleep", at(MON, "00:00")),
+        ("Sleep", at(TUE, "00:00"))]
+    assert summary.startswith("Mon 2030-10-14 planned by rule: the model failed twice (bad json)")
+    assert unscheduled == []
+
+
+def test_a_task_due_on_a_day_too_late_to_plan_and_one_that_got_no_time_are_reported():
+    late = at(MON, "23:30")
+    tasks = [task(due=at(MON, "23:50")), task(id="t2", title="Taxes", due=None, not_before=at(TUE, "23:00"))]
+    _, _, _, unscheduled = plan_days(Small(WeekPlan()), [MON, TUE], "# routine", WCATS, [], NOTES, [], late,
+                                     attempts=1, tasks=tasks, left={"t1": 120, "t2": 120})
+    assert unscheduled == ["t1: 'Report' is due today - no time left today",
+                           "t2: 'Taxes' (no deadline) got no time in the planned days"]

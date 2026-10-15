@@ -88,9 +88,11 @@ def block_problem(task: Task | None, category: str, start: datetime, end: dateti
 
 
 def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
-             last_day: date, now: datetime) -> list[str]:
+             last_day: date, now: datetime, before: dict[str, int] | None = None) -> list[str]:
     """Tasks that had to be finished within the planned days, still have
-    minutes left, and were not listed as unscheduled: the model went quiet."""
+    minutes left, and were not listed as unscheduled: the model went quiet.
+    With `before` (minutes left before planning), a task without a deadline
+    that got no time at all is reported too."""
     out = []
     for t in tasks:
         n = left_after.get(t.id, 0)
@@ -102,4 +104,6 @@ def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
         elif t.due is not None and t.due.date() <= last_day:
             out.append(f"{t.id}: {n} min of '{t.title}' left before {t.due:%a %Y-%m-%d %H:%M} - "
                        "place them or list the task in unscheduled")
+        elif t.due is None and before is not None and n >= before.get(t.id, 0):
+            out.append(f"{t.id}: '{t.title}' (no deadline) got no time in the planned days")
     return out

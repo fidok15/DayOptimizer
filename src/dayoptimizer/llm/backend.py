@@ -195,6 +195,10 @@ class LLMUnavailable(RuntimeError):
     """No usable LLM; the message tells the user how to get one."""
 
 
+class LLMTimeout(LLMUnavailable):
+    """The model is there but took too long on this request; another may work."""
+
+
 def make_backend(llm_config: dict) -> LLMBackend:
     """Pick the LLM from config `llm.backend`: ollama, anthropic, or auto
     (local Ollama when it's running, else the Anthropic API when a key is set)."""

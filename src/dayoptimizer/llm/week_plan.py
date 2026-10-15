@@ -14,6 +14,7 @@ from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
 from dayoptimizer.core.constraints import NoteRule, skippable, window_rule
 from dayoptimizer.core.models import Event, PlannedChange, Task
+from dayoptimizer.llm.backend import LLMTimeout
 from dayoptimizer.llm.task_rules import block_problem, minutes, overdue, task_lines, unplaced, window
 
 DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -444,8 +445,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         # last round: what the model still didn't fit is reported by code, not left silent
         for t in tasks:
             if unplaced([t], after, listed, max(days), now):
-                when = "now (overdue)" if overdue(t, now) else f"{t.due:%a %Y-%m-%d %H:%M}"
-                plan.unscheduled.append(Unscheduled(task_id=t.id, reason=f"{after[t.id]} min did not fit before {when}"))
+                why = (f"'{t.title}' is overdue and {after[t.id]} min of it don't fit in the planned days"
+                       if overdue(t, now) else
+                       f"'{t.title}' doesn't fit before {t.due:%a %Y-%m-%d %H:%M} - missing {after[t.id]} min")
+                plan.unscheduled.append(Unscheduled(task_id=t.id, reason=why))
     filled = {s.date() for s, _, _ in kept}
     problems += [f"{d.isoformat()}: no blocks planned for this day - return its full plan"
                  for d in sorted(expect) if d in wanted.values() and d not in filled
@@ -735,30 +738,58 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
     block a day ends up with (new or kept as it was) counts toward the weekly
     limits and the task minutes of later days.
     A day with less than an hour left is not planned: asking a model about it
-    only costs rounds."""
-    days = [d for d in days if datetime.combine(d + timedelta(days=1), time(0)).astimezone() - now >= timedelta(hours=1)]
+    only costs rounds; a task due that day is reported instead.
+    When the small model fails on a day (too slow, broken answer) twice, that
+    day alone is planned by code: its routine and its tasks (`_ByRule`)."""
+    late = [d for d in days if datetime.combine(d + timedelta(days=1), time(0)).astimezone() - now < timedelta(hours=1)]
+    days = [d for d in days if d not in late]
+    left = dict(left or {})
+    before = dict(left)
+    unscheduled = [f"{t.id}: '{t.title}' is due today - no time left today" for t in tasks
+                   if left.get(t.id, 0) > 0 and t.due is not None and t.due > now and t.due.date() in late]
+    for u in unscheduled:
+        left[u.split(":")[0]] = 0  # reported once; not again as unplaced on a later day
     if not days:
-        return [], "", [], []
-    if len(days) > 1 and getattr(backend, "one_day_at_a_time", False):
-        history = {c: list(ds) for c, ds in (history or {}).items()}
-        left = dict(left or {})
-        changes, summaries, dropped, unscheduled = [], [], [], []
-        for d in days:
-            creates, ch, summary, dr, un = _plan_once(backend, [d], routine, categories, events, notes, rules,
-                                                      now, health, history, expect, attempts, tasks, left,
-                                                      few_shot, reserved, routine_days, max(days))
-            changes += ch
-            dropped += dr
-            unscheduled += un
-            if summary:
-                summaries.append(summary)
-            for c in creates:
-                history.setdefault(c.category, []).append(c.new_start.date())
-                if c.task_id in left:
-                    left[c.task_id] -= minutes(c.new_start, c.new_end)
-        return changes, " ".join(summaries), dropped, unscheduled
-    _, changes, summary, problems, unscheduled = _plan_once(backend, days, routine, categories, events, notes,
-                                                           rules, now, health, history, expect, attempts,
-                                                           tasks, left, few_shot, reserved, routine_days,
-                                                           max(days))
-    return changes, summary, problems, unscheduled
+        return [], "", [], unscheduled
+    small = getattr(backend, "one_day_at_a_time", False)
+    history = {c: list(ds) for c, ds in (history or {}).items()}
+    changes, summaries, dropped = [], [], []
+    for group in [[d] for d in days] if small else [days]:
+        def once(model, rounds=attempts):
+            return _plan_once(model, group, routine, categories, events, notes, rules, now, health, history,
+                              expect, rounds, tasks, left, few_shot, reserved, routine_days, max(days))
+        result = failed = None
+        for _ in range(2 if small else 1):
+            try:
+                result = once(backend)
+                break
+            except (LLMTimeout, ValueError) as exc:  # ValueError: an answer that isn't the plan's JSON
+                if not small:
+                    raise
+                failed = exc
+        if result is None:
+            result = once(_ByRule(), 1)
+            summaries.append(f"{group[0]:%a %Y-%m-%d} planned by rule: the model failed twice "
+                             f"({' '.join(str(failed).split())[:100]}).")
+        creates, ch, summary, dr, un = result
+        changes += ch
+        dropped += dr
+        unscheduled += un
+        if summary:
+            summaries.append(summary)
+        for c in creates:
+            history.setdefault(c.category, []).append(c.new_start.date())
+            if c.task_id in left:
+                left[c.task_id] -= minutes(c.new_start, c.new_end)
+    listed = {u.split(":")[0] for u in unscheduled}
+    unscheduled += unplaced([t for t in tasks if t.due is None], left, listed, max(days), now, before)
+    return changes, "\n".join(summaries), dropped, unscheduled
+
+
+class _ByRule:
+    """Stands in for a model that failed on a day: it adds nothing, so the day
+    gets its routine back (`_forgotten_routine`) and its tasks (`_fill`) by code."""
+    one_day_at_a_time = True
+
+    def plan_week(self, system, prompt, schema=None):
+        return WeekPlan()

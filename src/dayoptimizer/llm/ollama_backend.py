@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 from dayoptimizer import paths
 from dayoptimizer.core.models import PlannedChange
 from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, LLMUnavailable, compile_prompt, format_changes,
+                                      DayRequest, LLMTimeout, LLMUnavailable, compile_prompt, format_changes,
                                       request_prompt)
 
 
@@ -107,10 +107,10 @@ class OllamaBackend:
                 raise LLMUnavailable(f"The local model isn't downloaded yet. Run:  ollama pull {self.model}") from None
             raise LLMUnavailable(f"Ollama error {exc.code}: {detail[:200]}") from None
         except TimeoutError:
-            raise LLMUnavailable("The local model took too long to answer. Try again, or a shorter message.") from None
+            raise LLMTimeout("The local model took too long to answer. Try again, or a shorter message.") from None
         except (URLError, OSError) as exc:
             if isinstance(getattr(exc, "reason", None), TimeoutError):
-                raise LLMUnavailable("The local model took too long to answer. Try again, or a shorter message.") from None
+                raise LLMTimeout("The local model took too long to answer. Try again, or a shorter message.") from None
             raise LLMUnavailable("Ollama isn't running. Start it with:  brew services start ollama") from None
 
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
