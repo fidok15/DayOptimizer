@@ -51,6 +51,8 @@ def task_lines(tasks: list[Task], left: dict[str, int], now: datetime,
             parts.append(f"OVERDUE since {t.due:%a %Y-%m-%d %H:%M}, place it first")
         elif t.due is not None:
             parts.append(f"due {t.due:%a %Y-%m-%d %H:%M}")
+        else:
+            parts.append("no deadline: as early as possible")
         if t.not_before is not None and t.not_before > now:
             parts.append(f"not before {t.not_before:%a %Y-%m-%d %H:%M}")
         split = t.min_chunk_min is not None and t.min_chunk_min < n

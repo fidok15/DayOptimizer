@@ -709,3 +709,13 @@ def test_code_fills_a_task_into_its_categorys_routine_when_the_day_is_full():
     work = sorted((c.new_start, c.new_end, c.title) for c in changes if c.category == "Work")
     assert work == [(at(MON, "15:00"), at(MON, "17:00"), "Report"), (at(MON, "17:00"), at(MON, "23:59"), "Deep work")]
     assert unscheduled == []
+
+
+def test_a_task_without_deadline_goes_first_to_its_routine_slot_then_earliest_free_time():
+    deep = (at(MON, "15:00"), at(MON, "19:00"), "Work", "Deep work", False)
+    for routine, start in (({MON: sleep_only(MON)[MON] + [deep], TUE: sleep_only(TUE)[TUE]}, "15:00"),
+                           (sleep_only(MON, TUE), "07:00")):
+        changes, _, _, unscheduled = plan_days(
+            Small(*[WeekPlan() for _ in range(6)]), [MON, TUE], "# routine", WCATS, [LECTURE, LAB], NOTES, [],
+            NOW, tasks=[task(due=None)], left={"t1": 120}, routine_days=routine)
+        assert [c.new_start for c in changes if c.task_id] == [at(MON, start)] and unscheduled == []

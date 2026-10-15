@@ -598,9 +598,10 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
           rules: list[NoteRule], now: datetime, routine_days: dict,
           pushed: dict[str, int], reserved: Reserved | None = None) -> list[tuple[datetime, datetime, Block]]:
     """Task minutes the model left out, placed by code in the earliest free time
-    that keeps the task's chunks and the notes, only on days with a routine (so
-    sleep is known). All of them when the deadline falls within the run (its
-    last chance); otherwise only what the task had on these days before the
+    that keeps the task's chunks and the notes (on each day the routine time of
+    the task's own category first), only on days with a routine (so sleep is
+    known). All of them when the deadline falls within the run (its last
+    chance) or there is none (as soon as possible); otherwise only what the task had on these days before the
     replan (`pushed`): a replan must not lose task time, but code should not
     pile later work onto today. Routine time of the task's own category counts
     as free (the routine block yields to the task)."""
@@ -609,17 +610,22 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     for t in sorted((t for t in tasks if not t.done and not overdue(t, now)),
                     key=lambda t: (t.due is None, t.due or now)):
         need = after.get(t.id, 0)
-        if t.due is None or t.due.date() > fill_until:
+        if t.due is not None and t.due.date() > fill_until:
             need = min(need, pushed.get(t.id, 0))
-        last = min(t.due.date(), fill_until) if t.due else fill_until
+        last = min(t.due.date(), fill_until) if t.due else max(days)
         if need <= 0 or last not in days:
             continue
         lo, hi = window(t, now)
         # two passes: the short last piece may fit a gap the full chunk skipped
-        for d in [x for x in sorted(days) if x <= last and routine_days.get(x)] * 2:
+        for d, own_slot in [(x, own) for x in sorted(days) if x <= last and routine_days.get(x)
+                            for own in (True, False)] * 2:
             midnight = datetime.combine(d, time(0)).astimezone()
             busy = [e for e in taken if not (e.id == "kept" and e.task_id is None and e.calendar == t.category)]
-            for a, b in free_gaps(d, busy + _reserved_events(reserved, t.category), now):
+            gaps = free_gaps(d, busy + _reserved_events(reserved, t.category), now)
+            if own_slot:  # the day's routine time of the task's category first, then any free time
+                spans = [(s, e) for s, e, cat, *_ in routine_days[d] if cat == t.category]
+                gaps = [(max(a, s), min(b, e)) for a, b in gaps for s, e in spans if min(b, e) > max(a, s)]
+            for a, b in gaps:
                 a, b = max(a, lo), b if hi is None else min(b, hi)
                 while need > 0 and minutes(a, b) >= (chunk := min(t.min_chunk_min or t.duration_min, need)):
                     s_m = minutes(midnight, a)
