@@ -667,3 +667,38 @@ def test_a_fixed_block_the_model_put_on_an_event_still_comes_back_at_its_usual_t
     changes, _, _, _ = plan_days(backend, [MON], "# routine", CATS, [LECTURE, LAB, late], NOTES, [], NOW,
                                  routine_days=routine)
     assert sorted((c.title, c.new_start) for c in changes) == [("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "22:00"))]
+
+
+DEEP = (at(MON, "15:00"), at(MON, "19:00"), "Work", "Deep work", True)
+
+
+def test_a_task_takes_its_categorys_fixed_routine_slot_and_the_routine_yields():
+    plan = WeekPlan(blocks=[block(MON, "15:00", "19:00", "Work", "Deep work"), tblock("16:00", "18:00")])
+    creates, problems = validate(plan, [MON], WCATS, [LECTURE, LAB], NOTES, [], NOW, None, frozenset(),
+                                 tasks=[task()], left={"t1": 120}, routine_days={MON: [DEEP]},
+                                 reserved={MON: [(DEEP[0], DEEP[1], "Deep work", "Work")]})
+    assert problems == []
+    assert sorted((c.new_start, c.new_end, c.title) for c in creates) == [
+        (at(MON, "15:00"), at(MON, "16:00"), "Deep work"), (at(MON, "16:00"), at(MON, "18:00"), "Report"),
+        (at(MON, "18:00"), at(MON, "19:00"), "Deep work")]
+
+
+def test_fixed_routine_of_another_category_still_keeps_tasks_out():
+    gym = {MON: [(at(MON, "16:00"), at(MON, "18:00"), "Training", "Gym")]}
+    creates, problems = validate(WeekPlan(blocks=[tblock("16:00", "18:00")]), [MON], WCATS, [LECTURE, LAB], NOTES,
+                                 [], NOW, None, frozenset(), tasks=[task(due=None)], left={"t1": 120}, reserved=gym)
+    assert creates == [] and "fixed routine 'Training'" in problems[0]
+
+
+def test_code_fills_a_task_into_its_categorys_routine_when_the_day_is_full():
+    def r(a, b, cat, title):
+        return (at(MON, a), at(MON, b), cat, title, True)
+    spans = [r("00:00", "07:00", "Gym", "Sleep"), r("07:00", "10:00", "Food", "Breakfast"),
+             r("12:00", "13:00", "Food", "Lunch"), r("15:00", "23:59", "Work", "Deep work")]
+    backend = Small(*[WeekPlan() for _ in range(3)])
+    changes, _, _, unscheduled = plan_days(
+        backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW, tasks=[task()], left={"t1": 120},
+        reserved={MON: [(s, e, t, c) for s, e, c, t, _ in spans]}, routine_days={MON: spans})
+    work = sorted((c.new_start, c.new_end, c.title) for c in changes if c.category == "Work")
+    assert work == [(at(MON, "15:00"), at(MON, "17:00"), "Report"), (at(MON, "17:00"), at(MON, "23:59"), "Deep work")]
+    assert unscheduled == []
