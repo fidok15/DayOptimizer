@@ -740,6 +740,100 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
     return None
 
 
+SLOTS_SYSTEM = (
+    "You help plan one day in a person's calendar. Code has laid out their routine and found the free "
+    "times. For each item choose one of its slots, copied exactly, and say why in a few words. Choose as the "
+    "person would: overdue work and near deadlines first, higher priority earlier, work in the hours their "
+    "routine gives that kind of work, and follow their notes. 'later' leaves a task for another day; take it "
+    "only when the deadline allows. Two items must not take overlapping slots."
+)
+
+
+def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task], left: dict[str, int],
+               routine_days: dict, rules: list[NoteRule], with_routine: bool = True) -> dict[str, tuple[str, dict]]:
+    """What a small model chooses for a day, with up to five legal slots each:
+    every open task (one block of it; code places the rest), and every flexible
+    routine block an event pushed out of its usual time. {key: (line, {"HH:MM-HH:MM": Block})}"""
+    midnight = datetime.combine(day, time(0)).astimezone()
+    blocking = [e for e in events if not skippable(rules, e)]
+    spans = routine_days.get(day, [])
+
+    def span_event(x):
+        return Event(id="routine", calendar=x[2], title=x[3], start=x[0], end=x[1])
+    items = {}
+    for t in tasks:
+        n = left.get(t.id, 0)
+        lo, hi = window(t, now)
+        if t.done or n <= 0 or lo.date() > day or (hi is not None and hi <= midnight):
+            continue
+        chunk = min(t.min_chunk_min or n, n)
+        size = min(n, max(chunk, 180))  # one block of at most ~3 hours; _fill places the rest when it must
+        busy = blocking + [span_event(x) for x in spans if x[2] != t.category or _guarded(x)]
+        own = [(x[0], x[1]) for x in spans if x[2] == t.category]
+        gaps = sorted(((max(a, lo), b if hi is None else min(b, hi)) for a, b in free_gaps(day, busy, now)),
+                      key=lambda g: (not any(s < g[1] and e > g[0] for s, e in own), g[0]))
+        starts: list[list] = []
+        for a, b in gaps:
+            a += timedelta(minutes=-minutes(midnight, a) % 15)
+            mine = []
+            while minutes(a, b) >= chunk:
+                length = min(size, minutes(a, b))
+                s_m = minutes(midnight, a)
+                if window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
+                    mine.append((a, a + timedelta(minutes=length)))
+                a += timedelta(minutes=max(length, 60))
+            starts.append(mine)
+        picked = [x for k in range(3) for mine in starts for x in mine[k:k + 1]][:5]  # each gap's first start first
+        slots = {_spans(day, [(a, b)]): Block(day=day.isoformat(), start=f"{a:%H:%M}",
+                                              end=_spans(day, [(a, b)]).split("-")[1], category=t.category,
+                                              title=t.title, task_id=t.id) for a, b in sorted(picked)}
+        if t.due is not None and not overdue(t, now) and t.due.date() > day:
+            slots["later"] = None
+        if slots:
+            items[t.id] = (task_lines([t], left, now)[0], slots)
+    for x in spans if with_routine else []:
+        s, e, cat, title, fixed = x[:5]
+        if fixed or s < now or not any(b.start < e and b.end > s for b in blocking if not b.all_day
+                                       and (not b.managed or b.start < now)):
+            continue
+        others = blocking + [span_event(y) for y in spans if y is not x]
+        free = free_gaps(day, others, now)
+        moves = sorted((m for m in range(-120, 121, 15)), key=abs)
+        fits = [(s + timedelta(minutes=m), e + timedelta(minutes=m)) for m in moves]
+        fits = [(a, b) for a, b in fits if any(g <= a and b <= h for g, h in free)
+                and window_rule(rules, cat, minutes(midnight, a), minutes(midnight, b), day.weekday()) is None][:5]
+        if fits:
+            key = f"{cat}: {title} (usually {_spans(day, [(s, e)])})"
+            items[key] = (f"- [{key}] routine block an event pushed out of its usual time",
+                          {_spans(day, [(a, b)]): Block(day=day.isoformat(), start=f"{a:%H:%M}",
+                                                        end=_spans(day, [(a, b)]).split("-")[1], category=cat,
+                                                        title=title, why="moved around an event")
+                           for a, b in sorted(fits)})
+    return items
+
+
+def _choose(backend, day: date, items: dict, routine: str, events: list[Event], now: datetime) -> WeekPlan:
+    """A small model picks one slot per item; the picks become the plan's blocks."""
+    cal = [f"- {_fmt(e)} {e.calendar}: {e.title}" for e in sorted(events, key=lambda e: e.start)
+           if e.start.date() == day and not e.all_day]
+    prompt = "\n".join([f"Now: {DAY_NAMES[now.weekday()]} {now:%Y-%m-%d %H:%M}",
+                        f"Plan: {DAY_NAMES[day.weekday()]} {day.isoformat()}", "", routine.strip(), "",
+                        "# Calendar that day"] + (cal or ["- nothing"]) + ["", "# Choose a slot for each"]
+                       + [f"{line}; slots: {', '.join(slots)}" for line, slots in items.values()])
+    schema = {"type": "object", "required": list(items), "properties": {
+        k: {"type": "object", "required": ["slot", "why"], "properties": {
+            "slot": {"type": "string", "enum": list(slots)}, "why": {"type": "string", "maxLength": 60}}}
+        for k, (_, slots) in items.items()}}
+    answer = backend.choose(SLOTS_SYSTEM, prompt, schema)
+    blocks = []
+    for k, (_, slots) in items.items():
+        pick = answer.get(k) or {}
+        b = slots.get(pick.get("slot"))
+        if b is not None:
+            blocks.append(b.model_copy(update={"why": str(pick.get("why") or b.why)[:80]}))
+    return WeekPlan(blocks=blocks)
+
+
 def _plan_once(backend, days, routine, categories, events, notes, rules, now, health, history, expect,
                attempts, tasks, left, few_shot, reserved=None, routine_days=None, fill_until=None):
     """One request (plus corrections) for these days. A correction keeps the
@@ -765,8 +859,14 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     over: list[PlanOver] = []
     request = prompt
     lost: list[str] = []
+    slots = getattr(backend, "slots", False)  # the model only picks among slots code found (slot_items)
+    placed, still, items = [], dict(left or {}), None
     for attempt in range(attempts):
-        answer = backend.plan_week(system_prompt(few_shot), request, schema)
+        if slots:
+            items = slot_items(days[0], shown + placed, now, list(tasks), still, routine_days, rules, not good)
+            answer = _choose(backend, days[0], items, routine, shown, now) if items else WeekPlan()
+        else:
+            answer = backend.plan_week(system_prompt(few_shot), request, schema)
         blocks = good + answer.blocks
         if small and not good:
             blocks += _unmentioned(answer.blocks, previous, events, now)
@@ -774,7 +874,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
             blocks += back
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
-        last = attempt == attempts - 1
+        last = attempt == attempts - 1 or (slots and not items)  # nothing left to choose: another round can't help
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
                                      tasks=tasks, left=left, report_unplaced=last, reserved=reserved,
                                      routine_days=routine_days, fill_until=fill_until, pushed=pushed)

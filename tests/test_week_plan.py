@@ -804,3 +804,41 @@ def test_code_places_an_overdue_task_the_model_left_out():
                                  tasks=[task(due=NOW - timedelta(days=1))], left={"t1": 120},
                                  routine_days=sleep_only(MON), fill_until=MON)
     assert [(c.new_start, c.new_end) for c in creates if c.task_id] == [(at(MON, "07:00"), at(MON, "09:00"))]
+
+
+SLOT_ROUTINE = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Gym", "Sleep", True, False),
+                      (at(MON, "08:00"), at(MON, "10:00"), "Work", "Deep work", False, False),
+                      (at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False, True),
+                      (at(MON, "13:30"), at(MON, "14:00"), "Food", "Snack", False, False)]}
+
+
+def test_slots_keep_out_of_events_and_other_routine_but_may_go_over_a_skippable_lecture():
+    from dayoptimizer.llm.week_plan import slot_items
+    items = slot_items(MON, [LECTURE, LAB], NOW, [task(), task(id="t2", due=at(TUE, "12:00"))],
+                       {"t1": 120, "t2": 120}, SLOT_ROUTINE, SKIP)
+    # the lecture may be planned over, the lab and the lunch may not; the own routine slot counts as free
+    assert list(items["t1"][1]) == ["07:00-09:00", "09:00-11:00", "11:00-12:00", "15:00-17:00", "17:00-19:00"]
+    assert "later" in items["t2"][1] and "later" not in items["t1"][1]
+    # a flexible routine block under the lab gets the nearest free times, up to two hours away
+    assert list(items["Food: Snack (usually 13:30-14:00)"][1]) == [
+        "11:30-12:00", "15:00-15:30", "15:15-15:45", "15:30-16:00"]
+
+
+class Picker:
+    """A small model in slot mode that always takes the last slot offered."""
+    one_day_at_a_time = True
+    slots = True
+
+    def choose(self, system, prompt, schema):
+        return {k: {"slot": v["properties"]["slot"]["enum"][-1], "why": "last"}
+                for k, v in schema["properties"].items()}
+
+
+def test_slot_mode_turns_the_picks_into_the_plan():
+    changes, _, dropped, unscheduled = plan_days(
+        Picker(), [MON], "# routine", WCATS + ["Food"], [LECTURE, LAB], NOTES, SKIP, NOW,
+        tasks=[task()], left={"t1": 120}, routine_days=SLOT_ROUTINE)
+    assert [(c.new_start, c.new_end, c.reason) for c in changes if c.task_id] == [
+        (at(MON, "17:00"), at(MON, "19:00"), "last")]
+    assert ("Snack", at(MON, "15:30")) in [(c.title, c.new_start) for c in changes]
+    assert unscheduled == []

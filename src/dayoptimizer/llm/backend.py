@@ -227,7 +227,8 @@ def planning_backends(llm_config: dict) -> list:
         from dayoptimizer.llm.anthropic_backend import AnthropicBackend
         out.append(AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5-5")))
     if choice in ("ollama", "auto") and ollama_available():
-        out.append(OllamaBackend(model=llm_config.get("ollama_model", "qwen3:8b")))
+        out.append(OllamaBackend(model=llm_config.get("ollama_model", "qwen3:8b"),
+                                 mode=llm_config.get("ollama_mode", "layout")))
     return out
 
 
