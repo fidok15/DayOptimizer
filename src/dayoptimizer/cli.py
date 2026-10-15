@@ -405,7 +405,7 @@ def cmd_ask(args, rules, config):
         cmd_add(argparse.Namespace(events=payload), rules, config)
     else:
         console.print("Working on your calendar...", style="dim")
-        console.print(_calendar_run(["add", payload]), markup=False)
+        _calendar_run(["add", payload])
 
 def cmd_add(args, rules, config):
     """Internal: create the events `ask` confirmed, then replan their days."""
@@ -535,7 +535,7 @@ def _replan_for(tasks, rules, config):
     if _in_bundle() or sys.platform != "darwin":
         cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
     else:
-        console.print(_calendar_run(["plan", "--week", str(days)]), markup=False)
+        _calendar_run(["plan", "--week", str(days)])
 
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
@@ -636,13 +636,19 @@ CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "calendars"}
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
 
-def _calendar_run(argv: list[str]) -> str:
+def _calendar_run(argv: list[str]) -> None:
+    """Run a command in the calendar bundle, showing its output as it comes:
+    a local model can plan for many minutes (Ctrl+C stops waiting, not the run)."""
     from dayoptimizer.mcp_server import _bundle_run
     exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not exe.exists():
-        return ("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
-                "folder run:  scripts/install.sh")
-    return _bundle_run([a.replace("\n", " ") for a in argv]).rstrip()
+        console.print("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
+                      "folder run:  scripts/install.sh", markup=False)
+        return
+    rest = _bundle_run([a.replace("\n", " ") for a in argv], timeout=None,
+                       echo=lambda text: print(text, end="", flush=True))
+    if rest.strip():
+        console.print(rest.rstrip(), markup=False)
 
 def _first_run() -> bool:
     """No typical week drawn yet: the user hasn't done the setup."""
@@ -752,7 +758,7 @@ def main(argv: list[str] | None = None):
     args = parser.parse_args(argv)
     if args.command in CALENDAR_COMMANDS and not _in_bundle() and sys.platform == "darwin":
         console.print("Working on your calendar...", style="dim")
-        console.print(_calendar_run(argv), markup=False)
+        _calendar_run(argv)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
      "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "task": cmd_task,

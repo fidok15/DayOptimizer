@@ -89,6 +89,24 @@ def test_bundle_run_reports_timeout(app_home):
     assert "timed out" in out
 
 
+def test_bundle_run_echoes_the_log_as_it_grows_and_waits_without_a_timeout(app_home):
+    import time
+    _make_bundle(app_home)
+    seen, kwargs = [], {}
+
+    def fake_run(*_a, **k):
+        kwargs.update(k)
+        (app_home / "cli.log").write_text("Planning with Ollama...\n")
+        time.sleep(0.7)
+        (app_home / "cli.log").write_text("Planning with Ollama...\nApplied 3 changes.\n")
+
+    with patch.object(mcp_server.subprocess, "run", side_effect=fake_run):
+        rest = mcp_server._bundle_run(["plan"], timeout=None, echo=seen.append)
+    assert kwargs["timeout"] is None
+    assert "".join(seen) + rest == "Planning with Ollama...\nApplied 3 changes.\n"
+    assert seen and seen[0] == "Planning with Ollama...\n"
+
+
 def test_bundle_run_serializes_concurrent_runs(app_home):
     import threading, time
     _make_bundle(app_home)
