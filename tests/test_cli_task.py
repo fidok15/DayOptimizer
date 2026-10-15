@@ -86,6 +86,14 @@ def test_a_bad_task_is_reported_and_the_rest_saved(monkeypatch, capsys):
     assert "How long will 'report' take?" in capsys.readouterr().out
 
 
+def test_a_task_already_open_is_not_added_twice(monkeypatch, capsys):
+    req = TaskRequest(title="report", category="Work", duration_minutes=60)
+    run(monkeypatch, ["x"], req)
+    calls = run(monkeypatch, ["x"], TaskRequest(title="Report ", category="Work", duration_minutes=60))
+    assert [t.id for t in Storage(paths.db_path()).open_tasks()] == ["t1"] and calls == []
+    assert "already open as t1" in capsys.readouterr().out
+
+
 def test_no_tasks_says_the_models_reply(monkeypatch, capsys):
     calls = run(monkeypatch, ["hi"], TaskList(reply="That's not a task."))
     assert calls == [] and "That's not a task." in capsys.readouterr().out

@@ -503,10 +503,14 @@ def cmd_task(args, rules, config):
         return
     first = int(storage.next_task_id()[1:])
     tasks = []
+    have = {(t.category, t.title.strip().casefold()): t.id for t in storage.open_tasks()}
     for req in parsed.tasks:
         task, problem = task_from_request(req, list(rules.categories), now.date(), f"t{first + len(tasks)}")
         if task is None:
             console.print(problem, markup=False, style="yellow")
+        elif (task.category, task.title.strip().casefold()) in have:
+            console.print(f"'{task.title}' is already open as {have[(task.category, task.title.strip().casefold())]} "
+                          "— not added twice. See  dayoptimizer task list", markup=False, style="yellow")
         else:
             tasks.append(task)
     if not tasks:
