@@ -474,13 +474,18 @@ def cmd_task(args, rules, config):
         for t in tasks:
             console.print(_task_line(t), markup=False)
         return
-    if len(words) == 2 and words[0] == "done":
-        task = storage.get_task(words[1])
-        if task is None or not storage.mark_task_done(words[1]):
-            console.print(f"No task '{words[1]}'. See  dayoptimizer task list", markup=False, style="yellow")
+    if len(words) > 1 and words[0] == "done":
+        ids = [i for i in words[1:] if storage.mark_task_done(i)]
+        for i in words[1:]:
+            if i not in ids:
+                console.print(f"No task '{i}'. See  dayoptimizer task list", markup=False, style="yellow")
+        if not ids:
             return
-        console.print(f"Done: {words[1]}. Removing its planned blocks...", markup=False, style="green")
-        _replan_for([task], rules, config)
+        if _in_bundle() or sys.platform != "darwin":
+            _remove_task_blocks(ids, storage)
+        else:
+            console.print(f"Done: {', '.join(ids)}. Removing their planned blocks...", markup=False, style="green")
+            _calendar_run(["task", "done", *ids])
         return
     if not rules.categories:
         console.print("You have no categories yet, so there is nothing to file this under. "
@@ -530,6 +535,23 @@ def cmd_task(args, rules, config):
         storage.save_task(task)
     console.print("Placing in your calendar...", style="dim")
     _replan_for(tasks, rules, config)
+
+def _remove_task_blocks(ids: list[str], storage) -> None:
+    """Delete the planner's future blocks of finished tasks: plain calendar
+    work, no model and no replan (the freed time is filled on the next plan)."""
+    from dayoptimizer.core.models import PlannedChange
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        return
+    now = datetime.now().astimezone()
+    blocks = [e for e in calendar.list_events(now, now + timedelta(days=60)) if e.managed and e.task_id in ids]
+    applied, errors = apply_changes([PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
+                                                   reason="its task is done") for e in blocks],
+                                    calendar, storage, lambda c: True)
+    for msg in errors:
+        console.print(msg, markup=False, style="yellow")
+    console.print(f"Done: {', '.join(ids)}. Removed {len(applied)} planned block(s).", markup=False, style="green")
 
 def _replan_for(tasks, rules, config):
     """Replan from today up to the latest deadline (a week at most), in the

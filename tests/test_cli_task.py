@@ -63,9 +63,41 @@ def test_main_routes_task_words_to_the_task_command(monkeypatch):
     assert seen["words"] == ["report", "for", "friday"]
 
 
-def test_done_replans_so_its_blocks_go(monkeypatch):
-    run(monkeypatch, ["x"], TaskRequest(title="report", category="Work", duration_minutes=60, due_day="tomorrow"))
-    assert run(monkeypatch, ["done", "t1"]) == [["plan", "--week", "2"]]
+def test_done_only_removes_blocks_in_the_calendar_bundle_without_a_model(monkeypatch):
+    run(monkeypatch, ["x"], TaskRequest(title="report", category="Work", duration_minutes=60))
+    run(monkeypatch, ["y"], TaskRequest(title="read", category="Learn", duration_minutes=60))
+    monkeypatch.setattr(cli, "make_backend", lambda cfg: (_ for _ in ()).throw(AssertionError("no model")))
+    calls = []
+    monkeypatch.setattr(cli, "_calendar_run", lambda argv: calls.append(argv))
+    cli.cmd_task(SimpleNamespace(words=["done", "t1", "t2"]), RULES, CONFIG)
+    assert calls == [["task", "done", "t1", "t2"]] and Storage(paths.db_path()).open_tasks() == []
+
+
+def test_done_in_the_bundle_deletes_only_that_tasks_future_blocks(monkeypatch):
+    from datetime import datetime, timedelta
+    from dayoptimizer.core.models import Event
+    run(monkeypatch, ["x"], TaskRequest(title="report", category="Work", duration_minutes=60))
+    soon = datetime.now().astimezone() + timedelta(hours=2)
+    mine = Event(id="a", calendar="Work", title="report", start=soon, end=soon + timedelta(hours=1),
+                 managed=True, task_id="t1")
+    other = Event(id="b", calendar="Work", title="x", start=soon, end=soon + timedelta(hours=1),
+                  managed=True, task_id="t9")
+    deleted = []
+
+    class Cal:
+        def request_access(self):
+            return True
+
+        def list_events(self, start, end):
+            return [mine, other]
+
+        def delete_event(self, event_id):
+            deleted.append(event_id)
+
+    monkeypatch.setattr(cli, "CalendarClient", Cal)
+    monkeypatch.setattr(cli, "_in_bundle", lambda: True)
+    cli.cmd_task(SimpleNamespace(words=["done", "t1"]), RULES, CONFIG)
+    assert deleted == ["a"]
 
 
 def test_several_tasks_are_saved_and_replanned_once(monkeypatch):
