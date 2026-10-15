@@ -617,7 +617,9 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     taken = [(*t, b.task_id is not None) for b, t in placed] + [(*t, False) for t in busy]
     out, lost = [], []
     for d, spans in (routine_days or {}).items():
-        for span in spans:
+        # fixed blocks first (they can't move), then ones still ahead: a missed
+        # breakfast moved later must not push a block that is on time
+        for span in sorted(spans, key=lambda x: (not x[4], x[0] < now)):
             s, e, cat, title, fixed = span[:5]
             if any(h[:3] == (d.isoformat(), cat, title) and abs(h[3] - s) <= timedelta(hours=2) for h in have):
                 continue
@@ -768,7 +770,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         blocks = good + answer.blocks
         if small and not good:
             blocks += _unmentioned(answer.blocks, previous, events, now)
-            back, lost = _forgotten_routine(blocks, routine_days, events, now)
+            back, lost = _forgotten_routine(blocks, routine_days, [e for e in events if not skippable(rules, e)], now)
             blocks += back
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
