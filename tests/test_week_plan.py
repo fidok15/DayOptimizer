@@ -783,3 +783,16 @@ def test_a_task_due_on_a_day_too_late_to_plan_and_one_that_got_no_time_are_repor
                                      attempts=1, tasks=tasks, left={"t1": 120, "t2": 120})
     assert unscheduled == ["t1: 'Report' is due today - no time left today",
                            "t2: 'Taxes' (no deadline) got no time in the planned days"]
+
+
+def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does_not():
+    busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, LAB, ev("b", "Uni", "Evening", MON, "17:00", "23:59")]
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "15:00", "16:00", "Food", "Free time")])
+    for kept in (False, True):
+        routine = {MON: sleep_only(MON)[MON] + [(at(MON, "15:00"), at(MON, "16:00"), "Food", "Free time", False, kept)]}
+        tasks = [task(min_chunk_min=None, due=at(MON, "23:00"))]
+        creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=tasks, left={"t1": 120},
+                              report_unplaced=True, routine_days=routine, fill_until=MON)
+        got = sorted((c.title, c.new_start, c.new_end) for c in creates if c.title != "Sleep")
+        assert got == ([("Free time", at(MON, "15:00"), at(MON, "16:00"))] if kept else
+                       [("Free time", at(MON, "12:00"), at(MON, "13:00")), ("Report", at(MON, "15:00"), at(MON, "17:00"))])
