@@ -161,10 +161,12 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
                          datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
                          b.category, b.title or b.category,
-                         not getattr(getattr(rules, "categories", {}).get(b.category), "movable", True))
+                         not getattr(getattr(rules, "categories", {}).get(b.category), "movable", True),
+                         getattr(b, "protected", False))
                         for b in rules.typical_week.get(d.weekday(), [])]
                     for d in days}
-    reserved = {d: [(s, e, title, cat) for s, e, cat, title, fixed in spans if fixed]
+    # fixed routine keeps out tasks of other categories; a protected block (category None) keeps out every task
+    reserved = {d: [(s, e, title, None if kept else cat) for s, e, cat, title, fixed, kept in spans if fixed or kept]
                 for d, spans in routine_days.items()}
     history: dict[str, list[date]] = {}
     for e in events:

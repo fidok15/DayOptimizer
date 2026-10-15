@@ -89,7 +89,7 @@ TASK_RULES = (
     "routine block of the task's own category (a Learn task in the routine's Learn time): the "
     "routine says when that kind of work happens, the task says what it is. Leave that part of the "
     "routine block out. Task blocks never overlap events or routine blocks of other categories. "
-    "They start after 'not before' and end by the deadline.\n"
+    "They start after 'not before' and end by the deadline. Never in a routine block marked (protected).\n"
     "- 'chunks >= N min': split the task into blocks of at least N minutes; only the very last "
     "piece may be shorter, to finish it. 'in one piece': one block for all its minutes.\n"
     "- Never place more minutes than are left. Overdue tasks first, then nearer deadlines, then "
@@ -178,7 +178,12 @@ def free_time(day: date, events: list[Event], now: datetime) -> str:
     return _spans(day, free_gaps(day, events, now)) or "none"
 
 
-Reserved = dict  # date -> [(start, end, name, category)]: fixed routine time tasks stay out of
+Reserved = dict  # date -> [(start, end, name, category)]: routine time tasks stay out of (category None: all tasks)
+
+
+def _guarded(span) -> bool:
+    """A routine span (start, end, category, title, fixed[, protected]) the user protected from tasks."""
+    return span[5:6] == (True,)
 
 
 def _reserved_events(reserved: Reserved | None, category: str | None = None) -> list[Event]:
@@ -255,8 +260,9 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
             lines.append(f"- free: {free_time(d, taken, now)}")
             if routine_days and routine_days.get(d):
                 lines.append("- routine: " + ", ".join(
-                    f"{_spans(d, [(s, e)])} {cat}: {title}" + (" (fixed)" if fixed else "")
-                    for s, e, cat, title, fixed in routine_days[d]))
+                    f"{_spans(d, [(s, e)])} {cat}: {title}" + (" (fixed)" if x[4] else "")
+                    + (" (protected)" if _guarded(x) else "")
+                    for x in routine_days[d] for s, e, cat, title in [x[:4]]))
         for e in mine:
             where = f" @ {e.location}" if e.location else ""
             lines.append(f"- [{e.id}] {_fmt(e)} {e.calendar}: {e.title}{where}")
@@ -367,7 +373,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         if start < now:
             problems.append(f"{label}: starts before now ({now:%Y-%m-%d %H:%M})")
             continue
-        usual = [minutes(rs, re_) for rs, re_, cat, title, _ in (routine_days or {}).get(day, [])
+        usual = [minutes(rs, re_) for rs, re_, cat, title, *_ in (routine_days or {}).get(day, [])
                  if cat == b.category and title.strip().casefold() == b.title.strip().casefold()]
         # a commute: right before or after an event at a place
         trip = any(e.location and (e.start == end or e.end == start) for e in blocking)
@@ -565,33 +571,40 @@ def _times(b: Block) -> tuple[datetime, datetime] | None:
     return midnight + timedelta(minutes=s), midnight + timedelta(minutes=e if e else 1440)
 
 
-def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime) -> list[Block]:
+def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event],
+                       now: datetime) -> tuple[list[Block], list[str]]:
     """Routine blocks a small model left out. A fixed one (sleep, ...) goes
     back at its usual time where nothing else is; a movable one (a meal) at
-    the free time nearest its usual time, up to two hours either way."""
+    the free time nearest its usual time, up to two hours either way. A
+    protected one ignores task blocks (they will be refused there). Returns
+    the blocks and a note for each one that found no room."""
     busy = [(e.start, e.end) for e in events if not e.all_day and (not e.managed or e.start < now)]
     # a block the model placed on top of an event will be refused, so it is neither there nor in the way
     placed = [(b, t) for b, t in ((b, _times(b)) for b in blocks)
               if t and not any(x < t[1] and y > t[0] for x, y in busy)]
     have = [(b.day, b.category, b.title, t[0]) for b, t in placed]
-    taken = [t for _, t in placed] + busy
-    out = []
+    taken = [(*t, b.task_id is not None) for b, t in placed] + [(*t, False) for t in busy]
+    out, lost = [], []
     for d, spans in (routine_days or {}).items():
-        for s, e, cat, title, fixed in spans:
+        for span in spans:
+            s, e, cat, title, fixed = span[:5]
             if any(h[:3] == (d.isoformat(), cat, title) and abs(h[3] - s) <= timedelta(hours=2) for h in have):
                 continue
             day_end = datetime.combine(d, time(0)).astimezone() + timedelta(days=1)
             shifts = [0] if fixed else [0] + [m for k in range(15, 121, 15) for m in (-k, k)]
             for m in shifts:
                 a, b = s + timedelta(minutes=m), e + timedelta(minutes=m)
-                if a >= now and a.date() == d and b <= day_end and not any(x < b and y > a for x, y in taken):
+                if a >= now and a.date() == d and b <= day_end and not any(
+                        x < b and y > a and not (task and _guarded(span)) for x, y, task in taken):
                     break
             else:
+                if s >= now:
+                    lost.append(f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time")
                 continue
-            taken.append((a, b))
+            taken.append((a, b, False))
             out.append(Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, b)]).split("-")[1],
                              category=cat, title=title))
-    return out
+    return out, lost
 
 
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
@@ -672,12 +685,14 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     good: list[Block] = []
     over: list[PlanOver] = []
     request = prompt
+    lost: list[str] = []
     for attempt in range(attempts):
         answer = backend.plan_week(system_prompt(few_shot), request, schema)
         blocks = good + answer.blocks
         if small and not good:
             blocks += _unmentioned(answer.blocks, previous, events, now)
-            blocks += _forgotten_routine(blocks, routine_days, events, now)
+            back, lost = _forgotten_routine(blocks, routine_days, events, now)
+            blocks += back
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
         last = attempt == attempts - 1
@@ -685,7 +700,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
                                      tasks=tasks, left=left, report_unplaced=last, reserved=reserved,
                                      routine_days=routine_days, fill_until=fill_until, pushed=pushed)
         if not problems or last:
-            return (creates, diff(creates, previous), plan.summary, problems,
+            return (creates, diff(creates, previous), plan.summary, problems + lost,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
         accepted = {_change_key(c) for c in creates}
         good = [b for b in plan.blocks if _block_key(b) in accepted]

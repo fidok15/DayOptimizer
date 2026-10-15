@@ -159,6 +159,16 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         />
       </div>
 
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={!!block.protected}
+          onChange={(ev) => onUpdate({ protected: ev.target.checked })}
+          className="size-4 accent-[#f4b860]"
+        />
+        Protected: tasks can't take this time
+      </label>
+
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${uidBase}-day`} className={labelCls}>Day</label>
         <select

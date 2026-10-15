@@ -490,7 +490,7 @@ def test_a_block_titled_like_an_open_task_counts_as_that_task():
     assert problems == [] and creates[0].task_id == "t1"
 
 
-def test_cli_reserves_fixed_routine_blocks_for_tasks(monkeypatch):
+def test_cli_reserves_fixed_and_protected_routine_blocks_for_tasks(monkeypatch):
     from dayoptimizer import cli
     from dayoptimizer.core.rules import CategoryRule, RoutineBlock
 
@@ -504,8 +504,10 @@ def test_cli_reserves_fixed_routine_blocks_for_tasks(monkeypatch):
     class R:
         has_routine = True
         note_rules = []
-        typical_week = {MON.weekday(): [RoutineBlock(0, 420, "Sleep", "Sen"), RoutineBlock(720, 780, "Food", "Lunch")]}
-        categories = {"Sleep": CategoryRule(movable=False), "Food": CategoryRule(movable=True)}
+        typical_week = {MON.weekday(): [RoutineBlock(0, 420, "Sleep", "Sen"), RoutineBlock(720, 780, "Food", "Lunch"),
+                                        RoutineBlock(1080, 1140, "Work", "Standup", protected=True)]}
+        categories = {"Sleep": CategoryRule(movable=False), "Food": CategoryRule(movable=True),
+                      "Work": CategoryRule(movable=True)}
 
     backend = Fake(WeekPlan())
     monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [backend])
@@ -514,7 +516,9 @@ def test_cli_reserves_fixed_routine_blocks_for_tasks(monkeypatch):
     storage = cli.Storage(":memory:")
     storage.save_task(task(due=None))
     cli._llm_plan([MON], Cal(), storage, R(), confirm=lambda c: True)
-    assert "fits in: Mon 07:00-24:00" in backend.prompts[0]
+    # a protected block keeps out even a task of its own category
+    assert "fits in: Mon 07:00-18:00, 19:00-24:00" in backend.prompts[0]
+    assert "18:00-19:00 Work: Standup (protected)" in backend.prompts[0]
 
 
 def test_plan_schema_keeps_free_text_short():
@@ -719,3 +723,23 @@ def test_a_task_without_deadline_goes_first_to_its_routine_slot_then_earliest_fr
             Small(*[WeekPlan() for _ in range(6)]), [MON, TUE], "# routine", WCATS, [LECTURE, LAB], NOTES, [],
             NOW, tasks=[task(due=None)], left={"t1": 120}, routine_days=routine)
         assert [c.new_start for c in changes if c.task_id] == [at(MON, start)] and unscheduled == []
+
+
+def test_a_protected_meal_stays_put_when_a_small_model_puts_a_task_on_it():
+    routine = {MON: [(at(MON, "16:00"), at(MON, "17:00"), "Food", "Dinner", False, True)]}
+    reserved = {MON: [(at(MON, "16:00"), at(MON, "17:00"), "Dinner", None)]}
+    backend = Small(WeekPlan(blocks=[tblock("16:00", "18:00")]))
+    changes, _, dropped, _ = plan_days(backend, [MON], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
+                                       attempts=1, tasks=[task(due=None)], left={"t1": 120},
+                                       reserved=reserved, routine_days=routine)
+    assert ("Dinner", at(MON, "16:00")) in [(c.title, c.new_start) for c in changes]
+    assert not any(c.task_id and c.new_start < at(MON, "17:00") < c.new_end for c in changes)
+    assert "fixed routine 'Dinner'" in dropped[0]
+
+
+def test_a_routine_block_with_no_room_left_is_reported_not_lost():
+    lunch = {MON: [(at(MON, "13:00"), at(MON, "14:00"), "Food", "Lunch", False)]}
+    wall = ev("wall", "Uni", "All day lab", MON, "10:00", "17:00")
+    changes, _, dropped, _ = plan_days(Small(WeekPlan()), [MON], "# routine", CATS, [wall], NOTES, [], NOW,
+                                       routine_days=lunch)
+    assert changes == [] and dropped == ["Mon 13:00-14:00 Food: Lunch: no free time near its usual time"]
