@@ -669,6 +669,13 @@ def test_a_fixed_block_the_model_put_on_an_event_still_comes_back_at_its_usual_t
     assert sorted((c.title, c.new_start) for c in changes) == [("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "22:00"))]
 
 
+def test_a_day_with_under_an_hour_left_is_not_asked_about():
+    backend = Small(WeekPlan(blocks=[block(TUE, "12:00", "13:00")]))
+    changes, _, _, _ = plan_days(backend, [MON, TUE], "# routine", CATS, [LECTURE, LAB], NOTES, [], at(MON, "23:30"))
+    assert len(backend.prompts) == 1 and "Plan these days: Tuesday" in backend.prompts[0]
+    assert [c.new_start for c in changes] == [at(TUE, "12:00")]
+
+
 DEEP = (at(MON, "15:00"), at(MON, "19:00"), "Work", "Deep work", True)
 
 

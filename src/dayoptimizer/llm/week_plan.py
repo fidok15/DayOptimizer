@@ -710,7 +710,12 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
     tasks it could not fit ("t2: reason").
     A small local model (`one_day_at_a_time`) gets one day per request; every
     block a day ends up with (new or kept as it was) counts toward the weekly
-    limits and the task minutes of later days."""
+    limits and the task minutes of later days.
+    A day with less than an hour left is not planned: asking a model about it
+    only costs rounds."""
+    days = [d for d in days if datetime.combine(d + timedelta(days=1), time(0)).astimezone() - now >= timedelta(hours=1)]
+    if not days:
+        return [], "", [], []
     if len(days) > 1 and getattr(backend, "one_day_at_a_time", False):
         history = {c: list(ds) for c, ds in (history or {}).items()}
         left = dict(left or {})
