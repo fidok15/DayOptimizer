@@ -796,3 +796,11 @@ def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does
         got = sorted((c.title, c.new_start, c.new_end) for c in creates if c.title != "Sleep")
         assert got == ([("Free time", at(MON, "15:00"), at(MON, "16:00"))] if kept else
                        [("Free time", at(MON, "12:00"), at(MON, "13:00")), ("Report", at(MON, "15:00"), at(MON, "17:00"))])
+
+
+def test_code_places_an_overdue_task_the_model_left_out():
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
+    creates, problems = validate(plan, [MON], WCATS, [LECTURE, LAB], NOTES, [], NOW,
+                                 tasks=[task(due=NOW - timedelta(days=1))], left={"t1": 120},
+                                 routine_days=sleep_only(MON), fill_until=MON)
+    assert [(c.new_start, c.new_end) for c in creates if c.task_id] == [(at(MON, "07:00"), at(MON, "09:00"))]

@@ -657,12 +657,12 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     Returns the task blocks and the moves, {n: (start, end)}."""
     out, moved = [], {}
     taken = list(taken)
-    for t in sorted((t for t in tasks if not t.done and not overdue(t, now)),
+    for t in sorted((t for t in tasks if not t.done),
                     key=lambda t: (t.due is None, t.due or now)):
         need = after.get(t.id, 0)
         if t.due is not None and t.due.date() > fill_until:
             need = min(need, pushed.get(t.id, 0))
-        last = min(t.due.date(), fill_until) if t.due else max(days)
+        last = min(t.due.date(), fill_until) if t.due and not overdue(t, now) else max(days)  # overdue: now
         if need <= 0 or last not in days:
             continue
         lo, hi = window(t, now)
