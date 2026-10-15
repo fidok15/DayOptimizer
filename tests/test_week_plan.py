@@ -743,3 +743,12 @@ def test_a_routine_block_with_no_room_left_is_reported_not_lost():
     changes, _, dropped, _ = plan_days(Small(WeekPlan()), [MON], "# routine", CATS, [wall], NOTES, [], NOW,
                                        routine_days=lunch)
     assert changes == [] and dropped == ["Mon 13:00-14:00 Food: Lunch: no free time near its usual time"]
+
+
+def test_code_fills_a_task_over_an_event_the_notes_let_it_plan_over():
+    rules = parse_rules([{"type": "skippable", "category": "Uni", "prefix": "W -", "source": "x"}])
+    busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, ev("b", "Uni", "Rest", MON, "12:00", "23:59")]
+    sleep = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
+    creates, _ = validate(sleep, [MON], WCATS, busy, NOTES, rules, NOW, tasks=[task(due=at(MON, "23:00"))],
+                          left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
+    assert [(c.new_start, c.new_end) for c in creates if c.task_id] == [(at(MON, "10:00"), at(MON, "12:00"))]

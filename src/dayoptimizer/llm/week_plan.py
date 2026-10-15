@@ -341,8 +341,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     for p in plan.plan_over:
         if p.event_id not in over:
             problems.append(f"plan_over {p.event_id}: \"{p.note}\" is not a sentence from the notes")
-    # a planner block already under way stays in the calendar, so it blocks like the user's events
-    blocking = [e for e in events if not e.all_day and (not e.managed or e.start < now) and e.id not in over]
+    # a planner block already under way stays in the calendar, so it blocks like the user's events;
+    # one the notes let us plan over doesn't, whether or not the model listed it
+    blocking = [e for e in events if not e.all_day and (not e.managed or e.start < now) and e.id not in over
+                and not skippable(rules, e)]
     by_id = {t.id: t for t in tasks}
     left = dict(left or {})
     running = dict(left)
