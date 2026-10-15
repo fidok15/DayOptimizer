@@ -614,7 +614,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     placed = [(b, t) for b, t in ((b, _times(b)) for b in blocks)
               if t and not any(x < t[1] and y > t[0] for x, y in busy)]
     have = [(b.day, b.category, b.title, t[0]) for b, t in placed]
-    taken = [(*t, b.task_id is not None) for b, t in placed] + [(*t, False) for t in busy]
+    taken = [(*t, b.task_id and b.category) for b, t in placed] + [(*t, None) for t in busy]
     out, lost = [], []
     for d, spans in (routine_days or {}).items():
         # fixed blocks first (they can't move), then ones still ahead: a missed
@@ -628,13 +628,13 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
             for m in shifts:
                 a, b = s + timedelta(minutes=m), e + timedelta(minutes=m)
                 if a >= now and a.date() == d and b <= day_end and not any(
-                        x < b and y > a and not (task and _guarded(span)) for x, y, task in taken):
+                        x < b and y > a and not (task and (_guarded(span) or task == cat)) for x, y, task in taken):
                     break
             else:
                 if s >= now:
                     lost.append(f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time")
                 continue
-            taken.append((a, b, False))
+            taken.append((a, b, None))
             out.append(Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, b)]).split("-")[1],
                              category=cat, title=title))
     return out, lost

@@ -806,6 +806,12 @@ def test_code_places_an_overdue_task_the_model_left_out():
     assert [(c.new_start, c.new_end) for c in creates if c.task_id] == [(at(MON, "07:00"), at(MON, "09:00"))]
 
 
+def test_a_routine_block_left_out_comes_back_around_a_task_of_its_own_category():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    back, lost = _forgotten_routine([tblock("16:00", "18:00")], {MON: [DEEP]}, [], NOW)
+    assert [(b.start, b.end, b.title) for b in back] == [("15:00", "19:00", "Deep work")] and lost == []
+
+
 SLOT_ROUTINE = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Gym", "Sleep", True, False),
                       (at(MON, "08:00"), at(MON, "10:00"), "Work", "Deep work", False, False),
                       (at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False, True),
