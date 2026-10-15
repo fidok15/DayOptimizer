@@ -264,6 +264,8 @@ def cmd_plan(args, rules, config):
             console.print("Tasks that didn't fit:", markup=False, style="yellow")
             for line in unscheduled:
                 console.print(f"  {line}", markup=False)
+        for line in _moved(changes, storage.open_tasks(), date.today()):
+            console.print(line, markup=False, style="yellow")
         _print_errors(errors)
         return
     for offset in range(days):
@@ -278,6 +280,22 @@ def cmd_plan(args, rules, config):
                           "Draw that day in `dayoptimizer setup`.[/yellow]")
         _print_errors(errors)
     _print_pending(storage)
+
+def _moved(changes, tasks, today: date) -> list[str]:
+    """A task placed whole in this run, that could start today but got a later
+    day: there was no room today, so say where it went."""
+    placed: dict[str, list] = {}
+    for c in changes:
+        if c.kind == "create" and c.task_id:
+            placed.setdefault(c.task_id, []).append(c)
+    out = []
+    for t in tasks:
+        blocks = placed.get(t.id, [])
+        first = min((c.new_start for c in blocks), default=None)
+        whole = sum((c.new_end - c.new_start).total_seconds() // 60 for c in blocks) >= t.duration_min
+        if first and whole and first.date() > today and (t.not_before is None or t.not_before.date() <= today):
+            out.append(f"'{t.title}': no room today, placed on {first:%a %d.%m %H:%M}")
+    return out
 
 def cmd_apply(args, rules, config):
     calendar = CalendarClient()
@@ -361,10 +379,45 @@ def events_to_create(req, categories, today: date) -> tuple[list[tuple[str, str,
         ok.append((e.category, e.title[:100] or e.category, start, end))
     return ok, problems
 
+def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list[tuple]:
+    """The message's tasks (and events it gave no clock time) as (task, note):
+    checked, deduplicated against the open tasks, numbered. Says why for each
+    one that isn't kept. The model's time-of-day words count only when they
+    are in the message; a lone task reads them from the whole message."""
+    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, task_from_request
+    reqs = list(req.tasks) + [
+        TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
+                    due_day=None if e.day == "today" else e.day, not_before_day=None if e.day == "today" else e.day)
+        for e in req.events if not (e.start_time and _HHMM.match(e.start_time))]
+    if not reqs:
+        return []
+    today_events = [(e.title, e.end) for e in storage.events_on(now.date().isoformat())]
+    today_events += [(t, e) for _, t, s, e in to_create if s.date() == now.date()]
+    norm = lambda t: (" ".join(t.title.casefold().split()), t.due)
+    have = {norm(t): t.id for t in storage.open_tasks()}
+    first = int(storage.next_task_id()[1:])
+    out = []
+    lone = len(reqs) == 1 and not to_create
+    for r in reqs:
+        when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
+        r = r.model_copy(update={"when": when})
+        task, problem = task_from_request(r, list(rules.categories), now, f"t{first + len(out)}", today_events)
+        if task is None:
+            console.print(problem, markup=False, style="yellow")
+        elif norm(task) in have:
+            console.print(f"'{task.title}' already there: {have[norm(task)]}", markup=False, style="yellow")
+        else:
+            have[norm(task)] = task.id
+            no_length = not (r.duration_minutes and r.duration_minutes > 0)
+            out.append((task, f" (no length said, assumed {DEFAULT_MINUTES} min)" if no_length else ""))
+    return out
+
 def cmd_ask(args, rules, config):
-    """`dayoptimizer "meeting at 14 for an hour, then gym"`: understand the text
-    (here, in the terminal), show it, and on OK hand the events to `add`, which
-    writes them to the calendar inside the app bundle and replans."""
+    """`dayoptimizer "meeting at 14 for an hour, then do the laundry"`:
+    understand the text (here, in the terminal) in one model call: what has a
+    clock time becomes a calendar event, what doesn't becomes a task the
+    planner fits into free time. Show it, and on OK save the tasks and hand the
+    events to `add`, which writes them inside the app bundle and replans."""
     import json
     if not rules.categories:
         console.print("You have no categories yet, so there is nothing to file this under. "
@@ -372,8 +425,8 @@ def cmd_ask(args, rules, config):
         return
     try:
         backend = make_backend(config["llm"])
-        now = datetime.now()
-        req = backend.parse_request(args.text, today=now.date().isoformat(), now=f"{now:%A %H:%M}",
+        now = datetime.now().astimezone()
+        req = backend.parse_request(args.text, today=now.date().isoformat(), now=f"{now:%A %Y-%m-%d %H:%M}",
                                     categories=list(rules.categories))
     except LLMUnavailable as exc:
         console.print(f"{exc}\nWithout it, `dayoptimizer` still optimizes today.", markup=False, style="yellow")
@@ -382,15 +435,22 @@ def cmd_ask(args, rules, config):
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    to_create, problems = events_to_create(pin_day(args.text, req), rules.categories, now.date())
+    req = pin_day(args.text, req)
+    timed = req.model_copy(update={"events": [e for e in req.events if e.start_time and _HHMM.match(e.start_time)]})
+    to_create, problems = events_to_create(timed, rules.categories, now.date())
     for p in problems:
         console.print(p, markup=False, style="yellow")
-    if not to_create:
-        console.print(req.reply or "Nothing to add. Say what and when, e.g. 'gym at 18:00'.", markup=False)
+    storage = Storage(paths.db_path())
+    tasks = _new_tasks(args.text, req, rules, storage, now, to_create)
+    if not to_create and not tasks:
+        console.print(req.reply or "Nothing to add. Say what and when, e.g. 'gym at 18:00' or "
+                                   "'laundry this afternoon'.", markup=False)
         return
     console.print("I'll add:")
     for category, title, start, end in to_create:
         console.print(f"  {start:%a %d.%m %H:%M}-{end:%H:%M}  {title}  ({category})", markup=False)
+    for task, note in tasks:
+        console.print(f"  task {_task_line(task)}{note}", markup=False)
     if sys.stdin.isatty():
         try:
             answer = console.input("Add to your calendar and replan? [Y/n] ").strip().lower()
@@ -399,13 +459,21 @@ def cmd_ask(args, rules, config):
         if answer not in ("", "y", "yes", "t", "tak"):
             console.print("Nothing changed.")
             return
+    tasks = [t for t, _ in tasks]
+    for task in tasks:
+        storage.save_task(task)
+    if not to_create:
+        console.print("Placing in your calendar...", style="dim")
+        _replan_for(tasks, rules, config)
+        return
     payload = json.dumps([{"category": c, "title": t, "start": s.isoformat(), "end": e.isoformat()}
                           for c, t, s, e in to_create], ensure_ascii=False)
+    week = ["--week", str(_task_days(tasks))] if tasks else []
     if _in_bundle() or sys.platform != "darwin":
-        cmd_add(argparse.Namespace(events=payload), rules, config)
+        cmd_add(argparse.Namespace(events=payload, week=int(week[1]) if week else None), rules, config)
     else:
         console.print("Working on your calendar...", style="dim")
-        _calendar_run(["add", payload])
+        _calendar_run(["add", payload, *week])
 
 def cmd_add(args, rules, config):
     """Internal: create the events `ask` confirmed, then replan their days."""
@@ -435,6 +503,10 @@ def cmd_add(args, rules, config):
         storage.log_change(f"[added] {category}: {title} {start:%Y-%m-%d %H:%M}", "requested in plain words")
         console.print(f"Added {title} ({category}) {start:%a %H:%M}-{end:%H:%M}", markup=False, style="green")
         days.add(start.date())
+    if getattr(args, "week", None):
+        # tasks came with the events: one run over the tasks' days, then the event days after them
+        cmd_plan(argparse.Namespace(date=None, week=args.week), rules, config)
+        days = {d for d in days if (d - date.today()).days >= args.week}
     try:
         summarize = make_backend(config["llm"]).summarize_changes
     except LLMUnavailable:
@@ -452,7 +524,7 @@ def _task_line(t) -> str:
     if t.due is not None:
         parts.append(f"due {t.due:%a %d.%m %H:%M}")
     if t.not_before is not None:
-        parts.append(f"from {t.not_before:%a %d.%m}")
+        parts.append(f"from {t.not_before:%a %d.%m %H:%M}")
     if t.min_chunk_min:
         parts.append(f"chunks >= {t.min_chunk_min} min")
     if t.priority != "normal":
@@ -460,11 +532,8 @@ def _task_line(t) -> str:
     return ", ".join(parts)
 
 def cmd_task(args, rules, config):
-    """`dayoptimizer task "report for Friday, 3h"`: understand the tasks (one or
-    several, here in the terminal), save them and replan once up to the latest
-    deadline, so the planner places them into free time. `task list` /
-    `task done t3`."""
-    from dayoptimizer.llm.task_request import task_from_request
+    """`task list` / `task done t3`; `task "report for Friday, 3h"` is the same
+    as `dayoptimizer "..."`."""
     words = list(args.words)
     storage = Storage(paths.db_path())
     if words == ["list"]:
@@ -482,56 +551,21 @@ def cmd_task(args, rules, config):
         console.print(f"Done: {words[1]}. Removing its planned blocks...", markup=False, style="green")
         _replan_for([task], rules, config)
         return
-    if not rules.categories:
-        console.print("You have no categories yet, so there is nothing to file this under. "
-                      "Add some in  dayoptimizer setup  first.", markup=False, style="yellow")
-        return
-    now = datetime.now()
-    try:
-        parsed = make_backend(config["llm"]).parse_task(" ".join(words), now=f"{now:%A %Y-%m-%d %H:%M}",
-                                                        categories=list(rules.categories))
-    except LLMUnavailable as exc:
-        console.print(f"{exc}\nUnderstanding a task needs a language model.", markup=False, style="yellow")
-        return
-    except Exception as exc:
-        console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
-                      markup=False, style="yellow")
-        return
-    if not parsed.tasks:
-        console.print(parsed.reply or "Say what the task is, e.g. 'report for Friday, 3h'.",
-                      markup=False, style="yellow")
-        return
-    first = int(storage.next_task_id()[1:])
-    tasks = []
-    for req in parsed.tasks:
-        task, problem = task_from_request(req, list(rules.categories), now.date(), f"t{first + len(tasks)}")
-        if task is None:
-            console.print(problem, markup=False, style="yellow")
-        else:
-            tasks.append(task)
-    if not tasks:
-        return
-    console.print("New task:" if len(tasks) == 1 else "New tasks:")
-    for task in tasks:
-        console.print(f"  {_task_line(task)}", markup=False)
-    if sys.stdin.isatty():
-        try:
-            answer = console.input("Save and place in your calendar? [Y/n] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            answer = "n"
-        if answer not in ("", "y", "yes", "t", "tak"):
-            console.print("Nothing saved.")
-            return
-    for task in tasks:
-        storage.save_task(task)
-    console.print("Placing in your calendar...", style="dim")
-    _replan_for(tasks, rules, config)
+    cmd_ask(argparse.Namespace(text=" ".join(words)), rules, config)
+
+def _task_days(tasks) -> int:
+    """Days to replan for these tasks, from today: up to the latest deadline; a
+    task without one goes as soon as possible, so today and tomorrow (from
+    its first day). A week at most."""
+    today = date.today()
+    last = [t.due.date() if t.due is not None else
+            max(today, t.not_before.date() if t.not_before else today) + timedelta(days=1) for t in tasks]
+    return max(1, min(7, (max(last) - today).days + 1))
 
 def _replan_for(tasks, rules, config):
-    """Replan from today up to the latest deadline (a week at most), in the
-    calendar bundle: that places new tasks and removes a finished one's blocks."""
-    today = date.today()
-    days = max(7 if t.due is None else max(1, min(7, (t.due.date() - today).days + 1)) for t in tasks)
+    """Replan the tasks' days in the calendar bundle: that places new tasks and
+    removes a finished one's blocks."""
+    days = _task_days(tasks)
     if _in_bundle() or sys.platform != "darwin":
         cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
     else:
@@ -701,7 +735,7 @@ def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         prog="dayoptimizer",
         description='dayoptimizer                optimize today around your calendar\n'
-                    'dayoptimizer "<your day>"   e.g. "meeting at 14:00 for about an hour, then gym"\n'
+                    'dayoptimizer "<your day>"   e.g. "meeting at 14:00 for about an hour, then laundry, 1h"\n'
                     'dayoptimizer setup          describe your typical week in the browser (first run)',
         formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", metavar="command")
@@ -716,6 +750,7 @@ def main(argv: list[str] | None = None):
     p_ask.add_argument("text")
     p_add = sub.add_parser("add")
     p_add.add_argument("events")
+    p_add.add_argument("--week", type=_positive, default=None)
     p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
                                          'several at once: task "tomorrow: laundry and exam prep, 2h each"; '
                                          'task list; task done t3')

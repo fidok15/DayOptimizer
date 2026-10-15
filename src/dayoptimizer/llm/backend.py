@@ -23,9 +23,23 @@ class NewEvent(BaseModel):
     end_time: str | None = None
     duration_minutes: int | None = None
 
+class TaskRequest(BaseModel):
+    """Work without a clock time; llm/task_request.py turns it into a Task."""
+    title: str = ""
+    category: str = ""
+    duration_minutes: int | None = None
+    due_day: DayWord | None = None
+    due_time: str | None = None
+    not_before_day: DayWord | None = None
+    when: str | None = None
+    min_chunk_minutes: int | None = None
+    priority: Literal["low", "normal", "high"] = "normal"
+
 class DayRequest(BaseModel):
-    """What the user said about their day: the events to add."""
+    """What the user said about their day: events (with a clock time) and
+    tasks (without one)."""
     events: list[NewEvent] = []
+    tasks: list[TaskRequest] = []
     reply: str | None = None
 
 Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -111,14 +125,26 @@ _REQUEST_SYSTEM = (
     "Otherwise duration_minutes from the message: 'half an hour' = 30, 'about an hour' = 60, "
     "'an hour and a half' / 'półtorej godziny' = 90, '2h' = 120; empty if not said.\n"
     "- title is the activity alone, without its time or day.\n"
-    "- If the message isn't about the schedule, return no events and a short reply.\n"
+    "- Something to do WITHOUT a clock time (a chore or work to fit in somewhere: 'zrób pranie', "
+    "'odpisz na maile po południu', 'raport na piątek, 3h') is a task, not an event. Each task: "
+    "title; category; duration_minutes (total, empty if not said); due_day: the day word it must "
+    "be done by ('na piątek' / 'by Friday' = friday); not_before_day: also that day when the work "
+    "is FOR that day ('jutro zrób X', 'tomorrow do X'), never for a deadline; due_time: HH:MM only "
+    "for a deadline hour ('do 17'); when: the words saying when in the day, copied from the "
+    "message ('po południu', 'wieczorem', 'rano', 'za 2h', 'po pracy'), else empty; "
+    "min_chunk_minutes when it may be split ('kawałki min. godzinę' = 60); priority high for "
+    "'ważne'/'pilne'/'urgent', low for 'kiedyś'/'when there's time', else normal.\n"
+    "- If the message isn't about the schedule or work to do, return nothing and a short reply.\n"
     "Example, with categories Important, Meeting, Work, Food, Gym:\n"
     "'tomorrow dentist at 10 for half an hour, then work until 17, coffee with Tom at 18' -> "
     '{"events":[{"title":"dentist","category":"Important","day":"tomorrow","start_time":"10:00",'
     '"duration_minutes":30},{"title":"work","category":"Work","day":"tomorrow","start_time":"10:30",'
     '"end_time":"17:00"},{"title":"coffee with Tom","category":"Meeting","day":"tomorrow",'
     '"start_time":"18:00"}]}  (appointments and seeing people go to a category for such things, '
-    "not to Work or Food)"
+    "not to Work or Food)\n"
+    "With categories Meeting, Home: 'spotkanie o 14, potem po południu zrób pranie, 1h' -> "
+    '{"events":[{"title":"spotkanie","category":"Meeting","day":"today","start_time":"14:00"}],'
+    '"tasks":[{"title":"pranie","category":"Home","duration_minutes":60,"when":"po południu"}]}'
 )
 
 _SUMMARY_SYSTEM = (

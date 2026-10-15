@@ -114,15 +114,9 @@ class OllamaBackend:
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
         schema = DayRequest.model_json_schema()
         schema["$defs"]["NewEvent"]["properties"]["category"]["enum"] = list(categories)
+        schema["$defs"]["TaskRequest"]["properties"]["category"]["enum"] = list(categories)
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
-
-    def parse_task(self, text: str, now: str, categories: list[str]):
-        from dayoptimizer.llm.task_request import TASK_SYSTEM, TaskList, task_prompt
-        schema = TaskList.model_json_schema()
-        schema["$defs"]["TaskRequest"]["properties"]["category"]["enum"] = list(categories) + [""]
-        raw = self._chat(TASK_SYSTEM, task_prompt(text, now, categories), schema)
-        return TaskList.model_validate_json(raw)
 
     def plan_week(self, system: str, prompt: str, schema: dict | None = None):
         """`schema` is the answer schema with the allowed values filled in

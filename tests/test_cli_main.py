@@ -8,6 +8,7 @@ from dayoptimizer.llm.backend import DayRequest, NewEvent
 def routed(monkeypatch):
     """Record where main() sends a command instead of running it."""
     calls = []
+    cli.paths.ensure_private_dir()  # main() does this before any command
     monkeypatch.setattr(cli, "_in_bundle", lambda: False)
     monkeypatch.setattr(cli.sys, "platform", "darwin")
     monkeypatch.setattr(cli, "_calendar_run", lambda argv: calls.append(("bundle", argv)) or "")
@@ -114,6 +115,30 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
     assert created == [("Meeting", "Spotkanie", "14:00", "15:00")]
     assert planned == [date(2026, 9, 22)]
     assert "no 'Gym' calendar" in out and "summary" in out
+
+
+def test_add_with_tasks_plans_their_days_once_then_later_event_days(monkeypatch):
+    import json
+    from datetime import datetime, timedelta
+    planned, weeks = [], []
+
+    class Cal:
+        def request_access(self):
+            return True
+
+        def create_event(self, *a):
+            pass
+
+    cli.paths.ensure_private_dir()
+    monkeypatch.setattr(cli, "CalendarClient", Cal)
+    monkeypatch.setattr(cli, "make_backend", lambda cfg: _LLM())
+    monkeypatch.setattr(cli, "cmd_plan", lambda args, *a: weeks.append(args.week))
+    monkeypatch.setattr(cli, "_plan_day", lambda day, *a: planned.append(day) or ([], [], []))
+    now = datetime.now().astimezone().replace(hour=10)
+    events = json.dumps([{"category": "Meeting", "title": "x", "start": (now + timedelta(days=k)).isoformat(),
+                          "end": (now + timedelta(days=k, hours=1)).isoformat()} for k in (0, 5)])
+    cli.cmd_add(type("A", (), {"events": events, "week": 2})(), RULES, {"llm": {}})
+    assert weeks == [2] and planned == [(now + timedelta(days=5)).date()]
 
 
 def test_ask_without_any_llm_explains(monkeypatch, capsys):
