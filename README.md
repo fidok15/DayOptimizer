@@ -225,6 +225,7 @@ directory" before running any of these.
 |---|---|
 | `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
 | `dayoptimizer "<your day in plain words>"` | Shows the events it understood, adds them on your OK, then replans (local Ollama or `ANTHROPIC_API_KEY`) |
+| `dayoptimizer task "<work, how long, by when>"` | Saves one or more tasks ("tomorrow: laundry and exam prep, 2h each") and places them into free time before their deadline; `task list`, `task done t3` |
 | `uv run dayoptimizer plan [--date DD-MM-YYYY] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |
 | `uv run dayoptimizer agent install [--interval SECONDS]` | Installs the launchd background agent (label `com.dayoptimizer.check`, default interval 900s / 15 min) that runs `check` periodically |

@@ -459,9 +459,10 @@ def _task_line(t) -> str:
     return ", ".join(parts)
 
 def cmd_task(args, rules, config):
-    """`dayoptimizer task "report for Friday, 3h"`: understand the task (here,
-    in the terminal), save it and replan the days up to its deadline, so the
-    planner places it into free time. `task list` / `task done t3`."""
+    """`dayoptimizer task "report for Friday, 3h"`: understand the tasks (one or
+    several, here in the terminal), save them and replan once up to the latest
+    deadline, so the planner places them into free time. `task list` /
+    `task done t3`."""
     from dayoptimizer.llm.task_request import task_from_request
     words = list(args.words)
     storage = Storage(paths.db_path())
@@ -478,7 +479,7 @@ def cmd_task(args, rules, config):
             console.print(f"No task '{words[1]}'. See  dayoptimizer task list", markup=False, style="yellow")
             return
         console.print(f"Done: {words[1]}. Removing its planned blocks...", markup=False, style="green")
-        _replan_for(task, rules, config)
+        _replan_for([task], rules, config)
         return
     if not rules.categories:
         console.print("You have no categories yet, so there is nothing to file this under. "
@@ -486,8 +487,8 @@ def cmd_task(args, rules, config):
         return
     now = datetime.now()
     try:
-        req = make_backend(config["llm"]).parse_task(" ".join(words), now=f"{now:%A %Y-%m-%d %H:%M}",
-                                                     categories=list(rules.categories))
+        parsed = make_backend(config["llm"]).parse_task(" ".join(words), now=f"{now:%A %Y-%m-%d %H:%M}",
+                                                        categories=list(rules.categories))
     except LLMUnavailable as exc:
         console.print(f"{exc}\nUnderstanding a task needs a language model.", markup=False, style="yellow")
         return
@@ -495,29 +496,41 @@ def cmd_task(args, rules, config):
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    task, problem = task_from_request(req, list(rules.categories), now.date(), storage.next_task_id())
-    if task is None:
-        console.print(problem, markup=False, style="yellow")
+    if not parsed.tasks:
+        console.print(parsed.reply or "Say what the task is, e.g. 'report for Friday, 3h'.",
+                      markup=False, style="yellow")
         return
-    console.print("New task:")
-    console.print(f"  {_task_line(task)}", markup=False)
+    first = int(storage.next_task_id()[1:])
+    tasks = []
+    for req in parsed.tasks:
+        task, problem = task_from_request(req, list(rules.categories), now.date(), f"t{first + len(tasks)}")
+        if task is None:
+            console.print(problem, markup=False, style="yellow")
+        else:
+            tasks.append(task)
+    if not tasks:
+        return
+    console.print("New task:" if len(tasks) == 1 else "New tasks:")
+    for task in tasks:
+        console.print(f"  {_task_line(task)}", markup=False)
     if sys.stdin.isatty():
         try:
-            answer = console.input("Save it and place it in your calendar? [Y/n] ").strip().lower()
+            answer = console.input("Save and place in your calendar? [Y/n] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             answer = "n"
         if answer not in ("", "y", "yes", "t", "tak"):
             console.print("Nothing saved.")
             return
-    storage.save_task(task)
-    console.print("Placing it in your calendar...", style="dim")
-    _replan_for(task, rules, config)
+    for task in tasks:
+        storage.save_task(task)
+    console.print("Placing in your calendar...", style="dim")
+    _replan_for(tasks, rules, config)
 
-def _replan_for(task, rules, config):
-    """Replan from today up to the task's deadline (a week at most), in the
-    calendar bundle: that places a new task and removes a finished one's blocks."""
+def _replan_for(tasks, rules, config):
+    """Replan from today up to the latest deadline (a week at most), in the
+    calendar bundle: that places new tasks and removes a finished one's blocks."""
     today = date.today()
-    days = 7 if task.due is None else max(1, min(7, (task.due.date() - today).days + 1))
+    days = max(7 if t.due is None else max(1, min(7, (t.due.date() - today).days + 1)) for t in tasks)
     if _in_bundle() or sys.platform != "darwin":
         cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
     else:
@@ -697,6 +710,7 @@ def main(argv: list[str] | None = None):
     p_add = sub.add_parser("add")
     p_add.add_argument("events")
     p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
+                                         'several at once: task "tomorrow: laundry and exam prep, 2h each"; '
                                          'task list; task done t3')
     p_task.add_argument("words", nargs="+")
     sub.add_parser("check", help="stateless background cycle (sleep, new events, stress)")

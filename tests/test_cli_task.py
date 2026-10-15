@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.task_request import TaskRequest
+from dayoptimizer.llm.task_request import TaskList, TaskRequest
 
 RULES = SimpleNamespace(categories={"Work": {}, "Learn": {}})
 CONFIG = {"llm": {}}
@@ -12,7 +12,7 @@ class Parser:
         self.req = req
 
     def parse_task(self, text, now, categories):
-        return self.req
+        return TaskList(tasks=[self.req]) if isinstance(self.req, TaskRequest) else self.req
 
 
 def run(monkeypatch, words, req=None):
@@ -66,3 +66,26 @@ def test_main_routes_task_words_to_the_task_command(monkeypatch):
 def test_done_replans_so_its_blocks_go(monkeypatch):
     run(monkeypatch, ["x"], TaskRequest(title="report", category="Work", duration_minutes=60, due_day="tomorrow"))
     assert run(monkeypatch, ["done", "t1"]) == [["plan", "--week", "2"]]
+
+
+def test_several_tasks_are_saved_and_replanned_once(monkeypatch):
+    parsed = TaskList(tasks=[
+        TaskRequest(title="laundry", category="Work", duration_minutes=120, due_day="tomorrow"),
+        TaskRequest(title="exam prep", category="Learn", duration_minutes=120, due_day="day_after_tomorrow")])
+    calls = run(monkeypatch, ["x"], parsed)
+    tasks = Storage(paths.db_path()).open_tasks()
+    assert sorted((t.id, t.title) for t in tasks) == [("t1", "laundry"), ("t2", "exam prep")]
+    assert calls == [["plan", "--week", "3"]]
+
+
+def test_a_bad_task_is_reported_and_the_rest_saved(monkeypatch, capsys):
+    parsed = TaskList(tasks=[TaskRequest(title="report", category="Work"),
+                             TaskRequest(title="read", category="Learn", duration_minutes=60)])
+    run(monkeypatch, ["x"], parsed)
+    assert [t.title for t in Storage(paths.db_path()).open_tasks()] == ["read"]
+    assert "How long will 'report' take?" in capsys.readouterr().out
+
+
+def test_no_tasks_says_the_models_reply(monkeypatch, capsys):
+    calls = run(monkeypatch, ["hi"], TaskList(reply="That's not a task."))
+    assert calls == [] and "That's not a task." in capsys.readouterr().out

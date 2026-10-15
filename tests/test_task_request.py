@@ -34,7 +34,7 @@ def test_bad_inputs_are_explained():
         TaskRequest(title="x", category="Gym", duration_minutes=30), CATS, MON, "t1")[1]
     assert "24 hours" in task_from_request(
         TaskRequest(title="x", category="Work", duration_minutes=1500), CATS, MON, "t1")[1]
-    assert task_from_request(TaskRequest(reply="That's not a task."), CATS, MON, "t1") == (None, "That's not a task.")
+    assert task_from_request(TaskRequest(), CATS, MON, "t1")[0] is None
 
 
 def test_chunk_not_shorter_than_task_means_one_piece():
@@ -48,9 +48,9 @@ def test_ollama_parse_task_limits_category_to_users(monkeypatch):
 
     def fake_chat(self, system, user, schema=None, timeout=180):
         seen["schema"] = schema
-        return json.dumps({"title": "report", "category": "Work", "duration_minutes": 120})
+        return json.dumps({"tasks": [{"title": "report", "category": "Work", "duration_minutes": 120}]})
 
     monkeypatch.setattr(OllamaBackend, "_chat", fake_chat)
     req = OllamaBackend().parse_task("report 2h", now="Monday 2030-10-14 09:00", categories=CATS)
-    assert req.duration_minutes == 120
-    assert seen["schema"]["properties"]["category"]["enum"] == CATS + [""]
+    assert req.tasks[0].duration_minutes == 120
+    assert seen["schema"]["$defs"]["TaskRequest"]["properties"]["category"]["enum"] == CATS + [""]
