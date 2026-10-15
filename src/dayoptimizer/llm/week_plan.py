@@ -184,6 +184,22 @@ def free_time(day: date, events: list[Event], now: datetime) -> str:
 Reserved = dict  # date -> [(start, end, name, category)]: routine time tasks stay out of (category None: all tasks)
 
 
+def routine_spans(typical_week: dict, categories: dict, days: list[date]) -> tuple[dict, Reserved]:
+    """The routine of each day as spans (start, end, category, title, fixed,
+    protected), and the part of it tasks stay out of: fixed routine keeps out
+    tasks of other categories, a protected block (category None) every task."""
+    routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
+                         datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
+                         b.category, b.title or b.category,
+                         not getattr(categories.get(b.category), "movable", True),
+                         getattr(b, "protected", False))
+                        for b in typical_week.get(d.weekday(), [])]
+                    for d in days}
+    reserved = {d: [(s, e, title, None if kept else cat) for s, e, cat, title, fixed, kept in spans if fixed or kept]
+                for d, spans in routine_days.items()}
+    return routine_days, reserved
+
+
 def _guarded(span) -> bool:
     """A routine span (start, end, category, title, fixed[, protected]) the user protected from tasks."""
     return span[5:6] == (True,)

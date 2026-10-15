@@ -128,7 +128,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     Anthropic first, then the local Ollama model; None when neither can plan,
     so the caller falls back to placing the routine by rule."""
     from dayoptimizer.llm import backend as llm
-    from dayoptimizer.llm.week_plan import plan_days
+    from dayoptimizer.llm.week_plan import plan_days, routine_spans
     from dayoptimizer.routine import render_routine
     from dayoptimizer.core.models import PlannedChange
     from dayoptimizer.llm.task_rules import remaining
@@ -158,16 +158,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     # outside that is missed. Store progress per task if that matters.
     task_blocks = calendar.list_events(now - timedelta(days=30), now + timedelta(days=60)) if tasks else []
     left = remaining(tasks, task_blocks, now, planned)
-    routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
-                         datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
-                         b.category, b.title or b.category,
-                         not getattr(getattr(rules, "categories", {}).get(b.category), "movable", True),
-                         getattr(b, "protected", False))
-                        for b in rules.typical_week.get(d.weekday(), [])]
-                    for d in days}
-    # fixed routine keeps out tasks of other categories; a protected block (category None) keeps out every task
-    reserved = {d: [(s, e, title, None if kept else cat) for s, e, cat, title, fixed, kept in spans if fixed or kept]
-                for d, spans in routine_days.items()}
+    routine_days, reserved = routine_spans(rules.typical_week, getattr(rules, "categories", {}), days)
     history: dict[str, list[date]] = {}
     for e in events:
         if not e.all_day and (e.start.date() not in planned or e.start < now):
