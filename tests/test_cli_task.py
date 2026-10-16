@@ -117,8 +117,9 @@ def test_a_task_placed_whole_on_a_later_day_is_reported():
                              new_start=datetime(2030, 10, day, h).astimezone(),
                              new_end=datetime(2030, 10, day, h + 1).astimezone())
     tasks = [Task(id="t1", title="laundry", category="Work", duration_min=60),
-             Task(id="t2", title="report", category="Work", duration_min=120)]
-    lines = cli._moved([create("t1", 15, 9), create("t2", 15, 9)], tasks, date(2030, 10, 14))
+             Task(id="t2", title="report", category="Work", duration_min=120),
+             Task(id="t3", title="slides", category="Work", duration_min=60, due=datetime(2030, 10, 17, 12).astimezone())]
+    lines = cli._moved([create("t1", 15, 9), create("t2", 15, 9), create("t3", 16, 9)], tasks, date(2030, 10, 14))
     assert lines == ["'laundry': no room today, placed on Tue 15.10 09:00"]
 
 

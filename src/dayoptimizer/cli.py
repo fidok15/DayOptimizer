@@ -275,8 +275,9 @@ def cmd_plan(args, rules, config):
     _print_pending(storage)
 
 def _moved(changes, tasks, today: date) -> list[str]:
-    """A task placed whole in this run, that could start today but got a later
-    day: there was no room today, so say where it went."""
+    """A task placed whole in this run, that could start today and was meant
+    for now (no deadline, or one already passed) but got a later day: there was
+    no room today, so say where it went."""
     placed: dict[str, list] = {}
     for c in changes:
         if c.kind == "create" and c.task_id:
@@ -286,7 +287,9 @@ def _moved(changes, tasks, today: date) -> list[str]:
         blocks = placed.get(t.id, [])
         first = min((c.new_start for c in blocks), default=None)
         whole = sum((c.new_end - c.new_start).total_seconds() // 60 for c in blocks) >= t.duration_min
-        if first and whole and first.date() > today and (t.not_before is None or t.not_before.date() <= today):
+        # a deadline later on lets the planner choose a later day; only work meant for now had no room
+        if (first and whole and first.date() > today and (t.not_before is None or t.not_before.date() <= today)
+                and (t.due is None or t.due.date() <= today)):
             out.append(f"'{t.title}': no room today, placed on {first:%a %d.%m %H:%M}")
     return out
 
