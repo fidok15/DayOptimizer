@@ -664,7 +664,8 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     known), as soon as possible: one day at a time, later days take what is
     left. A task due after the run gets back only what it had on these days
     before the replan (`pushed`): a replan must not lose task time, but code
-    should not pile later work onto today. Routine time of the task's own category counts
+    should not pile later work onto today; a day before the deadline takes
+    its share (at least 3 hours) of what is left, the deadline day the rest. Routine time of the task's own category counts
     as free (the routine block yields to the task).
     A day with no gap long enough gets one made before the next day is tried:
     blocks in `taken` with an id "kept:<n>" (flexible, unprotected routine)
@@ -689,7 +690,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             end = a + timedelta(minutes=n)
             out.append((a, end, Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, end)]).split("-")[1],
                                       category=t.category, title=t.title, task_id=t.id, why="placed by code")))
-            taken.append(Event(id="filled", calendar=t.category, title=t.title, start=a, end=end))
+            taken.append(Event(id="filled", calendar=t.category, title=t.title, start=a, end=end, task_id=t.id))
             seen.setdefault(t.category, []).append(d)
             need -= n
             return end
@@ -700,14 +701,25 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
 
         candidates = sorted(x for x in days if x <= last and routine_days.get(x))
         notes_out = []
-        for d in candidates:
+        piece = t.min_chunk_min or t.duration_min
+        # a second pass without the spread when every day up to the deadline is planned now
+        for i, d in enumerate(candidates + (candidates if last <= max(days) else [])):
             midnight = datetime.combine(d, time(0)).astimezone()
             if broken := _count_rules([(midnight, midnight, Block(day=d.isoformat(), start="00:00", end="00:00",
                                                                   category=t.category, title=""))], rules, seen)[1]:
-                notes_out.append(broken[0].split("breaks the note ", 1)[1])
+                notes_out += [broken[0].split("breaks the note ", 1)[1]][:i < len(candidates)]
                 if len(notes_out) == len(candidates):  # the note is to blame only if it ruled out every day
                     ruled[t.id] = notes_out[0]
                 continue  # a weekly note rules the category out that day: don't move anything for it
+            # spread: a day before the deadline takes its share, the deadline day the rest.
+            # ponytail: a later day counts if it has a gap for a piece; notes and other tasks may still fill it
+            ahead = 0 if i >= len(candidates) else sum(
+                1 for x, spans in routine_days.items() if d < x <= last and spans
+                and any(minutes(a, b) >= min(piece, need) for a, b in free_gaps(x, busy(), now)))
+            have = sum(minutes(e.start, e.end) for e in taken if e.task_id == t.id and e.start.date() == d)
+            share = max(180, -(-(need + have) // (ahead + 1)))  # 3h a day is no cram
+            hold = max(0, need - -(-max(0, share - have) // piece) * piece)  # whole pieces, no stub under the chunk
+            need -= hold
             # twice: the short last piece may fit a gap the full chunk skipped
             for own_slot in (True, False, True, False):
                 gaps = free_gaps(d, busy(), now)
@@ -732,6 +744,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                     taken = [replace(x, start=s, end=z) if x.id == e.id else x for x in taken]
                     moved[int(e.id.split(":")[1])] = (s, z)
                 place(d, a, min(t.min_chunk_min or t.duration_min, need))
+            need += hold
             if need <= 0:
                 break
     return out, moved, ruled

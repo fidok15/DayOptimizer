@@ -960,3 +960,17 @@ def test_replanning_the_same_day_twice_changes_nothing():
                                 tasks=[t], left=remaining([t], events, NOW, {MON}), routine_days=sleep_only(MON))
         assert run == 0 or changes == []
         events = _apply(events, changes)
+
+
+def test_code_spreads_a_long_task_over_the_days_up_to_its_deadline():
+    # one day at a time: 10 hours due Wednesday are not crammed into Monday
+    t = task(title="Thesis", duration_min=600, due=at(MON + timedelta(days=2), "23:00"))
+    wed = MON + timedelta(days=2)
+    changes, _, _, unscheduled = plan_days(Small(*[WeekPlan() for _ in range(6)]), [MON, TUE, wed], "# r", WCATS,
+                                           [], NOTES, [], NOW, attempts=1, tasks=[t], left={"t1": 600},
+                                           routine_days=sleep_only(MON, TUE, wed))
+    per_day = {}
+    for c in changes:
+        if c.task_id:
+            per_day[c.new_start.date()] = per_day.get(c.new_start.date(), 0) + (c.new_end - c.new_start).seconds // 60
+    assert per_day == {MON: 240, TUE: 180, wed: 180} and unscheduled == []
