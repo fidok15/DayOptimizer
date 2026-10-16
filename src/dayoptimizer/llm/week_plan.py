@@ -627,21 +627,24 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     taken = [(*t, b.task_id and b.category) for b, t in placed] + [(*t, None) for t in busy]
     out, lost = [], []
     for d, spans in (routine_days or {}).items():
-        # fixed blocks first (they can't move), then ones still ahead: a missed
-        # breakfast moved later must not push a block that is on time
-        for span in sorted(spans, key=lambda x: (not x[4], x[0] < now)):
+        # every block that fits at its usual time first, fixed ones before the rest; only then
+        # the pushed ones move, into time still free: a moved supper must not take sleep's place
+        todo = [x for x in sorted(spans, key=lambda x: (not x[4], x[0] < now))
+                if not any(h[:3] == (d.isoformat(), x[2], x[3]) and abs(h[3] - x[0]) <= timedelta(hours=2)
+                           for h in have)]
+        queue = [(x, False) for x in todo]
+        for span, moving in queue:  # a block that missed its usual time goes back in line, moving
             s, e, cat, title, fixed = span[:5]
-            if any(h[:3] == (d.isoformat(), cat, title) and abs(h[3] - s) <= timedelta(hours=2) for h in have):
-                continue
             day_end = datetime.combine(d, time(0)).astimezone() + timedelta(days=1)
-            shifts = [0] if fixed else [0] + [m for k in range(15, 121, 15) for m in (-k, k)]
-            for m in shifts:
+            for m in [m for k in range(15, 121, 15) for m in (-k, k)] if moving else [0]:
                 a, b = s + timedelta(minutes=m), e + timedelta(minutes=m)
                 if a >= now and a.date() == d and b <= day_end and not any(
                         x < b and y > a and not (task and (_guarded(span) or task == cat)) for x, y, task in taken):
                     break
             else:
-                if s >= now:
+                if not (moving or fixed):
+                    queue.append((span, True))
+                elif s >= now:
                     lost.append((d, s, title, f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time"))
                 continue
             taken.append((a, b, None))

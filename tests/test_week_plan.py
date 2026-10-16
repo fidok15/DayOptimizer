@@ -657,6 +657,19 @@ def test_a_small_model_gets_its_forgotten_meal_back_near_its_usual_time():
     assert [(c.title, c.new_start, c.new_end) for c in changes] == [("Lunch", at(MON, "15:30"), at(MON, "16:30"))]
 
 
+def test_a_meal_pushed_by_an_event_does_not_take_the_usual_time_of_the_blocks_after_it():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    evening = {MON: [(at(MON, "20:00"), at(MON, "21:00"), "Food", "Supper", False),
+                     (at(MON, "21:00"), at(MON, "22:00"), "Free time", "Free time", False),
+                     (at(MON, "22:00"), at(MON, "22:30"), "Free time", "Wind down", False),
+                     (at(MON, "22:30"), at(TUE, "00:00"), "Sleep", "Sleep", False)]}
+    meet = ev("m", "Meets", "Weekly", MON, "20:30", "21:30")
+    back, lost = _forgotten_routine([], evening, [meet], NOW)
+    # sleep and wind down keep their time; supper moves into free time, free time finds none
+    assert [(b.title, b.start) for b in back] == [("Wind down", "22:00"), ("Sleep", "22:30"), ("Supper", "19:30")]
+    assert [x.split(": ")[1] for x in lost] == ["Free time"]
+
+
 def test_a_category_with_only_a_time_rule_does_not_let_filler_blocks_through():
     rules = parse_rules([{"type": "not_after", "category": "Food", "time": "21:00", "source": "x"}])
     plan = WeekPlan(blocks=[block(MON, "17:00", "18:00", "Food", "Free time")])
