@@ -217,7 +217,10 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         return m and int(m.group(1)) < 24 and f"{int(m.group(1)):02d}:{m.group(2) or '00'}"
     events, tasks = [], []
     # an event with no clock time anywhere is work to fit in: a task, so its clause's 'do/na/po' count
-    untimed = [e for e in req.events if not e.start_time and not clock(find(e.title)[0])]
+    from dayoptimizer.llm.task_request import _offset
+    # no clock time of its own, or only 'za 2h': the model made the time up, so it is a task
+    untimed = [e for e in req.events if not clock(find(e.title)[0])
+               and (not e.start_time or _offset(find(e.title)[0] or low) is not None)]
     for e in req.events:
         if e in untimed:
             continue
@@ -227,6 +230,7 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
     for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
+                                            when=(find(e.title)[0] or low) if _offset(find(e.title)[0] or low) else None,
                                             **dict.fromkeys(("due_day", "not_before_day"),
                                                             None if e.day == "today" else e.day))
                                 for e in untimed]:
