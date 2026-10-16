@@ -180,15 +180,33 @@ _DAY_WORDS = [
 
 
 def pin_day(text: str, req: "DayRequest") -> "DayRequest":
-    """When the message names exactly one day, that day is every event's day:
-    trust the words over the model. Several days (or none): the model decides."""
+    """When the message names exactly one day, that day is every event's day
+    and every task's: trust the words over the model. A task gets it as its
+    deadline after 'na/do/by/until/before', else as the day it goes on. A task
+    `when` that only names a day is dropped. Several days (or none): the model
+    decides."""
     import re
     low = text.lower()
-    said = {day for pattern, day in _DAY_WORDS if re.search(pattern, low)}
+    said = [(m, day) for pattern, day in _DAY_WORDS if (m := re.search(pattern, low))]
+    tasks = [t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t for t in req.tasks]
     if len(said) != 1:
-        return req
-    day = said.pop()
-    return req.model_copy(update={"events": [e.model_copy(update={"day": day}) for e in req.events]})
+        return req.model_copy(update={"tasks": tasks})
+    m, day = said[0]
+    if day != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
+        deadline = re.search(r"\b(na|do|by|until|before)\s+$", low[:m.start()])
+        pin = {"due_day": day} if deadline else {"due_day": day, "not_before_day": day}
+        tasks = [t.model_copy(update=pin) for t in tasks]
+    return req.model_copy(update={"events": [e.model_copy(update={"day": day}) for e in req.events],
+                                  "tasks": tasks})
+
+
+def _only_day(when: str) -> bool:
+    """'sobotę' / 'na piątek' / 'tomorrow': a day and nothing about the time of day."""
+    import re
+    low = when.lower()
+    for pattern, _ in _DAY_WORDS:
+        low = re.sub(rf"(?:{pattern})\w*", " ", low)
+    return low != when.lower() and not re.sub(r"\b(na|do|w|we|on|by|until|before|the)\b|\W", "", low)
 
 
 class LLMUnavailable(RuntimeError):

@@ -98,3 +98,16 @@ def test_one_named_day_overrides_the_model():
                       ("pojutrze basen", "day_after_tomorrow"), ("gym on Friday", "friday")]:
         assert pin_day(text, wrong).events[0].day == day
     assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"
+
+
+def test_one_named_day_pins_tasks():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    req = DayRequest(tasks=[TaskRequest(title="x", category="Home", when="sobotę")])
+    t = pin_day("w sobotę posprzątaj mieszkanie", req).tasks[0]
+    assert (t.not_before_day, t.due_day, t.when) == ("saturday", "saturday", None)
+    t = pin_day("na piątek przygotuj prezentację", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "friday")
+    rano = DayRequest(tasks=[TaskRequest(title="x", when="jutro rano")])
+    t = pin_day("jutro rano zrób pranie", rano).tasks[0]
+    assert (t.not_before_day, t.due_day, t.when) == ("tomorrow", "tomorrow", "jutro rano")
+    assert pin_day("dziś zrób pranie", req).tasks[0].not_before_day is None
