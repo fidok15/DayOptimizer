@@ -21,7 +21,7 @@ def run(monkeypatch, words, req=None):
     calls = []
     monkeypatch.setattr(cli, "_in_bundle", lambda: False)
     monkeypatch.setattr(cli.sys, "platform", "darwin")
-    monkeypatch.setattr(cli, "_calendar_run", lambda argv: calls.append(argv) or "planned")
+    monkeypatch.setattr(cli, "_calendar_run", lambda argv, ask=True: calls.append(argv) or "planned")
     monkeypatch.setattr(cli, "make_backend", lambda cfg: Parser(req))
     cli.cmd_task(SimpleNamespace(words=words), RULES, CONFIG)
     return calls
@@ -140,3 +140,34 @@ def test_chunks_only_when_the_message_asks_to_split(monkeypatch):
     run(monkeypatch, ["jutro", "po", "południu", "nauka", "2h"], req)
     run(monkeypatch, ["nauka", "4h", "w", "kawałkach", "po", "godzinę"], req.model_copy(update={"title": "x", "duration_minutes": 240}))
     assert [t.min_chunk_min for t in Storage(paths.db_path()).open_tasks()] == [None, 60]
+
+
+def _unfit(monkeypatch, tty, replies):
+    from datetime import datetime, timedelta
+    from dayoptimizer.core.models import Task
+    paths.ensure_private_dir()
+    storage = Storage(paths.db_path())
+    storage.save_task(Task(id="t1", title="raport", category="Work", duration_min=180,
+                           due=datetime.now().astimezone() + timedelta(hours=5)))
+    replans, asked = [], []
+    monkeypatch.setattr(cli, "_in_bundle", lambda: False)
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: tty)
+    monkeypatch.setattr(cli, "_load_config", lambda: (SimpleNamespace(categories={"Work": {}}, typical_week={}), CONFIG))
+    monkeypatch.setattr(cli.console, "input", lambda prompt, **kw: asked.append(prompt) or replies.pop(0))
+    monkeypatch.setattr(cli, "_replan_for", lambda tasks, rules, config, ask=True: replans.append(([t.id for t in tasks], ask)))
+    cli._note_unplaced(["t1: 'raport' doesn't fit before Thu 2030-10-17 23:59 - missing 180 min"])  # as the bundle does
+    cli._decide_unplaced(cli._take_unplaced())
+    return storage.get_task("t1"), asked, replans
+
+
+def test_a_task_that_did_not_fit_is_asked_about_in_the_terminal_and_replanned_once(monkeypatch):
+    task, asked, replans = _unfit(monkeypatch, True, ["make it 2h"])
+    assert asked[0].startswith("'raport' doesn't fit before Thu 2030-10-17 23:59 - missing 180 min. What should I do?")
+    assert task.duration_min == 120
+    assert replans == [(["t1"], False)]  # the replan doesn't ask again
+    assert not cli._unplaced_file().exists()
+
+
+def test_no_terminal_no_question(monkeypatch):
+    task, asked, replans = _unfit(monkeypatch, False, ["make it 2h"])
+    assert (task.duration_min, asked, replans) == (180, [], [])
