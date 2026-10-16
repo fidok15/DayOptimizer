@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-HOME_DIR="$HOME/.dayoptimizer"
+HOME_DIR="${DAYOPTIMIZER_HOME:-$HOME/.dayoptimizer}"
 [ -x "$HOME_DIR/DayOptimizer.app/Contents/MacOS/dayopt" ] || { echo "Bundle missing or incomplete — run scripts/setup-bundle.sh first."; exit 1; }
 printf '%s\n' "$@" > "$HOME_DIR/cli_args"
 rm -f "$HOME_DIR/cli.log"
