@@ -816,7 +816,7 @@ def test_a_task_due_on_a_day_too_late_to_plan_and_one_that_got_no_time_are_repor
 
 
 def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does_not():
-    # Free time moves at most two hours (12:00-13:00 is too far), never onto another block
+    # Free time moves to the nearest free hour (17:00, not 12:00), never onto another block
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, LAB, ev("b", "Uni", "Evening", MON, "18:00", "23:59")]
     plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "15:30", "16:30", "Food", "Free time")])
     for kept in (False, True):
