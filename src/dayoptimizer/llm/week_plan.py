@@ -754,7 +754,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                                drop) for drop in (False, True) if not drop or t.due is not None)), None)):
                 a, shifts = room
                 for e, s, z in shifts:
-                    taken = [replace(x, start=s, end=z) for x in taken if x.id != e.id or s is not None]
+                    taken = [x if x.id != e.id else replace(x, start=s, end=z) for x in taken if x.id != e.id or s is not None]
                     moved[int(e.id.split(":")[1])] = None if s is None else (s, z)
                 place(d, a, size())
             need += hold

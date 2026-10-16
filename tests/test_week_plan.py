@@ -907,6 +907,19 @@ def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does
                        [("Free time", at(MON, "17:00"), at(MON, "18:00")), ("Report", at(MON, "15:00"), at(MON, "17:00"))])
 
 
+def test_a_second_move_for_a_task_does_not_lose_where_the_other_blocks_are():
+    busy = [ev("a", "Uni", "A", MON, "07:00", "10:00"), ev("b", "Uni", "B", MON, "12:00", "14:00"),
+            ev("c", "Uni", "C", MON, "16:00", "23:59")]
+    free = [(at(MON, "10:30"), at(MON, "11:30"), "Food", "Snack", False), (at(MON, "14:30"), at(MON, "15:30"), "Food", "Tea", False)]
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "10:30", "11:30", "Food", "Snack"),
+                            block(MON, "14:30", "15:30", "Food", "Tea")])
+    creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(MON, "23:00"))], left={"t1": 120},
+                          report_unplaced=True, routine_days={MON: sleep_only(MON)[MON] + free}, fill_until=MON)
+    spans = sorted((c.new_start, c.new_end, c.title) for c in creates)
+    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), spans  # nothing on top of anything
+    assert sum((e - s).seconds // 60 for s, e, t in spans if t == "Report") == 120
+
+
 def test_a_moved_block_does_not_land_on_the_tasks_own_routine_block():
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "11:00"), ev("b", "Uni", "Night", MON, "18:00", "23:59")]
     routine = {MON: sleep_only(MON)[MON] + [(at(MON, "11:00"), at(MON, "12:00"), "Food", "Lunch", False),
