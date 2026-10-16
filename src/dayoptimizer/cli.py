@@ -249,6 +249,9 @@ def cmd_plan(args, rules, config):
         console.print(f"[green]Applied {len(applied)} changes.[/green]")
         if summary:
             console.print(summary, markup=False)
+        noted, dropped = _by_notes(dropped)
+        if noted:
+            console.print(f"Skipped by your notes: {', '.join(noted)}", markup=False, style="dim")
         if dropped:
             console.print(f"Left out {len(dropped)} block(s) that broke a rule:", markup=False, style="yellow")
             for line in dropped:
@@ -273,6 +276,22 @@ def cmd_plan(args, rules, config):
                           "Draw that day in `dayoptimizer setup`.[/yellow]")
         _print_errors(errors)
     _print_pending(storage)
+
+_NOTED = re.compile(r"^(\d{4}-\d{2}-\d{2}) \S+ [^:]+: (.+?): breaks the note ")
+
+
+def _by_notes(dropped: list[str]) -> tuple[list[str], list[str]]:
+    """Blocks the user's own notes keep out ('Sat Gym': expected, one short
+    line) apart from the rest of what was left out."""
+    noted, rest = [], []
+    for line in dropped:
+        m = _NOTED.match(line)
+        if m:
+            noted.append(f"{date.fromisoformat(m.group(1)):%a} {m.group(2)}")
+        else:
+            rest.append(line)
+    return list(dict.fromkeys(noted)), rest
+
 
 def _moved(changes, tasks, today: date) -> list[str]:
     """A task placed whole in this run, that could start today and was meant

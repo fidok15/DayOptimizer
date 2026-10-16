@@ -174,3 +174,10 @@ def test_background_check_without_access_notifies_once_a_day(monkeypatch):
     for _ in range(3):
         cli.cmd_check(None, None, None)
     assert len(sent) == 1 and "Calendars" in sent[0]
+
+
+def test_blocks_kept_out_by_the_notes_are_one_short_line():
+    noted, rest = cli._by_notes(['2026-10-17 18:30-19:45 Gym: Gym: breaks the note "Gym at most twice a week"',
+                                 '2026-10-19 18:30-19:45 Gym: Gym: breaks the note "A rest day between"',
+                                 "Tue 20:00-21:00 Food: Supper: no free time near its usual time"])
+    assert noted == ["Sat Gym", "Mon Gym"] and rest == ["Tue 20:00-21:00 Food: Supper: no free time near its usual time"]
