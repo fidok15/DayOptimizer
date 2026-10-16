@@ -26,6 +26,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 import threading
 import time as time_mod
 import webbrowser
@@ -293,10 +294,42 @@ def save_routine_brief(payload: object) -> dict:
             "notes": compile_notes(state["notes"], known)}
 
 
-def _clean_rule(row: dict, categories: list[str]) -> dict | None:
+# ponytail: a word list, not a parser: a negation phrased otherwise slips through to the prompt's own rule
+_FORBIDS = re.compile(r"\b(nie\s+(mo[żg]\w*|wolno)|nigdy|never|can\s?not|can't|must\s?n[o']t|may\s+not|not\s+allowed)\b",
+                      re.I)
+_QUOTED = re.compile(r"(?<!\w)[\"“”„«»']([^\"“”„«»]{1,20}?)[\"“”„«»'](?!\w)")
+
+
+def _named(name: str, text: str) -> bool:
+    """The sentence names this category or calendar, in any grammatical form
+    ('z Politechniki' names 'Politechnika')."""
+    return name.lower()[:max(3, len(name) - 3)] in text.lower()
+
+
+def _clean_skippable(row: dict, categories: list[str], context: str) -> dict | None:
+    """A skippable rule frees the user's events for planning, so it must be what
+    they said: not from a sentence forbidding it, the prefix written in their
+    words (the quoted text, when they quoted one; the previous sentence may
+    hold it: 'Lectures start with "W -". You may skip lectures'), and the
+    calendar one the words name, else any calendar (the prefix alone)."""
+    words = f"{context}\n{row.get('source', '')}"
+    prefix = str(row.get("prefix") or "").strip()
+    quoted = [q.strip() for q in _QUOTED.findall(words)]
+    if (_FORBIDS.search(str(row.get("source", ""))) or prefix.lower() not in words.lower()
+            or (quoted and prefix not in quoted)):
+        return None
+    named = [c for c in categories if _named(c, words)]
+    category = next((c for c in categories if c.lower() == str(row.get("category") or "").lower()), None)
+    row["category"] = category if category in named else next(iter(named), None)
+    return row
+
+
+def _clean_rule(row: dict, categories: list[str], context: str = "") -> dict | None:
     """Guard the model's output: a category must be one the user really has
     (models like to invent 'everything'), and keep_free needs a window, which
-    they sometimes send as `time`. None means the rule is unusable."""
+    they sometimes send as `time`. None means the rule is unusable. `context`
+    is the words around it (its sentence and the one before), which a
+    skippable rule may lean on."""
     row = {k: (v.replace("/no_think", "").strip() if isinstance(v, str) else v)
            for k, v in row.items() if v is not None}
     if (row.get("type"), row.get("time")) in (("not_before", "00:00"), ("not_after", "24:00")):
@@ -306,9 +339,8 @@ def _clean_rule(row: dict, categories: list[str]) -> dict | None:
     if row.get("type") in ("not_before", "not_after", "keep_free") and not any(
             c.isdigit() for c in str(row.get("source", ""))):
         return None
-    if row.get("type") == "skippable" and str(row.get("prefix") or "").strip().lower() not in str(
-            row.get("source", "")).lower():
-        return None
+    if row.get("type") == "skippable":
+        return _clean_skippable(row, categories, context)
     category = row.get("category")
     if category:
         match = next((c for c in categories if c.lower() == str(category).lower()), None)
@@ -350,7 +382,7 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
         return {"rules": [], "not_compiled": [], "error":
                 "Your notes are saved, but turning them into rules needs a language model: add "
                 "ANTHROPIC_API_KEY=... to the .env file in the DayOptimizer folder, or start Ollama."}
-    def ask(part: str) -> list[dict]:
+    def ask(part: str, context: str = "") -> list[dict]:
         for backend in backends:
             try:
                 compiled = backend.compile_notes(part, categories)
@@ -359,12 +391,14 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
                 continue
         else:
             return []
-        mine = [_clean_rule({**row, "source": part}, categories) for row in compiled.rows()]
+        mine = [_clean_rule({**row, "source": part}, categories, context) for row in compiled.rows()]
         return [row for row in mine if row is not None and parse_rules([row])]
 
     results: list[tuple[str, list[dict]]] = []
     for parts in split_notes(notes):
-        results.append((", ".join(parts), [row for part in parts for row in ask(part)]))
+        sentence = ", ".join(parts)
+        context = f"{results[-1][0] if results else ''}. {sentence}"
+        results.append((sentence, [row for part in parts for row in ask(part, context)]))
     i = 0
     while i < len(results) - 1:
         if not results[i][1] and not results[i + 1][1]:

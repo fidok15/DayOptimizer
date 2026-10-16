@@ -205,6 +205,8 @@ def test_task_roundtrip_and_ids(tmp_path):
     assert got == _task(min_chunk_min=60, priority="high")
     assert s.next_task_id() == "t2"
     assert s.get_task("t9") is None
+    s._conn.execute("DELETE FROM tasks")  # an emptied table must not hand out t1 again
+    assert s.next_task_id() == "t2"
 
 
 def test_open_tasks_sorted_and_done_left_out(tmp_path):

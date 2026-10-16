@@ -81,8 +81,17 @@ class DayRulesConfig(BaseModel):
         return value
 
 
+class LLMConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    backend: Literal["auto", "ollama", "anthropic"] = "auto"
+    ollama_model: str = Field(default="qwen3:8b", min_length=1, max_length=100)
+    ollama_mode: Literal["slots", "layout"] = "slots"
+    model: str = Field(default="claude-sonnet-5-5", min_length=1, max_length=100)
+
+
 class UserConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    llm: LLMConfig | None = None
     categories: dict[str, CategoryConfig | None] = {}
     day_rules: DayRulesConfig = DayRulesConfig()
     transport_routes: dict[str, Annotated[int, Field(ge=0, le=600)]] = {}
@@ -113,7 +122,7 @@ def validate_config(yaml_text: str) -> UserConfig:
     if not isinstance(data, dict):
         raise ConfigError("Config must be a YAML mapping (top-level keys: "
                           "categories, day_rules, transport_routes, "
-                          "holiday_calendars, typical_week, routine_mode, notes, note_rules).")
+                          "holiday_calendars, typical_week, routine_mode, notes, note_rules, llm).")
     problems: list[str] = []
     categories = data.get("categories")
     non_string_names: list[object] = []

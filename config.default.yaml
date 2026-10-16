@@ -42,4 +42,6 @@ llm:
   # when ANTHROPIC_API_KEY is set. Force one with: ollama | anthropic
   backend: auto
   ollama_model: qwen3:8b
+  # slots = code finds the legal times, the local model picks among them; layout = it lays out the whole day
+  ollama_mode: slots
   model: claude-sonnet-5-5          # Anthropic model

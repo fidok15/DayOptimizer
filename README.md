@@ -101,7 +101,9 @@ brew install ollama && brew services start ollama && ollama pull qwen3:8b
 
 Otherwise it uses Claude when `ANTHROPIC_API_KEY=...` is in a `.env` file in the
 DayOptimizer folder. `llm.backend` in the config forces one (`ollama`, `anthropic`,
-default `auto`).
+default `auto`). `llm.ollama_mode` picks how the local model plans: `slots`
+(default, it picks among free slots code found, one day at a time) or `layout`
+(it lays out the day itself).
 
 **Planning days.** `dayoptimizer` and `dayoptimizer plan --date DD-MM-YYYY --week N`
 let a language model lay out the days: it reads your routine and notes as a
@@ -209,6 +211,9 @@ a running `dayoptimizer web --no-open`); `npm run build` writes the bundle into
 | `/dayoptimizer:today` | Morning briefing: today's schedule + health status |
 | `/dayoptimizer:stats` | 14-day Garmin trends and planning suggestions |
 
+Claude can also manage tasks through the MCP tools `add_task` (plain words, like
+`dayoptimizer task`), `list_tasks` and `task_done`.
+
 ## CLI reference
 
 DayOptimizer also works as a standalone CLI. After `scripts/install.sh` the
@@ -224,7 +229,7 @@ directory" before running any of these.
 | Command | What it does |
 |---|---|
 | `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
-| `dayoptimizer "<your day in plain words>"` | Shows the events it understood, adds them on your OK, then replans (local Ollama or `ANTHROPIC_API_KEY`) |
+| `dayoptimizer "<your day in plain words>"` | Shows the events it understood, adds them on your OK, then replans (local Ollama or `ANTHROPIC_API_KEY`). Things without a clock time ("do the laundry", "report for Friday, 3h") become tasks placed in the day: in your routine time of their category first, else in the earliest free time; "rano"/"morning", "po południu"/"afternoon", "wieczorem"/"evening" narrow it, "przed piątkiem"/"before Friday" means done by Thursday night |
 | `dayoptimizer task "<work, how long, by when>"` | Saves one or more tasks ("tomorrow: laundry and exam prep, 2h each") and places them into free time before their deadline; `task list`, `task done t3` |
 | `uv run dayoptimizer plan [--date DD-MM-YYYY] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |

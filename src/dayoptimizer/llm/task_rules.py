@@ -51,6 +51,8 @@ def task_lines(tasks: list[Task], left: dict[str, int], now: datetime,
             parts.append(f"OVERDUE since {t.due:%a %Y-%m-%d %H:%M}, place it first")
         elif t.due is not None:
             parts.append(f"due {t.due:%a %Y-%m-%d %H:%M}")
+        else:
+            parts.append("no deadline: as early as possible")
         if t.not_before is not None and t.not_before > now:
             parts.append(f"not before {t.not_before:%a %Y-%m-%d %H:%M}")
         split = t.min_chunk_min is not None and t.min_chunk_min < n
@@ -86,9 +88,11 @@ def block_problem(task: Task | None, category: str, start: datetime, end: dateti
 
 
 def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
-             last_day: date, now: datetime) -> list[str]:
+             last_day: date, now: datetime, before: dict[str, int] | None = None) -> list[str]:
     """Tasks that had to be finished within the planned days, still have
-    minutes left, and were not listed as unscheduled: the model went quiet."""
+    minutes left, and were not listed as unscheduled: the model went quiet.
+    With `before` (minutes left before planning), a task without a deadline
+    that got only part of its time, or none, is reported too."""
     out = []
     for t in tasks:
         n = left_after.get(t.id, 0)
@@ -100,4 +104,10 @@ def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
         elif t.due is not None and t.due.date() <= last_day:
             out.append(f"{t.id}: {n} min of '{t.title}' left before {t.due:%a %Y-%m-%d %H:%M} - "
                        "place them or list the task in unscheduled")
+        elif (t.due is None and before is not None
+              and not (t.not_before and t.not_before.date() > last_day)):  # one that starts later had no chance
+            had = before.get(t.id, 0)
+            out.append(f"{t.id}: '{t.title}' (no deadline) got no time in the planned days" if n >= had else
+                       f"{t.id}: '{t.title}' (no deadline): placed {had - n} of {had} min, {n} min don't fit "
+                       "in the planned days")
     return out

@@ -25,6 +25,9 @@ def test_format_changes_readable():
                        new_start=datetime(2026, 7, 3, 17, 0), new_end=datetime(2026, 7, 3, 18, 0))
     text = format_changes([ch])
     assert "Gym" in text and "17:00" in text and "Body Battery" in text
+    from dataclasses import replace
+    later = replace(ch, new_start=datetime(2026, 7, 4, 17, 0), new_end=datetime(2026, 7, 4, 18, 0))
+    assert "Sat 04.07 17:00-18:00" in format_changes([ch, later])
 
 def test_parse_request_sends_user_categories():
     backend = AnthropicBackend.__new__(AnthropicBackend)
@@ -98,3 +101,78 @@ def test_one_named_day_overrides_the_model():
                       ("pojutrze basen", "day_after_tomorrow"), ("gym on Friday", "friday")]:
         assert pin_day(text, wrong).events[0].day == day
     assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"
+    days = [("w poniedziałku", "monday"), ("w poniedzialku", "monday"), ("we wtorku", "tuesday"),
+            ("do środy", "wednesday"), ("do srody", "wednesday"), ("w czwartku", "thursday"),
+            ("w piątku", "friday"), ("w piatku", "friday"), ("do soboty", "saturday"), ("w niedzieli", "sunday"),
+            ("po środzie", "wednesday"), ("po sobocie", "saturday"), ("w poniedziałek", "monday"),
+            ("we wtorek", "tuesday"), ("w niedzielę", "sunday"), ("po niedzieli", "sunday")]
+    for text, day in days:
+        assert pin_day(f"{text} o 14", wrong).events[0].day == day, text
+    for text in ("o piątej", "o czwartej", "w środku dnia", "piątka z matmy", "dostałem piątkę"):  # an hour or 'the middle', not a weekday
+        assert pin_day(text, wrong).events[0].day == "saturday", text
+
+
+def test_one_named_day_pins_tasks():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    req = DayRequest(tasks=[TaskRequest(title="x", category="Home", when="sobotę")])
+    t = pin_day("w sobotę posprzątaj mieszkanie", req).tasks[0]
+    assert (t.not_before_day, t.due_day, t.when) == ("saturday", "saturday", None)
+    t = pin_day("na piątek przygotuj prezentację", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "friday")
+    t = pin_day("przed piatkiem przygotuj prezentację", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "thursday")  # before Friday starts
+    t = pin_day("before monday write it", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "sunday")
+    t = pin_day("po czwartku umyj okna", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("friday", None)
+    wrong = DayRequest(tasks=[TaskRequest(title="umyj auto", due_day="wednesday")])  # the model read a deadline
+    t = pin_day("po środzie umyj auto 1h", wrong).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("thursday", None)
+    rano = DayRequest(tasks=[TaskRequest(title="x", when="jutro rano")])
+    t = pin_day("jutro rano zrób pranie", rano).tasks[0]
+    assert (t.not_before_day, t.due_day, t.when) == ("tomorrow", "tomorrow", "jutro rano")
+    assert pin_day("dziś zrób pranie", req).tasks[0].not_before_day is None
+
+
+def test_each_clause_pins_its_own_items():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    model = DayRequest(events=[NewEvent(title="dentist", category="Important", day="friday", start_time="10:00")],
+                       tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120, due_day="friday")])
+    req = pin_day("w czwartek o 10 dentysta i do piątku raport 2h", model)
+    assert req.events[0].day == "thursday"
+    assert (req.tasks[0].due_day, req.tasks[0].not_before_day) == ("friday", None)
+    # the model made both tasks; the one with a clock time is an event that day
+    model = DayRequest(tasks=[TaskRequest(title="esej", category="Learn", duration_minutes=120),
+                              TaskRequest(title="obiad u mamy", category="Family")])
+    req = pin_day("na piątek esej 2h a w niedzielę o 12 obiad u mamy", model)
+    assert [(t.title, t.due_day) for t in req.tasks] == [("esej", "friday")]
+    assert [(e.title, e.day, e.start_time) for e in req.events] == [("obiad u mamy", "sunday", "12:00")]
+    model = DayRequest(tasks=[TaskRequest(title="report"), TaskRequest(title="clean the garage")])
+    req = pin_day("before Friday write the report 2h and after Saturday clean the garage 2h", model)
+    assert [(t.not_before_day, t.due_day) for t in req.tasks] == [(None, "thursday"), ("sunday", None)]
+    # a clause with no day of its own: its clock time stays an event, not an inherited 'do' deadline
+    model = DayRequest(tasks=[TaskRequest(title="raport"), TaskRequest(title="spotkanie z anią")])
+    req = pin_day("do piątku raport i spotkanie z anią o 15", model)
+    assert [(e.title, e.day, e.start_time) for e in req.events] == [("spotkanie z anią", "friday", "15:00")]
+    # ...and a day the model gave it stands
+    model = DayRequest(tasks=[TaskRequest(title="report"), TaskRequest(title="call mom", due_day="sunday")])
+    req = pin_day("write a report by friday and call mom", model)
+    assert [t.due_day for t in req.tasks] == ["friday", "sunday"]
+
+
+def test_a_deadline_time_is_not_an_event():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    raport = DayRequest(tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120)])
+    for text in ("do piątku o 17 raport 2h", "przed piątkiem o 17 oddaj raport"):
+        req = pin_day(text, raport)
+        assert req.events == [] and (req.tasks[0].due_day, req.tasks[0].due_time) == ("friday", "17:00"), text
+    model = DayRequest(tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120, due_time="15:00")])
+    req = pin_day("raport 2h przed spotkaniem o 15", model)
+    assert req.events == [] and req.tasks[0].due_time == "15:00"
+
+
+def test_an_item_goes_with_the_clause_sharing_most_of_its_title():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    model = DayRequest(tasks=[TaskRequest(title="zadzwoń do mamy", category="Family")])
+    req = pin_day("w niedzielę obiad u mamy, w piątek zadzwoń do mamy", model)
+    assert req.tasks[0].due_day == "friday"

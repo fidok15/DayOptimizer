@@ -35,3 +35,10 @@ def test_notes_reach_the_brief():
 
 def test_prompt_without_routine():
     assert "routine" not in request_prompt("x", "2026-09-22", "Tuesday 09:00", ["Gym"])
+
+
+def test_a_protected_block_is_marked_and_parsed():
+    from dayoptimizer.core.rules import _parse_typical_week
+    week = {"mon": [dict(WORK[0], protected=True), WORK[1]]}
+    assert "09:00-17:00 Work (protected: no tasks here)\n18:00-19:30 Gym: Push day\n" in render_routine(CATS, week)
+    assert [b.protected for b in _parse_typical_week(week)[0]] == [True, False]

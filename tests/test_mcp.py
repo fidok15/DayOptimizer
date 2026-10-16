@@ -225,3 +225,20 @@ def test_save_config_roundtrip(app_home):
     assert "Saved config" in out
     bad = mcp_server.save_config("categories:\n  Gym: {movable: true, nope: 1}\n")
     assert "Invalid config" in bad or "nope" in bad
+
+
+def test_task_tools_add_list_and_finish_without_touching_the_calendar(app_home, monkeypatch):
+    from types import SimpleNamespace
+    from dayoptimizer.llm import backend
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
+    reqs = [DayRequest(tasks=[TaskRequest(title="report", category="Work", duration_minutes=120)]),
+            DayRequest(events=[NewEvent(title="gym", category="Work", start_time="18:00")])]
+    monkeypatch.setattr(mcp_server, "load_rules", lambda p: SimpleNamespace(categories={"Work": {}}))
+    monkeypatch.setattr(mcp_server, "load_config_data", lambda p: {"llm": {}})
+    monkeypatch.setattr(backend, "make_backend", lambda cfg: SimpleNamespace(parse_request=lambda *a, **k: reqs.pop(0)))
+    monkeypatch.setattr(mcp_server, "_bundle_run", lambda *a, **k: pytest.fail("calendar touched"))
+    assert "Added [t1] report (Work) 120 min" in mcp_server.add_task("report, 2h")
+    assert mcp_server.list_tasks().startswith("[t1] report")
+    assert "Done: t1" in mcp_server.task_done("t1") and mcp_server.list_tasks() == "No open tasks."
+    assert mcp_server.task_done("t1") == "t1 was already done."
+    assert "Nothing was saved" in mcp_server.add_task("gym 18:00") and mcp_server.list_tasks() == "No open tasks."

@@ -1,0 +1,156 @@
+# Whole-day scenarios with a drawn routine, notes and their compiled rules:
+# scripts/eval_tasks.py --set days --mode layout|slots|code
+# Same shape as evals/tasks/*.yaml; events without an id get e1, e2, ...
+# A managed event is an earlier plan of DayOptimizer's own.
+categories:
+  Sleep: {movable: false, priority: 9}
+  Food: {movable: true, priority: 7}
+  Work: {movable: false, priority: 6}
+  Learn: {movable: true, priority: 5}
+  Sport: {movable: true, priority: 4}
+  Home: {movable: true, priority: 3}
+  Free time: {movable: true, priority: 2}
+weekday: &weekday
+  - {start: "00:00", end: "07:00", category: Sleep, title: Sleep}
+  - {start: "07:00", end: "07:30", category: Food, title: Breakfast, protected: true}
+  - {start: "08:00", end: "10:00", category: Learn, title: Deep work}
+  - {start: "10:00", end: "12:00", category: Work, title: Work}
+  - {start: "12:30", end: "13:00", category: Food, title: Lunch, protected: true}
+  - {start: "13:00", end: "15:00", category: Work, title: Work}
+  - {start: "15:30", end: "16:30", category: Sport, title: Gym}
+  - {start: "18:00", end: "18:45", category: Food, title: Dinner, protected: true}
+  - {start: "19:00", end: "20:00", category: Free time, title: Reading}
+  - {start: "22:30", end: "24:00", category: Sleep, title: Sleep}
+weekend: &weekend
+  - {start: "00:00", end: "08:00", category: Sleep, title: Sleep}
+  - {start: "08:30", end: "09:00", category: Food, title: Breakfast}
+  - {start: "10:00", end: "12:00", category: Sport, title: Run}
+  - {start: "13:00", end: "13:45", category: Food, title: Lunch}
+  - {start: "18:30", end: "19:15", category: Food, title: Dinner}
+  - {start: "23:00", end: "24:00", category: Sleep, title: Sleep}
+typical_week: {mon: *weekday, tue: *weekday, wed: *weekday, thu: *weekday, fri: *weekday,
+               sat: *weekend, sun: *weekend}
+notes: |-
+  Lectures (titles starting with "Lecture -") may be planned over, I can skip them.
+  Labs ("Lab -") may not be planned over.
+  Gym at most 3 times a week.
+  No sport after 21:00.
+rules:
+  - {type: skippable, category: Uni, prefix: "Lecture -", source: 'Lectures (titles starting with "Lecture -") may be planned over, I can skip them.'}
+  - {type: max_per_week, category: Sport, count: 3, source: "Gym at most 3 times a week."}
+  - {type: not_after, category: Sport, time: "21:00", source: "No sport after 21:00."}
+scenarios:
+  - name: empty-day
+    now: "2030-10-14 06:30"
+    days: [2030-10-14]
+  - name: lecture-and-lab
+    now: "2030-10-14 07:00"
+    days: [2030-10-14]
+    events:
+      - {calendar: Uni, title: Lecture - Algebra, day: 2030-10-14, start: "08:00", end: "10:00"}
+      - {calendar: Uni, title: Lab - Physics, day: 2030-10-14, start: "13:00", end: "15:30"}
+    tasks:
+      - {id: t1, title: Lab prep, category: Learn, duration_min: 90, due: "2030-10-14 13:00"}
+    expect: {placed: [t1]}
+  - name: no-deadline
+    now: "2030-10-14 07:00"
+    days: [2030-10-14]
+    tasks:
+      - {id: t1, title: Clean garage, category: Home, duration_min: 60}
+      - {id: t2, title: Read paper, category: Learn, duration_min: 45}
+    expect: {placed: [t1, t2]}
+  - name: afternoon-window
+    now: "2030-10-15 08:00"
+    days: [2030-10-15]
+    tasks:
+      - {id: t1, title: Call plumber, category: Home, duration_min: 30, not_before: "2030-10-15 12:00", due: "2030-10-15 18:00"}
+    expect: {placed: [t1]}
+  - name: due-tonight
+    now: "2030-10-14 19:40"
+    days: [2030-10-14]
+    tasks:
+      - {id: t1, title: Essay draft, category: Learn, duration_min: 120, due: "2030-10-14 21:30", min_chunk_min: 30}
+    expect: {unscheduled: [t1]}
+  - name: long-task-fragmented
+    now: "2030-10-16 07:00"
+    days: [2030-10-16]
+    events:
+      - {calendar: Personal, title: Dentist, day: 2030-10-16, start: "16:30", end: "17:30"}
+      - {calendar: Friends, title: Call with mom, day: 2030-10-16, start: "21:00", end: "21:30"}
+    tasks:
+      - {id: t1, title: Tax return, category: Home, duration_min: 120, due: "2030-10-16 23:00"}
+    expect: {placed: [t1]}
+  - name: protected-lunch
+    now: "2030-10-17 07:00"
+    days: [2030-10-17]
+    events:
+      - {calendar: Job, title: Workshop, day: 2030-10-17, start: "07:30", end: "12:30"}
+      - {calendar: Job, title: Workshop, day: 2030-10-17, start: "13:00", end: "18:00"}
+    tasks:
+      - {id: t1, title: Pay bills, category: Home, duration_min: 30, due: "2030-10-17 13:00"}
+    expect: {unscheduled: [t1]}
+  - name: competing-tasks
+    now: "2030-10-15 07:00"
+    days: [2030-10-15]
+    events:
+      - {calendar: Uni, title: Lab - Chemistry, day: 2030-10-15, start: "08:00", end: "10:00"}
+    tasks:
+      - {id: t1, title: Exam prep, category: Learn, duration_min: 120, due: "2030-10-15 20:00", min_chunk_min: 60, priority: high}
+      - {id: t2, title: Code review, category: Work, duration_min: 60, due: "2030-10-15 17:00"}
+      - {id: t3, title: Groceries, category: Home, duration_min: 45, due: "2030-10-16 20:00"}
+      - {id: t4, title: Duolingo, category: Learn, duration_min: 15, priority: low}
+    expect: {placed: [t1, t2, t4]}
+  - name: full-day
+    now: "2030-10-17 07:00"
+    days: [2030-10-17]
+    events:
+      - {calendar: Job, title: Conference, day: 2030-10-17, start: "07:30", end: "22:30"}
+    tasks:
+      - {id: t1, title: Slides, category: Learn, duration_min: 60, due: "2030-10-17 22:00"}
+    expect: {unscheduled: [t1]}
+  - name: multi-day-deadline
+    now: "2030-10-14 07:00"
+    days: [2030-10-14, 2030-10-15, 2030-10-16]
+    events:
+      - {calendar: Uni, title: Lab - Biology, day: 2030-10-14, start: "08:00", end: "10:00"}
+      - {calendar: Uni, title: Lab - Biology, day: 2030-10-15, start: "08:00", end: "10:00"}
+      - {calendar: Uni, title: Lab - Biology, day: 2030-10-16, start: "08:00", end: "10:00"}
+    tasks:
+      - {id: t1, title: Thesis chapter, category: Learn, duration_min: 300, due: "2030-10-16 18:00", min_chunk_min: 60}
+    expect: {placed: [t1], max_block_min: 180}
+  - name: meeting-over-gym
+    now: "2030-10-14 07:00"
+    days: [2030-10-14]
+    events:
+      - {calendar: Job, title: Team meeting, day: 2030-10-14, start: "15:00", end: "17:00"}
+  - name: overdue
+    now: "2030-10-15 09:00"
+    days: [2030-10-15]
+    tasks:
+      - {id: t1, title: Pay rent, category: Home, duration_min: 30, due: "2030-10-14 20:00"}
+    expect: {placed: [t1]}
+  - name: weekend
+    now: "2030-10-19 08:30"
+    days: [2030-10-19]
+    tasks:
+      - {id: t1, title: Fix bike, category: Home, duration_min: 120, due: "2030-10-20 20:00", min_chunk_min: 60}
+      - {id: t2, title: Plan the week, category: Home, duration_min: 30}
+    expect: {placed: [t2]}
+  - name: replan-midday
+    now: "2030-10-14 13:05"
+    days: [2030-10-14]
+    events:
+      - {calendar: Personal, title: Doctor, day: 2030-10-14, start: "15:00", end: "16:30"}
+      - {calendar: Learn, title: Report, day: 2030-10-14, start: "15:00", end: "16:30", managed: true, task_id: t1}
+      - {calendar: Food, title: Dinner, day: 2030-10-14, start: "18:00", end: "18:45", managed: true}
+      - {calendar: Free time, title: Reading, day: 2030-10-14, start: "19:00", end: "20:00", managed: true}
+      - {calendar: Sleep, title: Sleep, day: 2030-10-14, start: "22:30", end: "23:59", managed: true}
+    tasks:
+      - {id: t1, title: Report, category: Learn, duration_min: 90, due: "2030-10-14 21:00", min_chunk_min: 45}
+    expect: {placed: [t1]}
+  - name: not-before-tomorrow
+    now: "2030-10-14 07:00"
+    days: [2030-10-14, 2030-10-15]
+    tasks:
+      - {id: t1, title: Review PR, category: Work, duration_min: 60, not_before: "2030-10-15 00:00", due: "2030-10-15 18:00"}
+    expect: {placed: [t1]}

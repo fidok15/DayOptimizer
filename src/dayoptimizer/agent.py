@@ -3,10 +3,11 @@ import os
 import subprocess
 from pathlib import Path
 from xml.sax.saxutils import escape
+from dayoptimizer import paths
 
 LABEL = "com.dayoptimizer.check"
 
-HOME_DIR = Path.home() / ".dayoptimizer"
+HOME_DIR = paths.app_dir()
 BUNDLE_BINARY = str(HOME_DIR / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt")
 RUNNER_PATH = HOME_DIR / "check_runner.py"
 LAUNCHD_LOG_PATH = HOME_DIR / "check.launchd.log"
@@ -38,6 +39,12 @@ def build_plist(bundle_binary: str, runner: str, interval: int = 900, at: list[s
     log_path = escape(str(LAUNCHD_LOG_PATH))
     bundle_binary = escape(str(bundle_binary))
     runner = escape(str(runner))
+    env = (f"""
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DAYOPTIMIZER_HOME</key>
+        <string>{escape(str(paths.app_dir()))}</string>
+    </dict>""" if os.environ.get("DAYOPTIMIZER_HOME") else "")
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -49,7 +56,7 @@ def build_plist(bundle_binary: str, runner: str, interval: int = 900, at: list[s
         <string>{bundle_binary}</string>
         <string>{runner}</string>
     </array>
-{_schedule(interval, at)}
+{_schedule(interval, at)}{env}
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
@@ -69,7 +76,7 @@ def build_runner(repo: str) -> str:
 import sys
 
 os.chdir({repo!r})
-log = open(os.path.expanduser("~/.dayoptimizer/check.log"), "a")
+log = open({str(CHECK_LOG_PATH)!r}, "a")
 sys.stdout = log
 sys.stderr = log
 sys.argv = ["dayoptimizer", "check"]
@@ -83,7 +90,7 @@ except Exception as exc:
     traceback.print_exc()
     from dayoptimizer.core.notify import notify
     notify("DayOptimizer", f"Background check failed ({{type(exc).__name__}}). "
-                           "Details in ~/.dayoptimizer/check.log")
+                           {f"Details in {CHECK_LOG_PATH}"!r})
 finally:
     log.flush()
 '''

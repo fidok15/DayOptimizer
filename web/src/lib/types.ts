@@ -18,6 +18,8 @@ export interface Block {
   end: string;
   category: string;
   title: string;
+  /** Tasks never take this block's time; it may still move when its category is flexible. */
+  protected?: boolean;
 }
 export type Week = Record<Weekday, Block[]>;
 

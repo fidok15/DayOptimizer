@@ -52,6 +52,9 @@ def test_make_backend_prefers_local_then_api(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     assert type(make_backend({"backend": "auto"})).__name__ == "AnthropicBackend"
     monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.setattr(ob, "ollama_binary", lambda: "ollama")  # installed, not running: started for it
+    assert isinstance(make_backend({"backend": "auto"}), ob.OllamaBackend)
+    monkeypatch.setattr(ob, "ollama_binary", lambda: None)
     with pytest.raises(LLMUnavailable):
         make_backend({"backend": "auto"})
 
@@ -87,6 +90,7 @@ def test_ensure_running_starts_ollama_for_the_run_and_stops_it_after(monkeypatch
     monkeypatch.setattr(ob.atexit, "register", lambda fn: None)
     ob.ensure_running()
     assert started == [["/bin/ollama", "serve"]]
+    assert (ob.paths.app_dir() / "ollama.log").exists()
     ob._stop_server()
     assert stopped == [True]
 

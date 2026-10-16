@@ -24,6 +24,7 @@ class RoutineBlock:
     end: int
     category: str
     title: str
+    protected: bool = False  # tasks never take this time; the block itself may still move
 
     @property
     def label(self) -> str:
@@ -122,7 +123,8 @@ def _parse_typical_week(week) -> dict[int, list[RoutineBlock]]:
     for name, blocks in (week or {}).items():
         if name not in _WEEKDAY_NAMES or not isinstance(blocks, list):
             continue
-        parsed = [RoutineBlock(_minutes(b["start"]), _minutes(b["end"]), b["category"], b.get("title") or "")
+        parsed = [RoutineBlock(_minutes(b["start"]), _minutes(b["end"]), b["category"], b.get("title") or "",
+                               bool(b.get("protected")))
                   for b in blocks if isinstance(b, dict) and {"start", "end", "category"} <= b.keys()]
         out[_WEEKDAY_NAMES.index(name)] = sorted((b for b in parsed if b.end > b.start), key=lambda b: b.start)
     return out

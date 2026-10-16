@@ -8,9 +8,10 @@ import subprocess
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from dayoptimizer import paths
 from dayoptimizer.core.models import PlannedChange
 from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, LLMUnavailable, compile_prompt, format_changes,
+                                      DayRequest, LLMTimeout, LLMUnavailable, compile_prompt, format_changes,
                                       request_prompt)
 
 
@@ -62,7 +63,8 @@ def ensure_running(wait: float = 30.0) -> None:
     binary = ollama_binary()
     if binary is None:
         raise LLMUnavailable("Ollama isn't installed. Install it with:  brew install ollama")
-    _server = subprocess.Popen([binary, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with open(paths.ensure_private_dir() / "ollama.log", "a") as log:  # the child keeps its own handle
+        _server = subprocess.Popen([binary, "serve"], stdout=log, stderr=log)
     atexit.register(_stop_server)
     deadline = time.monotonic() + wait
     while time.monotonic() < deadline:
@@ -76,8 +78,10 @@ def ensure_running(wait: float = 30.0) -> None:
 class OllamaBackend:
     one_day_at_a_time = True
 
-    def __init__(self, model: str = "qwen3:8b"):
+    def __init__(self, model: str = "qwen3:8b", mode: str = "slots"):
         self.model = model
+        # slots: code finds the legal times and the model only picks among them (week_plan.slot_items)
+        self.slots = mode == "slots"
 
     def _chat(self, system: str, user: str, schema: dict | None = None, timeout: int = 180,
               num_predict: int | None = None) -> str:
@@ -98,31 +102,27 @@ class OllamaBackend:
                       headers={"Content-Type": "application/json"})
         try:
             with urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read())["message"]["content"]
+                data = json.loads(resp.read())
+            self.prompt_tokens = data.get("prompt_eval_count")  # read by scripts/eval_tasks.py: is num_ctx enough?
+            return data["message"]["content"]
         except HTTPError as exc:
             detail = exc.read().decode(errors="replace")
             if exc.code == 404 and "not found" in detail:
                 raise LLMUnavailable(f"The local model isn't downloaded yet. Run:  ollama pull {self.model}") from None
             raise LLMUnavailable(f"Ollama error {exc.code}: {detail[:200]}") from None
         except TimeoutError:
-            raise LLMUnavailable("The local model took too long to answer. Try again, or a shorter message.") from None
+            raise LLMTimeout("The local model took too long to answer. Try again, or a shorter message.") from None
         except (URLError, OSError) as exc:
             if isinstance(getattr(exc, "reason", None), TimeoutError):
-                raise LLMUnavailable("The local model took too long to answer. Try again, or a shorter message.") from None
+                raise LLMTimeout("The local model took too long to answer. Try again, or a shorter message.") from None
             raise LLMUnavailable("Ollama isn't running. Start it with:  brew services start ollama") from None
 
     def parse_request(self, text: str, today: str, now: str, categories: list[str]) -> DayRequest:
         schema = DayRequest.model_json_schema()
         schema["$defs"]["NewEvent"]["properties"]["category"]["enum"] = list(categories)
+        schema["$defs"]["TaskRequest"]["properties"]["category"]["enum"] = list(categories)
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
-
-    def parse_task(self, text: str, now: str, categories: list[str]):
-        from dayoptimizer.llm.task_request import TASK_SYSTEM, TaskList, task_prompt
-        schema = TaskList.model_json_schema()
-        schema["$defs"]["TaskRequest"]["properties"]["category"]["enum"] = list(categories) + [""]
-        raw = self._chat(TASK_SYSTEM, task_prompt(text, now, categories), schema)
-        return TaskList.model_validate_json(raw)
 
     def plan_week(self, system: str, prompt: str, schema: dict | None = None):
         """`schema` is the answer schema with the allowed values filled in
@@ -131,6 +131,9 @@ class OllamaBackend:
         from dayoptimizer.llm.week_plan import WeekPlan
         raw = self._chat(system, prompt, schema or WeekPlan.model_json_schema(), timeout=300, num_predict=2000)
         return WeekPlan.model_validate_json(raw)
+
+    def choose(self, system: str, prompt: str, schema: dict) -> dict:
+        return json.loads(self._chat(system, prompt, schema, timeout=300, num_predict=1000))
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
         raw = self._chat(_NOTES_SYSTEM, compile_prompt(notes, categories), CompiledNotes.model_json_schema())

@@ -229,6 +229,8 @@ class Storage:
             "INSERT INTO tasks(id, data) VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
             (task.id, json.dumps(payload)))
         self._conn.commit()
+        if int(task.id[1:]) > int(self.get_state("last_task_id", "0")):
+            self.set_state("last_task_id", task.id[1:])
 
     def get_task(self, task_id: str) -> Task | None:
         row = self._conn.execute("SELECT data FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -239,8 +241,10 @@ class Storage:
         return sorted((t for t in tasks if not t.done), key=lambda t: int(t.id[1:]))
 
     def next_task_id(self) -> str:
-        ids = [r[0] for r in self._conn.execute("SELECT id FROM tasks")]
-        return f"t{max((int(i[1:]) for i in ids), default=0) + 1}"
+        # never reuse an id: calendar blocks keep the id of the task they were for,
+        # so a reused one would count an old task's blocks as the new one's work
+        ids = [int(r[0][1:]) for r in self._conn.execute("SELECT id FROM tasks")]
+        return f"t{max([*ids, int(self.get_state('last_task_id', '0'))]) + 1}"
 
     def mark_task_done(self, task_id: str) -> bool:
         task = self.get_task(task_id)

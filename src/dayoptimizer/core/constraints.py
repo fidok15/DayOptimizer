@@ -63,7 +63,7 @@ def parse_rules(raw) -> list[NoteRule]:
                                     **({"days": number} if kind == "min_gap_days" else {"count": number})))
         elif kind == "skippable":
             prefix = str(row.get("prefix") or "").strip()
-            if category and 0 < len(prefix) <= 20:
+            if 0 < len(prefix) <= 20:  # no category: that prefix in any calendar
                 out.append(NoteRule(kind, source, category, prefix=prefix))
     return dedupe(out)
 
@@ -79,6 +79,10 @@ def dedupe(rules: list[NoteRule]) -> list[NoteRule]:
             if key in seen:
                 continue
             seen.add(key)
+        elif r.type == "skippable":
+            if (key, r.prefix) in seen:
+                continue
+            seen.add((key, r.prefix))
         out.append(r)
     return out
 
@@ -153,16 +157,16 @@ def describe(rule: NoteRule) -> str:
         subject = "" if rule.category is None else f" of {rule.category}"
         return f"{when} {span}: kept free{subject}"
     if rule.type == "min_gap_days":
-        return f"{who}: at least {rule.days} day(s) apart"
+        return f"{who}: at least {rule.days - 1} rest day(s) between"
     if rule.type == "skippable":
-        return f"{who}: events starting with \"{rule.prefix}\" may be planned over"
+        return f"{rule.category or 'Any calendar'}: events starting with \"{rule.prefix}\" may be planned over"
     return f"{who}: at most {rule.count} time(s) a week"
 
 def skippable(rules: list[NoteRule], event) -> bool:
     """An event the user said may be planned over ("lectures, titles starting
     with 'Lecture -', can be skipped"): it neither blocks time nor gets moved."""
     title = event.title.strip().lower()
-    return any(r.type == "skippable" and r.category == event.calendar
+    return any(r.type == "skippable" and _applies(r, event.calendar)
                and title.startswith(r.prefix.lower()) for r in rules)
 
 def explain(rule: NoteRule) -> str:

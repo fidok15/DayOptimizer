@@ -106,3 +106,46 @@ def test_a_skippable_prefix_the_user_never_wrote_is_dropped():
     row = {"type": "skippable", "category": "Uni", "prefix": "Lecture -", "source": 'Uni "Lecture -" events can be skipped'}
     assert _clean_rule(row, ["Uni"])["prefix"] == "Lecture -"
     assert _clean_rule({**row, "prefix": "C -"}, ["Uni"]) is None
+
+
+def test_a_skippable_row_from_a_forbidding_sentence_is_dropped():
+    from dayoptimizer.web import _clean_rule
+    for prefix, source in [("L -", 'Ale już Projekt “P -“ czy Laby “L -“ nie możesz'),
+                           ("EXAM", "but never skip anything starting with 'EXAM'"),
+                           ("LAB", 'Classes starting with "LAB" must not be moved')]:
+        assert _clean_rule({"type": "skippable", "category": "Uni", "prefix": prefix, "source": source},
+                           ["Uni"]) is None
+    ok = {"type": "skippable", "category": "Uni", "prefix": "W -", "source": 'Uni "W -" możesz nadpisywać, nie przejmuj się'}
+    assert _clean_rule(ok, ["Uni"]) is not None
+
+
+def test_a_skippable_prefix_must_be_the_quoted_text_when_there_is_one():
+    from dayoptimizer.web import _clean_rule
+    row = {"type": "skippable", "category": "Uni", "prefix": "Wykłady", "source": "Wykłady możesz nadpisywać"}
+    context = 'Wykłady to wydarzenia z Uni, których tytuł zaczyna się od "W -"'
+    assert _clean_rule(row, ["Uni"], context) is None
+    assert _clean_rule({**row, "prefix": "W -"}, ["Uni"], context)["prefix"] == "W -"
+    assert _clean_rule({**row, "prefix": "W -"}, ["Uni"]) is None
+    assert _clean_rule({**row, "source": "Wykłady can be skipped"}, ["Uni"])["prefix"] == "Wykłady"
+
+
+def test_a_skippable_category_is_the_calendar_the_sentence_names_or_any():
+    from datetime import datetime
+    from dayoptimizer.core.constraints import describe, parse_rules, skippable
+    from dayoptimizer.core.models import Event
+    from dayoptimizer.web import _clean_rule
+    cats = ["Work", "Learn", "Politechnika"]
+    row = {"type": "skippable", "category": "Work", "prefix": "W -",
+           "source": 'Wykłady to wydarzenia z Politechniki, których tytuł zaczyna się od "W -"'}
+    assert _clean_rule(row, cats)["category"] == "Politechnika"
+    anywhere = _clean_rule({**row, "source": 'events starting with "W -" can be skipped'}, cats)
+    assert anywhere["category"] is None
+    rule = parse_rules([anywhere])
+    d = datetime(2026, 7, 3, 8).astimezone()
+    assert skippable(rule, Event(id="w", calendar="Uni", title="W - Maths", start=d, end=d))
+    assert describe(rule[0]).startswith("Any calendar:")
+
+
+def test_gap_rule_says_rest_days():
+    from dayoptimizer.core.constraints import describe
+    assert describe(NoteRule("min_gap_days", category="Gym", days=2)) == "Gym: at least 1 rest day(s) between"

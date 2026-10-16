@@ -1,7 +1,8 @@
+import json
 from types import SimpleNamespace
 from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.task_request import TaskList, TaskRequest
+from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
 
 RULES = SimpleNamespace(categories={"Work": {}, "Learn": {}})
 CONFIG = {"llm": {}}
@@ -11,8 +12,8 @@ class Parser:
     def __init__(self, req):
         self.req = req
 
-    def parse_task(self, text, now, categories):
-        return TaskList(tasks=[self.req]) if isinstance(self.req, TaskRequest) else self.req
+    def parse_request(self, text, today, now, categories):
+        return DayRequest(tasks=[self.req]) if isinstance(self.req, TaskRequest) else self.req
 
 
 def run(monkeypatch, words, req=None):
@@ -34,15 +35,15 @@ def test_task_is_saved_and_its_days_replanned(monkeypatch):
     assert calls == [["plan", "--week", "2"]]
 
 
-def test_task_without_deadline_plans_a_week(monkeypatch):
+def test_task_without_deadline_plans_today_and_tomorrow(monkeypatch):
     calls = run(monkeypatch, ["read", "book"], TaskRequest(title="read", category="Learn", duration_minutes=60))
-    assert calls == [["plan", "--week", "7"]]
+    assert calls == [["plan", "--week", "2"]]
 
 
-def test_task_without_length_saves_nothing(monkeypatch, capsys):
+def test_task_without_length_gets_an_hour_and_says_so(monkeypatch, capsys):
     calls = run(monkeypatch, ["report"], TaskRequest(title="report", category="Work"))
-    assert calls == [] and Storage(paths.db_path()).open_tasks() == []
-    assert "How long" in capsys.readouterr().out
+    assert [t.duration_min for t in Storage(paths.db_path()).open_tasks()] == [60]
+    assert "assumed 60 min" in capsys.readouterr().out and calls
 
 
 def test_list_and_done(monkeypatch, capsys):
@@ -69,7 +70,7 @@ def test_done_replans_so_its_blocks_go(monkeypatch):
 
 
 def test_several_tasks_are_saved_and_replanned_once(monkeypatch):
-    parsed = TaskList(tasks=[
+    parsed = DayRequest(tasks=[
         TaskRequest(title="laundry", category="Work", duration_minutes=120, due_day="tomorrow"),
         TaskRequest(title="exam prep", category="Learn", duration_minutes=120, due_day="day_after_tomorrow")])
     calls = run(monkeypatch, ["x"], parsed)
@@ -79,13 +80,56 @@ def test_several_tasks_are_saved_and_replanned_once(monkeypatch):
 
 
 def test_a_bad_task_is_reported_and_the_rest_saved(monkeypatch, capsys):
-    parsed = TaskList(tasks=[TaskRequest(title="report", category="Work"),
-                             TaskRequest(title="read", category="Learn", duration_minutes=60)])
+    parsed = DayRequest(tasks=[TaskRequest(title="report", category="Gym"),
+                               TaskRequest(title="read", category="Learn", duration_minutes=60)])
     run(monkeypatch, ["x"], parsed)
     assert [t.title for t in Storage(paths.db_path()).open_tasks()] == ["read"]
-    assert "How long will 'report' take?" in capsys.readouterr().out
+    assert "'Gym' is not one of your categories" in capsys.readouterr().out
 
 
 def test_no_tasks_says_the_models_reply(monkeypatch, capsys):
-    calls = run(monkeypatch, ["hi"], TaskList(reply="That's not a task."))
+    calls = run(monkeypatch, ["hi"], DayRequest(reply="That's not a task."))
     assert calls == [] and "That's not a task." in capsys.readouterr().out
+
+
+def test_same_task_twice_is_skipped(monkeypatch, capsys):
+    req = TaskRequest(title="Report ", category="Work", duration_minutes=60, due_day="tomorrow")
+    run(monkeypatch, ["x"], req)
+    calls = run(monkeypatch, ["x"], req.model_copy(update={"title": "report"}))
+    assert calls == [] and len(Storage(paths.db_path()).open_tasks()) == 1
+    assert "already there: t1" in capsys.readouterr().out
+
+
+def test_time_of_day_words_count_only_when_said(monkeypatch):
+    run(monkeypatch, ["zrób", "pranie"], TaskRequest(title="pranie", category="Work", when="rano"))
+    run(monkeypatch, ["maile", "po", "południu"], TaskRequest(title="maile", category="Work"))
+    invented, said = Storage(paths.db_path()).open_tasks()
+    assert (invented.not_before, invented.due) == (None, None)
+    assert said.due is not None and (said.due.hour, said.not_before.hour) == (18, 12)
+
+
+def test_a_task_placed_whole_on_a_later_day_is_reported():
+    from datetime import date, datetime
+    from dayoptimizer.core.models import PlannedChange, Task
+
+    def create(task_id, day, h):
+        return PlannedChange(kind="create", category="Work", title="x", reason="r", task_id=task_id,
+                             new_start=datetime(2030, 10, day, h).astimezone(),
+                             new_end=datetime(2030, 10, day, h + 1).astimezone())
+    tasks = [Task(id="t1", title="laundry", category="Work", duration_min=60),
+             Task(id="t2", title="report", category="Work", duration_min=120),
+             Task(id="t3", title="slides", category="Work", duration_min=60, due=datetime(2030, 10, 17, 12).astimezone())]
+    lines = cli._moved([create("t1", 15, 9), create("t2", 15, 9), create("t3", 16, 9)], tasks, date(2030, 10, 14))
+    assert lines == ["'laundry': no room today, placed on Tue 15.10 09:00"]
+
+
+def test_mixed_message_adds_events_and_saves_tasks_in_one_run(monkeypatch):
+    parsed = DayRequest(
+        events=[NewEvent(title="meeting", category="Work", start_time="14:00"),
+                NewEvent(title="read notes", category="Learn")],  # no clock time: a task
+        tasks=[TaskRequest(title="laundry", category="Work", duration_minutes=30)])
+    calls = run(monkeypatch, ["x"], parsed)
+    assert [t.title for t in Storage(paths.db_path()).open_tasks()] == ["laundry", "read notes"]
+    (argv,) = calls
+    assert argv[0] == "add" and argv[2:] == ["--week", "2"]
+    assert [e["title"] for e in json.loads(argv[1])] == ["meeting"]

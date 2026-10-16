@@ -4,7 +4,7 @@ umask 077
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="$REPO/.venv"
-HOME_DIR="$HOME/.dayoptimizer"
+HOME_DIR="${DAYOPTIMIZER_HOME:-$HOME/.dayoptimizer}"
 APP="$HOME_DIR/DayOptimizer.app"
 MACOS="$APP/Contents/MacOS"
 
@@ -41,7 +41,8 @@ cat > "$HOME_DIR/cli_runner.py" <<RUNNER
 import os, sys
 from pathlib import Path
 os.chdir("$REPO")
-home = Path.home() / ".dayoptimizer"
+home = Path("$HOME_DIR")
+os.environ["DAYOPTIMIZER_HOME"] = str(home)
 args = (home / "cli_args").read_text().splitlines() if (home / "cli_args").exists() else ["plan"]
 log = open(home / "cli.log", "w")
 sys.stdout = log

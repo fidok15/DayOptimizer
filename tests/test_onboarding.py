@@ -23,6 +23,12 @@ def test_validate_good_config():
     assert cfg.transport_routes["office"] == 25
 
 
+def test_llm_section_accepted():
+    assert validate_config("llm:\n  backend: ollama\n  ollama_mode: layout\n").llm.ollama_mode == "layout"
+    with pytest.raises(ConfigError):
+        validate_config("llm:\n  ollama_mode: fast\n")
+
+
 def test_unknown_keys_rejected():
     with pytest.raises(ConfigError) as e:
         validate_config("categories:\n  Gym: {movable: true, hackerz: 1}\n")

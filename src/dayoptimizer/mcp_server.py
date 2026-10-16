@@ -211,11 +211,76 @@ def recent_changes(limit: int = 10) -> str:
     return UNTRUSTED_NOTE + "\n".join(f"{ts}  {desc} — {reason}" for ts, desc, reason in rows)
 
 
+def add_task(text: str) -> str:
+    """Save tasks (work without a clock time, e.g. 'report for Friday, 3h') from plain words, parsed
+    as `dayoptimizer "..."` does. Nothing goes to the calendar: call plan afterwards to place them."""
+    from datetime import datetime
+    from dayoptimizer import cli  # EventKit is imported only when a calendar is opened, never here
+    from dayoptimizer.llm.backend import LLMUnavailable, make_backend, pin_day
+    from dotenv import load_dotenv
+    load_dotenv(_DEFAULT_CONFIG.parent / ".env")  # ANTHROPIC_API_KEY, as the CLI reads it
+    rules, config = load_rules(_DEFAULT_CONFIG), load_config_data(_DEFAULT_CONFIG)
+    if not rules.categories:
+        return "You have no categories yet — define them in `dayoptimizer setup` first."
+    now = datetime.now().astimezone()
+    try:
+        req = make_backend(config["llm"]).parse_request(text, today=now.date().isoformat(),
+                                                        now=f"{now:%A %Y-%m-%d %H:%M}",
+                                                        categories=list(rules.categories))
+    except LLMUnavailable as exc:
+        return str(exc)
+    except Exception as exc:
+        return f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment."
+    req = pin_day(text, req)
+    timed = [e for e in req.events if e.start_time and cli._HHMM.match(e.start_time)]
+    if timed:
+        return ("That has calendar events at a clock time (" + ", ".join(f"{e.title} {e.start_time}" for e in timed)
+                + f"). Nothing was saved — add it in a terminal:  dayoptimizer \"{text}\"")
+    s = _storage()
+    try:
+        with cli.console.capture() as said:  # its notes (a duplicate, a bad deadline) go to the caller, not stdout
+            tasks = cli._new_tasks(text, req, rules, s, now, [])
+        for task, _ in tasks:
+            s.save_task(task)
+    finally:
+        s.close()
+    lines = [said.get().strip()] + [f"Added {cli._task_line(t)}{note}" for t, note in tasks]
+    if tasks:
+        lines.append("Call plan to place it in the calendar.")
+    return "\n".join(x for x in lines if x) or req.reply or "Nothing to add."
+
+
+def list_tasks() -> str:
+    """Open tasks with their ids, lengths and deadlines."""
+    from dayoptimizer.cli import _task_line
+    s = _storage()
+    try:
+        tasks = s.open_tasks()
+    finally:
+        s.close()
+    return "\n".join(_task_line(t) for t in tasks) or "No open tasks."
+
+
+def task_done(task_id: str) -> str:
+    """Mark a task done (id from list_tasks). Its planned blocks go at the next plan."""
+    s = _storage()
+    try:
+        task = s.get_task(task_id)
+        if task is None:
+            return f"No task '{task_id}'. Use list_tasks to see the ids."
+        if task.done:
+            return f"{task_id} was already done."
+        s.mark_task_done(task_id)
+    finally:
+        s.close()
+    return f"Done: {task_id}. Call plan to remove its planned blocks from the calendar."
+
+
 def main() -> None:
     from mcp.server.fastmcp import FastMCP
     server = FastMCP("dayoptimizer")
     for fn in (get_events, get_health, get_stats, get_config, save_config,
-               plan, apply_changes, recent_changes, list_calendars):
+               plan, apply_changes, recent_changes, list_calendars, add_task, list_tasks, task_done):
         server.tool()(fn)
     server.run()
 
