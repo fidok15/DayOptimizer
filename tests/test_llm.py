@@ -147,3 +147,6 @@ def test_each_clause_pins_its_own_items():
     req = pin_day("na piątek esej 2h a w niedzielę o 12 obiad u mamy", model)
     assert [(t.title, t.due_day) for t in req.tasks] == [("esej", "friday")]
     assert [(e.title, e.day, e.start_time) for e in req.events] == [("obiad u mamy", "sunday", "12:00")]
+    model = DayRequest(tasks=[TaskRequest(title="report"), TaskRequest(title="clean the garage")])
+    req = pin_day("before Friday write the report 2h and after Saturday clean the garage 2h", model)
+    assert [(t.not_before_day, t.due_day) for t in req.tasks] == [(None, "thursday"), ("sunday", None)]

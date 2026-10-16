@@ -204,7 +204,7 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         clauses.append((c, cur))
 
     def find(title):
-        stems = {w[:4] for w in re.findall(r"\w{3,}", title.lower())}
+        stems = {w[:4] for w in re.findall(r"\w{4,}", title.lower())}
         return next(((c, said or whole) for c, said in clauses if stems & {w[:4] for w in re.findall(r"\w+", c)}),
                     (None, whole))
 
