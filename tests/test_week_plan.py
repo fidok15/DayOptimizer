@@ -829,6 +829,17 @@ def test_a_task_due_on_a_day_too_late_to_plan_and_one_that_got_no_time_are_repor
                            "t2: 'Taxes' (no deadline) got no time in the planned days"]
 
 
+def test_a_routine_block_does_not_move_more_than_three_hours_for_a_task():
+    lunch = {MON: sleep_only(MON)[MON] + [(at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
+    busy = [ev("a", "Uni", "A", MON, "07:00", "11:00"), ev("b", "Uni", "B", MON, "14:00", "19:00")]
+    changes, _, _, unscheduled = plan_days(
+        Small(WeekPlan(), WeekPlan()), [MON], "# routine", WCATS, busy, NOTES, [], NOW, attempts=1,
+        tasks=[task(duration_min=180, min_chunk_min=None, due=at(MON, "14:00"))], left={"t1": 180},
+        routine_days=lunch)
+    assert [(c.title, c.new_start) for c in changes if c.title == "Lunch"] == [("Lunch", at(MON, "12:00"))]
+    assert len(unscheduled) == 1
+
+
 def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does_not():
     # Free time moves to the nearest free hour (17:00, not 12:00), never onto another block
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, LAB, ev("b", "Uni", "Evening", MON, "18:00", "23:59")]
