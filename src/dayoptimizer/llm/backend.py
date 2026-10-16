@@ -97,10 +97,12 @@ class LLMBackend(Protocol):
 
 def format_changes(changes: list[PlannedChange]) -> str:
     lines = []
+    # changes over several days say which day, or two days' 09:00 read the same
+    fmt = "%a %d.%m %H:%M" if len({c.new_start.date() for c in changes if c.new_start}) > 1 else "%H:%M"
     for c in changes:
         when = ""
         if c.new_start is not None:
-            when = f" → {c.new_start.strftime('%H:%M')}"
+            when = f" → {c.new_start.strftime(fmt)}"
             if c.new_end is not None:
                 when += f"-{c.new_end.strftime('%H:%M')}"
         flag = " [approval required]" if c.requires_approval else ""

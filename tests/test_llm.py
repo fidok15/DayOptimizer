@@ -25,6 +25,9 @@ def test_format_changes_readable():
                        new_start=datetime(2026, 7, 3, 17, 0), new_end=datetime(2026, 7, 3, 18, 0))
     text = format_changes([ch])
     assert "Gym" in text and "17:00" in text and "Body Battery" in text
+    from dataclasses import replace
+    later = replace(ch, new_start=datetime(2026, 7, 4, 17, 0), new_end=datetime(2026, 7, 4, 18, 0))
+    assert "Sat 04.07 17:00-18:00" in format_changes([ch, later])
 
 def test_parse_request_sends_user_categories():
     backend = AnthropicBackend.__new__(AnthropicBackend)
