@@ -432,7 +432,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
                 continue
             quiet = next((x for x in fixed if x[0] < end and x[1] > start and x[3:4] != (b.category,)), None)
             if quiet is not None:
-                problems.append(f"{label}: task {b.task_id} falls in your fixed routine '{quiet[2]}' "
+                problems.append(f"{label}: task {b.task_id} falls in your {'protected' if quiet[3:4] == (None,) else 'fixed'} routine '{quiet[2]}' "
                                 f"({quiet[0]:%H:%M}-{quiet[1]:%H:%M})")
                 continue
             running[b.task_id] -= minutes(start, end)

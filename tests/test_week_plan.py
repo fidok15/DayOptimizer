@@ -764,7 +764,7 @@ def test_a_protected_meal_stays_put_when_a_small_model_puts_a_task_on_it():
                                        reserved=reserved, routine_days=routine)
     assert ("Dinner", at(MON, "16:00")) in [(c.title, c.new_start) for c in changes]
     assert not any(c.task_id and c.new_start < at(MON, "17:00") < c.new_end for c in changes)
-    assert "fixed routine 'Dinner'" in dropped[0]
+    assert "protected routine 'Dinner'" in dropped[0]
 
 
 def test_a_routine_block_with_no_room_left_is_reported_not_lost():
