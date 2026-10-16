@@ -676,6 +676,15 @@ def test_a_meal_pushed_by_an_event_does_not_take_the_usual_time_of_the_blocks_af
     assert [x.split(": ")[1] for x in lost] == ["Free time"]
 
 
+def test_a_routine_block_whose_time_is_over_is_not_moved_later():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    late = at(MON, "18:40")
+    day = {MON: [(at(MON, "18:00"), at(MON, "18:15"), "Free time", "Plan tomorrow", False),
+                 (at(MON, "21:00"), at(MON, "22:00"), "Free time", "Free time", False)]}
+    back, lost = _forgotten_routine([], day, [], late)
+    assert [(b.title, b.start) for b in back] == [("Free time", "21:00")] and lost == []
+
+
 def test_a_category_with_only_a_time_rule_does_not_let_filler_blocks_through():
     rules = parse_rules([{"type": "not_after", "category": "Food", "time": "21:00", "source": "x"}])
     plan = WeekPlan(blocks=[block(MON, "17:00", "18:00", "Food", "Free time")])

@@ -643,7 +643,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
                         x < b and y > a and not (task and (_guarded(span) or task == cat)) for x, y, task in taken):
                     break
             else:
-                if not (moving or fixed):
+                if not (moving or fixed) and s >= now:  # a block whose time is over isn't moved into the evening
                     queue.append((span, True))
                 elif s >= now:
                     lost.append((d, s, title, f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time"))
