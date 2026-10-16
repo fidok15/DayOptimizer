@@ -42,6 +42,26 @@ class DayRequest(BaseModel):
     tasks: list[TaskRequest] = []
     reply: str | None = None
 
+class TaskFix(BaseModel):
+    """What the user said to do with a task that didn't fit."""
+    action: Literal["take_routine", "new_deadline", "new_duration", "allow_split", "drop_task", "unclear"]
+    day: DayWord | None = None
+    time: str | None = None
+    minutes: int | None = None
+    chunk_minutes: int | None = None
+    blocks: list[str] = []
+
+_FIX_SYSTEM = (
+    "A task didn't fit in the user's calendar and they said what to do (in any language). Turn the reply into "
+    "one action: take_routine = the task may take the place of routine blocks (blocks: the ones named, copied "
+    "from the listed routine blocks; empty when none is named); new_deadline = a new deadline (day, and time "
+    "HH:MM only if said); new_duration = a new length (minutes); allow_split = it may be done in pieces "
+    "(chunk_minutes = one piece); drop_task = don't do it at all; unclear = anything else, or the user doesn't know."
+)
+
+def fix_prompt(reply: str, task_line: str, blocks: list[str]) -> str:
+    return f"task: {task_line}\nroutine blocks: {', '.join(blocks) or 'none'}\nreply: {reply}"
+
 Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 class TimeRule(BaseModel):

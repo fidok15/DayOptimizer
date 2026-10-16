@@ -10,9 +10,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from dayoptimizer import paths
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, LLMTimeout, LLMUnavailable, compile_prompt, format_changes,
-                                      request_prompt)
+from dayoptimizer.llm.backend import (_FIX_SYSTEM, _NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
+                                      DayRequest, LLMTimeout, LLMUnavailable, TaskFix, compile_prompt, fix_prompt,
+                                      format_changes, request_prompt)
 
 
 def _host() -> str:
@@ -134,6 +134,12 @@ class OllamaBackend:
 
     def choose(self, system: str, prompt: str, schema: dict) -> dict:
         return json.loads(self._chat(system, prompt, schema, timeout=300, num_predict=1000))
+
+    def task_fix(self, reply: str, task_line: str, blocks: list[str]) -> TaskFix:
+        schema = TaskFix.model_json_schema()
+        if blocks:
+            schema["properties"]["blocks"]["items"]["enum"] = list(blocks)
+        return TaskFix.model_validate_json(self._chat(_FIX_SYSTEM, fix_prompt(reply, task_line, blocks), schema))
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:
         raw = self._chat(_NOTES_SYSTEM, compile_prompt(notes, categories), CompiledNotes.model_json_schema())

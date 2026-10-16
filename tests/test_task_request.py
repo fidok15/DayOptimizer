@@ -74,3 +74,39 @@ def test_ollama_parse_request_limits_task_category_to_users(monkeypatch):
     req = OllamaBackend().parse_request("report 2h", "2030-10-14", "Monday 09:00", CATS)
     assert req.tasks[0].duration_minutes == 120
     assert seen["schema"]["$defs"]["TaskRequest"]["properties"]["category"]["enum"] == CATS
+
+
+def test_a_reply_about_a_task_that_did_not_fit_is_read_by_code_when_easy():
+    from dayoptimizer.llm.task_request import quick_fix
+    got = {r: (f.action, f.day, f.time, f.minutes, f.chunk_minutes) if (f := quick_fix(r)) else None for r in [
+        "usuń to", "nie rób tego", "drop it", "przesuń na piątek", "move it to Friday 14:00", "zrób to w 2h",
+        "make it 90 min", "podziel po godzinie", "split into 1h pieces", "usuń przerwę", "nie wiem",
+        "możesz zabrać day planning i przerwę"]}
+    assert got == {
+        "usuń to": ("drop_task", None, None, None, None), "nie rób tego": ("drop_task", None, None, None, None),
+        "drop it": ("drop_task", None, None, None, None),
+        "przesuń na piątek": ("new_deadline", "friday", None, None, None),
+        "move it to Friday 14:00": ("new_deadline", "friday", "14:00", None, None),
+        "zrób to w 2h": ("new_duration", None, None, 120, None), "make it 90 min": ("new_duration", None, None, 90, None),
+        "podziel po godzinie": ("allow_split", None, None, None, 60),
+        "split into 1h pieces": ("allow_split", None, None, None, 60),
+        "usuń przerwę": None, "nie wiem": None, "możesz zabrać day planning i przerwę": None}  # the model's
+
+
+def test_each_fix_changes_the_task():
+    from dayoptimizer.core.models import Task
+    from dayoptimizer.llm.task_request import TaskFix, apply_fix
+    now = datetime.combine(MON, time(9)).astimezone()
+    t = Task(id="t1", title="raport", category="Work", duration_min=180,
+             due=datetime.combine(MON, time(23, 59)).astimezone())
+    fix = lambda **kw: apply_fix(t, TaskFix(**kw), now)
+    assert fix(action="drop_task")[0].done
+    assert fix(action="new_duration", minutes=120)[0].duration_min == 120
+    assert fix(action="allow_split", chunk_minutes=60)[0].min_chunk_min == 60
+    new, said = fix(action="new_deadline", day="friday")
+    assert new.due == datetime.combine(date(2030, 10, 18), time(23, 59)).astimezone()
+    assert said == "move 'raport' deadline to Fri 18.10 23:59"
+    assert fix(action="take_routine", blocks=["Day planning", "Break"])[0].may_take == ["Day planning", "Break"]
+    assert fix(action="take_routine")[0].may_take == ["*"]
+    assert fix(action="unclear") == (None, "")
+    assert fix(action="new_deadline") == (None, "")
