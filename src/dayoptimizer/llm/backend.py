@@ -221,8 +221,9 @@ class LLMTimeout(LLMUnavailable):
 
 def make_backend(llm_config: dict) -> LLMBackend:
     """Pick the LLM from config `llm.backend`: ollama, anthropic, or auto
-    (local Ollama when it's running, else the Anthropic API when a key is set)."""
-    from dayoptimizer.llm.ollama_backend import OllamaBackend, ollama_running
+    (local Ollama when it's running, else the Anthropic API when a key is set,
+    else Ollama when installed: it is started for the request)."""
+    from dayoptimizer.llm.ollama_backend import OllamaBackend, ollama_available, ollama_running
     choice = llm_config.get("backend", "auto")
     local = llm_config.get("ollama_model", "qwen3:8b")
     if choice == "ollama" or (choice == "auto" and ollama_running()):
@@ -230,6 +231,8 @@ def make_backend(llm_config: dict) -> LLMBackend:
     if choice in ("anthropic", "auto") and os.environ.get("ANTHROPIC_API_KEY"):
         from dayoptimizer.llm.anthropic_backend import AnthropicBackend
         return AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5-5"))
+    if choice == "auto" and ollama_available():
+        return OllamaBackend(model=local)
     raise LLMUnavailable(
         "Requests in plain words need a language model. Either run one locally for free:\n"
         f"  brew install ollama && brew services start ollama && ollama pull {local}\n"

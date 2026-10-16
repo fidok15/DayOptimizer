@@ -253,6 +253,7 @@ def test_compile_notes_without_llm_keeps_the_notes(monkeypatch):
     from dayoptimizer import web
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_running", lambda: False)
+    monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_binary", lambda: None)
     out = web.compile_notes("no lunch before 14", ["Food"])
     assert out["rules"] == [] and "language model" in out["error"]
 

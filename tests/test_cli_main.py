@@ -144,6 +144,7 @@ def test_add_with_tasks_plans_their_days_once_then_later_event_days(monkeypatch)
 def test_ask_without_any_llm_explains(monkeypatch, capsys):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_running", lambda: False)
+    monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_binary", lambda: None)
     cli.cmd_ask(type("A", (), {"text": "x"})(), RULES, {"llm": {"backend": "auto"}})
     out = capsys.readouterr().out
     assert "ollama pull" in out and "ANTHROPIC_API_KEY" in out
