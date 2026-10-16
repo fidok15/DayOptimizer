@@ -125,6 +125,9 @@ def test_one_named_day_pins_tasks():
     assert (t.not_before_day, t.due_day) == (None, "sunday")
     t = pin_day("po czwartku umyj okna", req).tasks[0]
     assert (t.not_before_day, t.due_day) == ("friday", None)
+    wrong = DayRequest(tasks=[TaskRequest(title="umyj auto", due_day="wednesday")])  # the model read a deadline
+    t = pin_day("po środzie umyj auto 1h", wrong).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("thursday", None)
     rano = DayRequest(tasks=[TaskRequest(title="x", when="jutro rano")])
     t = pin_day("jutro rano zrób pranie", rano).tasks[0]
     assert (t.not_before_day, t.due_day, t.when) == ("tomorrow", "tomorrow", "jutro rano")

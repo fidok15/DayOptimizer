@@ -229,9 +229,11 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
             part, m, day = said
             word = re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
             word = word and word.group(1)
-            t = t.model_copy(update={"due_day": _shift(day, -1)} if word in ("przed", "before") else  # by Thursday night
-                             {"not_before_day": _shift(day, 1)} if word in ("po", "after") else
-                             {"due_day": day} if word else {"due_day": day, "not_before_day": day})
+            # the clause's one day is all it says: a model's other day for the task goes
+            t = t.model_copy(update={"due_day": _shift(day, -1), "not_before_day": None} if word in ("przed", "before")
+                             else {"not_before_day": _shift(day, 1), "due_day": None} if word in ("po", "after")
+                             else {"due_day": day, "not_before_day": None} if word
+                             else {"due_day": day, "not_before_day": day})
         tasks.append(t)
     return req.model_copy(update={"events": events, "tasks": tasks})
 
