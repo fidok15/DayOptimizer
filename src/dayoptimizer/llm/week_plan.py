@@ -962,7 +962,8 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
         creates, ch, summary, dr, un = result
         changes += ch
         dropped += dr
-        unscheduled += un
+        seen = {u.split(":")[0] for u in unscheduled}
+        unscheduled += [u for u in un if u.split(":")[0] not in seen]  # one day at a time: report a task once
         if summary:
             summaries.append(summary)
         for c in creates:
