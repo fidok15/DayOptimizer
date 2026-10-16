@@ -240,4 +240,5 @@ def test_task_tools_add_list_and_finish_without_touching_the_calendar(app_home, 
     assert "Added [t1] report (Work) 120 min" in mcp_server.add_task("report, 2h")
     assert mcp_server.list_tasks().startswith("[t1] report")
     assert "Done: t1" in mcp_server.task_done("t1") and mcp_server.list_tasks() == "No open tasks."
+    assert mcp_server.task_done("t1") == "t1 was already done."
     assert "Nothing was saved" in mcp_server.add_task("gym 18:00") and mcp_server.list_tasks() == "No open tasks."

@@ -265,11 +265,14 @@ def task_done(task_id: str) -> str:
     """Mark a task done (id from list_tasks). Its planned blocks go at the next plan."""
     s = _storage()
     try:
-        ok = s.get_task(task_id) is not None and s.mark_task_done(task_id)
+        task = s.get_task(task_id)
+        if task is None:
+            return f"No task '{task_id}'. Use list_tasks to see the ids."
+        if task.done:
+            return f"{task_id} was already done."
+        s.mark_task_done(task_id)
     finally:
         s.close()
-    if not ok:
-        return f"No task '{task_id}'. Use list_tasks to see the ids."
     return f"Done: {task_id}. Call plan to remove its planned blocks from the calendar."
 
 
