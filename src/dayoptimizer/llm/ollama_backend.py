@@ -78,7 +78,7 @@ def ensure_running(wait: float = 30.0) -> None:
 class OllamaBackend:
     one_day_at_a_time = True
 
-    def __init__(self, model: str = "qwen3:8b", mode: str = "layout"):
+    def __init__(self, model: str = "qwen3:8b", mode: str = "slots"):
         self.model = model
         # slots: code finds the legal times and the model only picks among them (week_plan.slot_items)
         self.slots = mode == "slots"

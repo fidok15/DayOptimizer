@@ -248,7 +248,7 @@ def planning_backends(llm_config: dict) -> list:
         out.append(AnthropicBackend(model=llm_config.get("model", "claude-sonnet-5-5")))
     if choice in ("ollama", "auto") and ollama_available():
         out.append(OllamaBackend(model=llm_config.get("ollama_model", "qwen3:8b"),
-                                 mode=llm_config.get("ollama_mode", "layout")))
+                                 mode=llm_config.get("ollama_mode", "slots")))
     return out
 
 
