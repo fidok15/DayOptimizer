@@ -10,11 +10,11 @@ from dayoptimizer.llm.backend import TaskRequest, resolve_day  # noqa: F401  (Ta
 
 DEFAULT_MINUTES = 60
 
-# part of the day -> (from hour, to hour)
+# part of the day -> (from hour, to hour); None = when the user's day starts
 _PARTS = [
     (r"po ?połud|popołud|afternoon", (12, 18)),
     (r"wieczor|wieczór|evening|tonight", (18, 22)),
-    (r"\brano\b|\bz rana\b|przed ?połud|morning", (0, 12)),
+    (r"\brano\b|\bz rana\b|przed ?połud|morning", (None, 12)),
 ]
 
 
@@ -47,7 +47,8 @@ def _after_event(low: str, events: list[tuple[str, datetime]]) -> datetime | Non
 
 
 def task_from_request(req: TaskRequest, categories: list[str], now: datetime | date, task_id: str,
-                      events: list[tuple[str, datetime]] = ()) -> tuple[Task | None, str | None]:
+                      events: list[tuple[str, datetime]] = (), day_start: time = time(5)
+                      ) -> tuple[Task | None, str | None]:
     """The task, or why there is none (said back to the user). `events` are
     today's (title, end), for 'po <event>'. No length said = DEFAULT_MINUTES."""
     if not isinstance(now, datetime):
@@ -75,7 +76,7 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
         day = resolve_day(req.due_day or req.not_before_day or "today", today)
         if not (req.due_day or req.not_before_day) and datetime.combine(day, time(part[1])).astimezone() <= now:
             day += timedelta(days=1)  # 'rano' said in the afternoon: tomorrow morning
-        not_before = datetime.combine(day, time(part[0])).astimezone()
+        not_before = datetime.combine(day, day_start if part[0] is None else time(part[0])).astimezone()
         if not _hhmm(req.due_time):
             due = datetime.combine(day, time(part[1])).astimezone()
     elif (minutes := _offset(low)) is not None:

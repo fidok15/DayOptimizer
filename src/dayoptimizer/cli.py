@@ -397,7 +397,8 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     for r in reqs:
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
         r = r.model_copy(update={"when": when})
-        task, problem = task_from_request(r, list(rules.categories), now, f"t{first + len(out)}", today_events)
+        task, problem = task_from_request(r, list(rules.categories), now, f"t{first + len(out)}", today_events,
+                                          getattr(rules, "day_start", time(5)))
         if task is None:
             console.print(problem, markup=False, style="yellow")
         elif norm(task) in have:

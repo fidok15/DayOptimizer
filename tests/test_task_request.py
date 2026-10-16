@@ -36,14 +36,17 @@ def test_time_of_day_words_become_the_window():
         TaskRequest(title="x", category="Work", when=when, **kw), CATS, now, "t1", events)[0])
     assert win("po południu") == (at(14, 12), at(14, 18))
     assert win("wieczorem", due_day="tomorrow") == (at(15, 18), at(15, 22))
-    assert win("rano") == (at(14, 0), at(14, 12))
+    assert win("rano") == (at(14, 5), at(14, 12))  # the night is not morning
     assert win("za 2h") == (at(14, 11, 30), None)
     assert win("in 30 min") == (at(14, 10), None)
     assert win("po pracy", [("Praca", at(14, 16))]) == (at(14, 16), None)
     assert win("po kinie", [("Praca", at(14, 16))]) == (None, None)
     late = datetime(2030, 10, 14, 15, 0).astimezone()
     t, _ = task_from_request(TaskRequest(title="x", category="Work", when="rano"), CATS, late, "t1")
-    assert (t.not_before, t.due) == (at(15, 0), at(15, 12))  # morning already gone: tomorrow's
+    assert (t.not_before, t.due) == (at(15, 5), at(15, 12))
+    t, _ = task_from_request(TaskRequest(title="x", category="Work", when="rano"), CATS, late, "t1",
+                             day_start=time(7, 30))
+    assert t.not_before == at(15, 7, 30)  # the user's day start  # morning already gone: tomorrow's
 
 
 def test_bad_inputs_are_explained():
