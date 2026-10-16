@@ -938,3 +938,25 @@ def test_slot_mode_turns_the_picks_into_the_plan():
 def test_free_time_in_the_prompt_includes_events_the_notes_let_us_plan_over():
     text = build_prompt([MON], "# routine", WCATS, [LECTURE, LAB], [], NOW, rules=SKIP)
     assert "- free: 00:00-13:00, 15:00-24:00" in text and "W - Math" in text
+
+
+def _apply(events, changes):
+    """The calendar after a plan's changes (a diff: creates and deletes)."""
+    gone = {c.event_id for c in changes if c.kind == "delete"}
+    return [e for e in events if e.id not in gone] + [
+        Event(id=f"p{len(events)}-{i}", calendar=c.category, title=c.title, start=c.new_start, end=c.new_end,
+              managed=True, task_id=c.task_id) for i, c in enumerate(changes) if c.kind == "create"]
+
+
+def test_replanning_the_same_day_twice_changes_nothing():
+    # the model re-places the task block it placed before; code must not add the pushed minutes on top
+    from dayoptimizer.llm.task_rules import remaining
+    t = task(title="Thesis", category="Learn", duration_min=600, due=at(MON + timedelta(days=2), "18:00"))
+    pick = WeekPlan(blocks=[Block(day=MON.isoformat(), start="13:00", end="16:00", category="Learn",
+                                  title="Thesis", task_id="t1")])
+    events = []
+    for run in range(3):
+        changes, *_ = plan_days(Small(pick), [MON], "# r", WCATS + ["Learn"], events, NOTES, [], NOW, attempts=1,
+                                tasks=[t], left=remaining([t], events, NOW, {MON}), routine_days=sleep_only(MON))
+        assert run == 0 or changes == []
+        events = _apply(events, changes)

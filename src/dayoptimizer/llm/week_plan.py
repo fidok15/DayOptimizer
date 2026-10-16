@@ -458,8 +458,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         seen = {c: list(ds) for c, ds in (history or {}).items()}
         for s, _, b in kept:
             seen.setdefault(b.category, []).append(s.date())
+        # code gives back only what the model's plan lost: pushed minus what it placed again
+        lost = {tid: max(0, n - (left.get(tid, 0) - after.get(tid, 0))) for tid, n in (pushed or {}).items()}
         filled, moved, ruled = _fill(list(tasks), after, days, fill_until, taken, rules, now,
-                                     routine_days or {}, pushed or {}, reserved, seen)
+                                     routine_days or {}, lost, reserved, seen)
         for i, (s, e) in moved.items():
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
