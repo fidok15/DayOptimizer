@@ -974,3 +974,21 @@ def test_code_spreads_a_long_task_over_the_days_up_to_its_deadline():
         if c.task_id:
             per_day[c.new_start.date()] = per_day.get(c.new_start.date(), 0) + (c.new_end - c.new_start).seconds // 60
     assert per_day == {MON: 240, TUE: 180, wed: 180} and unscheduled == []
+
+
+def test_slot_mode_keeps_a_block_that_still_fits_on_a_rerun():
+    class Fickle(Picker):  # a different slot every call
+        calls = 0
+
+        def choose(self, system, prompt, schema):
+            Fickle.calls += 1
+            return {k: {"slot": v["properties"]["slot"]["enum"][Fickle.calls % len(v["properties"]["slot"]["enum"])],
+                        "why": "fickle"} for k, v in schema["properties"].items()}
+    from dayoptimizer.llm.task_rules import remaining
+    t = task(due=at(MON, "23:00"))
+    events = [LECTURE, LAB]
+    for run in range(3):
+        changes, *_ = plan_days(Fickle(), [MON], "# routine", WCATS + ["Food"], events, NOTES, SKIP, NOW,
+                                tasks=[t], left=remaining([t], events, NOW, {MON}), routine_days=SLOT_ROUTINE)
+        assert run == 0 or changes == []
+        events = _apply(events, changes)

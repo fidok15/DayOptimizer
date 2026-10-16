@@ -837,7 +837,7 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
     for x in spans if with_routine else []:
         s, e, cat, title, fixed = x[:5]
         if fixed or s < now or not any(b.start < e and b.end > s for b in blocking if not b.all_day
-                                       and (not b.managed or b.start < now)):
+                                       and (not b.managed or b.start < now) and not b.id.startswith("stay:")):
             continue
         others = blocking + [span_event(y) for y in spans if y is not x]
         free = free_gaps(day, others, now)
@@ -906,16 +906,29 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     lost: list[str] = []
     slots = getattr(backend, "slots", False)  # the model only picks among slots code found (slot_items)
     placed, still, items = [], dict(left or {}), None
+    stay = []
+    if slots:  # a task block or moved routine block from the last plan that still fits stays: no churn
+        user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
+        usual = {(x[2], x[3], x[0]) for x in routine_days.get(days[0], [])}
+        mid = datetime.combine(days[0], time(0)).astimezone()
+        fine = [e for e in previous if not any(u.start < e.end and u.end > e.start for u in user)
+                and window_rule(rules, e.calendar, minutes(mid, e.start), minutes(mid, e.end), days[0].weekday()) is None]
+        # what stays is in the way of new picks; a routine block at its usual time already is
+        stay = [replace(e, id=f"stay:{e.id}", managed=False) for e in fine
+                if e.task_id or (e.calendar, e.title, e.start) not in usual]
     for attempt in range(attempts):
         if slots:
-            items = slot_items(days[0], shown + placed, now, list(tasks), still, routine_days, rules, not good)
+            items = slot_items(days[0], shown + placed + stay, now, list(tasks), still, routine_days, rules, not good)
+            items = {k: v for k, v in items.items()
+                     if not any(k == e.task_id or k.startswith(f"{e.calendar}: {e.title} (") for e in fine)}
             answer = _choose(backend, days[0], items, routine, shown, now) if items else WeekPlan()
         else:
             answer = backend.plan_week(system_prompt(few_shot), request, schema)
         blocks = good + answer.blocks
         if small and not good:
-            blocks += _unmentioned(answer.blocks, previous, events, now)
-            back, lost = _forgotten_routine(blocks, routine_days, [e for e in events if not skippable(rules, e)], now)
+            solid = [e for e in events if not skippable(rules, e)]
+            blocks += _unmentioned(answer.blocks, previous, solid, now)
+            back, lost = _forgotten_routine(blocks, routine_days, solid, now)
             blocks += back
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
