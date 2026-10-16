@@ -106,7 +106,7 @@ def test_one_named_day_overrides_the_model():
             ("w piątku", "friday"), ("w piatku", "friday"), ("do soboty", "saturday"), ("w niedzieli", "sunday")]
     for text, day in days:
         assert pin_day(f"{text} o 14", wrong).events[0].day == day, text
-    for text in ("o piątej", "o czwartej", "w środku dnia"):  # an hour or 'the middle', not a weekday
+    for text in ("o piątej", "o czwartej", "w środku dnia", "piątka z matmy", "dostałem piątkę"):  # an hour or 'the middle', not a weekday
         assert pin_day(text, wrong).events[0].day == "saturday", text
 
 
@@ -118,7 +118,11 @@ def test_one_named_day_pins_tasks():
     t = pin_day("na piątek przygotuj prezentację", req).tasks[0]
     assert (t.not_before_day, t.due_day) == (None, "friday")
     t = pin_day("przed piatkiem przygotuj prezentację", req).tasks[0]
-    assert (t.not_before_day, t.due_day) == (None, "friday")
+    assert (t.not_before_day, t.due_day) == (None, "thursday")  # before Friday starts
+    t = pin_day("before monday write it", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "sunday")
+    t = pin_day("po czwartku umyj okna", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("friday", None)
     rano = DayRequest(tasks=[TaskRequest(title="x", when="jutro rano")])
     t = pin_day("jutro rano zrób pranie", rano).tasks[0]
     assert (t.not_before_day, t.due_day, t.when) == ("tomorrow", "tomorrow", "jutro rano")

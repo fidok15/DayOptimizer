@@ -175,7 +175,7 @@ _DAY_WORDS = [
     (r"\bwtor|\btuesday", "tuesday"),
     (r"\b[sś]rod(?:a|y|ę|e|ą)\b|\bwednesday", "wednesday"),  # not "w środku" (in the middle)
     (r"\bczwart(?:ek|k)|\bthursday", "thursday"),  # not "o czwartej" (at four)
-    (r"\bpi[aą]t(?:ek|k)|\bfriday", "friday"),  # not "o piątej" (at five)
+    (r"\bpi[aą]t(?:ek|ku|kiem)\b|\bfriday", "friday"),  # not "o piątej" (at five), "piątka" (a grade)
     (r"\bsobot|\bsaturday", "saturday"),
     (r"\bniedziel|\bsunday", "sunday"),
 ]
@@ -184,7 +184,8 @@ _DAY_WORDS = [
 def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     """When the message names exactly one day, that day is every event's day
     and every task's: trust the words over the model. A task gets it as its
-    deadline after 'na/do/przed/by/until/before', else as the day it goes on. A task
+    deadline after 'na/do/by/until' (end of that day), 'przed/before' (end of the
+    day before), 'po/after' (not before the next day), else as the day it goes on. A task
     `when` that only names a day is dropped. Several days (or none): the model
     decides."""
     import re
@@ -195,11 +196,23 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         return req.model_copy(update={"tasks": tasks})
     m, day = said[0]
     if day != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
-        deadline = re.search(r"\b(na|do|przed|by|until|before)\s+$", low[:m.start()])
-        pin = {"due_day": day} if deadline else {"due_day": day, "not_before_day": day}
+        word = re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", low[:m.start()])
+        word = word and word.group(1)
+        pin = ({"due_day": _shift(day, -1)} if word in ("przed", "before") else  # before Friday: by Thursday night
+               {"not_before_day": _shift(day, 1)} if word in ("po", "after") else
+               {"due_day": day} if word else {"due_day": day, "not_before_day": day})
         tasks = [t.model_copy(update=pin) for t in tasks]
     return req.model_copy(update={"events": [e.model_copy(update={"day": day}) for e in req.events],
                                   "tasks": tasks})
+
+
+def _shift(day: str, k: int) -> str:
+    """The day word k days from `day` ('friday', -1 -> 'thursday')."""
+    near = ["today", "tomorrow", "day_after_tomorrow"]
+    if day in near:
+        return near[min(near.index(day) + k, 2)]  # ponytail: 'after the day after tomorrow' stays that day
+    names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    return names[(names.index(day) + k) % 7]
 
 
 def _only_day(when: str) -> bool:
