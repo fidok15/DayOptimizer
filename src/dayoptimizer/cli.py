@@ -17,7 +17,7 @@ from dayoptimizer.core.rules import load_config_data, load_rules
 from dayoptimizer.core.storage import Storage
 from dayoptimizer.llm.backend import LLMUnavailable, format_changes, make_backend, pin_day, resolve_day
 
-console = Console()
+console = Console(highlight=False)  # no colouring of numbers in plain text ("qwen3:8b")
 
 NO_ACCESS_HELP = ("DayOptimizer can't read your calendar: macOS access was denied. Turn on DayOptimizer in "
                   "System Settings → Privacy & Security → Calendars (open it with:  open "
@@ -673,7 +673,7 @@ def _calendar_run(argv: list[str]) -> None:
     exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not exe.exists():
         console.print("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
-                      "folder run:  scripts/install.sh", markup=False)
+                      "folder run:  scripts/setup-bundle.sh", markup=False)
         return
     rest = _bundle_run([a.replace("\n", " ") for a in argv], timeout=None,
                        echo=lambda text: print(text, end="", flush=True))
