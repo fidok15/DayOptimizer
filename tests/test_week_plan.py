@@ -576,22 +576,24 @@ def test_code_puts_back_task_minutes_a_replan_pushed_out():
     assert unscheduled == []
 
 
-def test_code_fills_a_task_on_its_last_planned_day_not_the_first():
+def test_code_fills_a_deadline_task_as_soon_as_possible_one_day_at_a_time():
     backend = Small(*[WeekPlan() for _ in range(6)])
     changes, _, _, unscheduled = plan_days(
         backend, [MON, TUE], "# routine", WCATS, [LECTURE, LAB], NOTES, [], NOW,
         tasks=[task(due=at(TUE, "22:00"))], left={"t1": 120}, routine_days=sleep_only(MON, TUE))
-    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(TUE, "07:00"), at(TUE, "09:00"))]
+    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(MON, "07:00"), at(MON, "09:00"))]
     assert unscheduled == []
 
 
-def test_code_fills_a_task_before_its_due_day_when_that_day_is_full():
+def test_deadline_tasks_sharing_little_later_room_all_get_placed():
     wed = MON + timedelta(days=2)
-    changes, _, _, unscheduled = plan_days(
-        Small(*[WeekPlan() for _ in range(9)]), [MON, TUE, wed], "# routine", WCATS,
-        [ev("w", "Uni", "Wall", wed, "07:00", "23:59")], NOTES, [], NOW, attempts=1,
-        tasks=[task(due=at(wed, "20:00"))], left={"t1": 120}, routine_days=sleep_only(MON, TUE, wed))
-    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(TUE, "07:00"), at(TUE, "09:00"))]
+    walls = [ev(f"w{i}{j}", "Uni", "Wall", d, a, b) for i, d in enumerate([TUE, wed])
+             for j, (a, b) in enumerate([("07:00", "10:00"), ("14:00", "23:00")])]
+    ts = [Task(id=f"t{i}", title=f"Job{i}", category="Work", duration_min=240, due=at(wed, "20:00")) for i in (1, 2, 3)]
+    changes, _, _, unscheduled = plan_days(Small(*[WeekPlan() for _ in range(9)]), [MON, TUE, wed], "# routine",
+                                           WCATS, walls, NOTES, [], NOW, attempts=1, tasks=ts,
+                                           left={t.id: 240 for t in ts}, routine_days=sleep_only(MON, TUE, wed))
+    assert sum((c.new_end - c.new_start).seconds // 60 for c in changes if c.task_id) == 720
     assert unscheduled == []
 
 
@@ -618,6 +620,15 @@ def test_no_routine_block_moves_for_a_task_a_weekly_note_rules_out():
     assert [(c.title, c.new_start) for c in creates if c.title == "Snack"] == [("Snack", at(MON, "15:00"))]
     assert [u.reason for u in plan.unscheduled] == [
         "'Report': your note \"Work once a week\" rules it out before Mon 2030-10-14 23:00"]
+
+
+def test_a_note_that_rules_out_only_some_days_is_not_blamed_for_a_task():
+    rules = parse_rules([{"type": "min_gap_days", "category": "Work", "days": 2, "source": "Work every other day"}])
+    plan = WeekPlan()
+    validate(plan, [MON, TUE], WCATS, [ev("w", "Uni", "Wall", TUE, "00:00", "23:59")], NOTES, rules, NOW,
+             history={"Work": [MON - timedelta(days=1)]}, tasks=[task(due=at(TUE, "23:00"))], left={"t1": 120},
+             report_unplaced=True, routine_days=sleep_only(MON, TUE), fill_until=TUE)
+    assert [u.reason for u in plan.unscheduled] == ["'Report' doesn't fit before Tue 2030-10-15 23:00 - missing 120 min"]
 
 
 def test_a_task_that_does_not_fit_is_reported_once_not_once_a_day():

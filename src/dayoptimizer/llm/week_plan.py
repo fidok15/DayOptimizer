@@ -659,10 +659,10 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     """Task minutes the model left out, placed by code in the earliest free time
     that keeps the task's chunks and the notes (on each day the routine time of
     the task's own category first), only on days with a routine (so sleep is
-    known). All of them when the deadline falls within the run (its last
-    chance) or there is none (as soon as possible); otherwise only what the task had on these days before the
-    replan (`pushed`): a replan must not lose task time, but code should not
-    pile later work onto today. Routine time of the task's own category counts
+    known), as soon as possible: one day at a time, later days take what is
+    left. A task due after the run gets back only what it had on these days
+    before the replan (`pushed`): a replan must not lose task time, but code
+    should not pile later work onto today. Routine time of the task's own category counts
     as free (the routine block yields to the task).
     A day with no gap long enough gets one made before the next day is tried:
     blocks in `taken` with an id "kept:<n>" (flexible, unprotected routine)
@@ -696,26 +696,15 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             return [e for e in taken if not (e.id.startswith("kept") and e.task_id is None
                                              and e.calendar == t.category)] + _reserved_events(reserved, t.category)
 
-        if last > max(days):  # due on a later day of the run (planned one day at a time)
-            chunk = min(t.min_chunk_min or t.duration_min, need)
-            later = [max(days) + timedelta(days=k) for k in range(1, (last - max(days)).days + 1)]
-            room = sum(n for d in later if routine_days.get(d)
-                       for a, b in free_gaps(d, busy() + [Event(id="routine", calendar=x[2], title=x[3], start=x[0],
-                                                                end=x[1]) for x in routine_days[d]
-                                                          if x[2] != t.category or _guarded(x)], now)
-                       if (n := minutes(max(a, lo), b if hi is None else min(b, hi))) >= chunk)
-            need -= min(need, room)  # what the later days can take, their plans place
-            if need <= 0:
-                continue
-            last = max(days)  # the rest goes now
-        if last not in days:
-            continue
-
-        for d in sorted(x for x in days if x <= last and routine_days.get(x)):
+        candidates = sorted(x for x in days if x <= last and routine_days.get(x))
+        notes_out = []
+        for d in candidates:
             midnight = datetime.combine(d, time(0)).astimezone()
             if broken := _count_rules([(midnight, midnight, Block(day=d.isoformat(), start="00:00", end="00:00",
                                                                   category=t.category, title=""))], rules, seen)[1]:
-                ruled[t.id] = broken[0].split("breaks the note ", 1)[1]
+                notes_out.append(broken[0].split("breaks the note ", 1)[1])
+                if len(notes_out) == len(candidates):  # the note is to blame only if it ruled out every day
+                    ruled[t.id] = notes_out[0]
                 continue  # a weekly note rules the category out that day: don't move anything for it
             # twice: the short last piece may fit a gap the full chunk skipped
             for own_slot in (True, False, True, False):
