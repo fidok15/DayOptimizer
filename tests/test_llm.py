@@ -127,3 +127,18 @@ def test_one_named_day_pins_tasks():
     t = pin_day("jutro rano zrób pranie", rano).tasks[0]
     assert (t.not_before_day, t.due_day, t.when) == ("tomorrow", "tomorrow", "jutro rano")
     assert pin_day("dziś zrób pranie", req).tasks[0].not_before_day is None
+
+
+def test_each_clause_pins_its_own_items():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    model = DayRequest(events=[NewEvent(title="dentist", category="Important", day="friday", start_time="10:00")],
+                       tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120, due_day="friday")])
+    req = pin_day("w czwartek o 10 dentysta i do piątku raport 2h", model)
+    assert req.events[0].day == "thursday"
+    assert (req.tasks[0].due_day, req.tasks[0].not_before_day) == ("friday", None)
+    # the model made both tasks; the one with a clock time is an event that day
+    model = DayRequest(tasks=[TaskRequest(title="esej", category="Learn", duration_minutes=120),
+                              TaskRequest(title="obiad u mamy", category="Family")])
+    req = pin_day("na piątek esej 2h a w niedzielę o 12 obiad u mamy", model)
+    assert [(t.title, t.due_day) for t in req.tasks] == [("esej", "friday")]
+    assert [(e.title, e.day, e.start_time) for e in req.events] == [("obiad u mamy", "sunday", "12:00")]

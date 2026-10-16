@@ -182,28 +182,58 @@ _DAY_WORDS = [
 
 
 def pin_day(text: str, req: "DayRequest") -> "DayRequest":
-    """When the message names exactly one day, that day is every event's day
-    and every task's: trust the words over the model. A task gets it as its
-    deadline after 'na/do/by/until' (end of that day), 'przed/before' (end of the
-    day before), 'po/after' (not before the next day), else as the day it goes on. A task
-    `when` that only names a day is dropped. Several days (or none): the model
-    decides."""
+    """Trust the message's day words over the model, clause by clause (split at
+    ',', ';', 'i', 'a', 'oraz', 'and'): an event or task gets the one day its own
+    clause names (the clause holding a word of its title), else the day of an
+    earlier clause, else the message's day when it names exactly one. A task gets
+    it as its deadline after 'na/do/by/until' (end of that day), 'przed/before'
+    (end of the day before), 'po/after' (not before the next day), else as the day
+    it goes on. A task whose clause has a clock time ('o 12', 'at 10') is an event
+    at that time. A task `when` that only names a day is dropped. No day found:
+    the model decides."""
     import re
     low = text.lower()
-    said = [(m, day) for pattern, day in _DAY_WORDS if (m := re.search(pattern, low))]
-    tasks = [t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t for t in req.tasks]
-    if len(said) != 1:
-        return req.model_copy(update={"tasks": tasks})
-    m, day = said[0]
-    if day != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
-        word = re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", low[:m.start()])
-        word = word and word.group(1)
-        pin = ({"due_day": _shift(day, -1)} if word in ("przed", "before") else  # before Friday: by Thursday night
-               {"not_before_day": _shift(day, 1)} if word in ("po", "after") else
-               {"due_day": day} if word else {"due_day": day, "not_before_day": day})
-        tasks = [t.model_copy(update=pin) for t in tasks]
-    return req.model_copy(update={"events": [e.model_copy(update={"day": day}) for e in req.events],
-                                  "tasks": tasks})
+
+    def day_of(part):
+        said = [(m, day) for pattern, day in _DAY_WORDS if (m := re.search(pattern, part))]
+        return (part, *said[0]) if len(said) == 1 else None
+    whole, clauses, cur = day_of(low), [], None
+    for c in re.split(r"[,;]|\s(?:i|a|oraz|and)\s", low):
+        said = [d for pattern, d in _DAY_WORDS if re.search(pattern, c)]
+        cur = day_of(c) if said else cur  # two days in one clause: the model decides
+        clauses.append((c, cur))
+
+    def find(title):
+        stems = {w[:4] for w in re.findall(r"\w{3,}", title.lower())}
+        return next(((c, said or whole) for c, said in clauses if stems & {w[:4] for w in re.findall(r"\w+", c)}),
+                    (None, whole))
+
+    def clock(c):
+        m = c and re.search(r"\b(?:o|at)\s+(\d{1,2})(?:[:.](\d{2}))?\b(?!\s*(?:h\b|min|godz))", c)
+        return m and int(m.group(1)) < 24 and f"{int(m.group(1)):02d}:{m.group(2) or '00'}"
+    events, tasks = [], []
+    for e in req.events:
+        c, said = find(e.title)
+        update = {"day": said[2]} if said else {}
+        if not e.start_time and clock(c):
+            update["start_time"] = clock(c)
+        events.append(e.model_copy(update=update))
+    for t in req.tasks:
+        t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
+        c, said = find(t.title)
+        if clock(c):  # a clock time makes it an event
+            events.append(NewEvent(title=t.title, category=t.category, day=said[2] if said else "today",
+                                   start_time=clock(c), duration_minutes=t.duration_minutes))
+            continue
+        if said and said[2] != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
+            part, m, day = said
+            word = re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
+            word = word and word.group(1)
+            t = t.model_copy(update={"due_day": _shift(day, -1)} if word in ("przed", "before") else  # by Thursday night
+                             {"not_before_day": _shift(day, 1)} if word in ("po", "after") else
+                             {"due_day": day} if word else {"due_day": day, "not_before_day": day})
+        tasks.append(t)
+    return req.model_copy(update={"events": events, "tasks": tasks})
 
 
 def _shift(day: str, k: int) -> str:
