@@ -173,9 +173,9 @@ _DAY_WORDS = [
     (r"\bdziś\b|\bdzis\b|\bdzisiaj|\btoday\b|\btonight\b", "today"),
     (r"\bponiedzia|\bmonday", "monday"),
     (r"\bwtor|\btuesday", "tuesday"),
-    (r"\bśrod|\bsrod|\bwednesday", "wednesday"),
-    (r"\bczwart|\bthursday", "thursday"),
-    (r"\bpiąt|\bpiatek|\bfriday", "friday"),
+    (r"\b[sś]rod(?:a|y|ę|e|ą)\b|\bwednesday", "wednesday"),  # not "w środku" (in the middle)
+    (r"\bczwart(?:ek|k)|\bthursday", "thursday"),  # not "o czwartej" (at four)
+    (r"\bpi[aą]t(?:ek|k)|\bfriday", "friday"),  # not "o piątej" (at five)
     (r"\bsobot|\bsaturday", "saturday"),
     (r"\bniedziel|\bsunday", "sunday"),
 ]
@@ -184,7 +184,7 @@ _DAY_WORDS = [
 def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     """When the message names exactly one day, that day is every event's day
     and every task's: trust the words over the model. A task gets it as its
-    deadline after 'na/do/by/until/before', else as the day it goes on. A task
+    deadline after 'na/do/przed/by/until/before', else as the day it goes on. A task
     `when` that only names a day is dropped. Several days (or none): the model
     decides."""
     import re
@@ -195,7 +195,7 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         return req.model_copy(update={"tasks": tasks})
     m, day = said[0]
     if day != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
-        deadline = re.search(r"\b(na|do|by|until|before)\s+$", low[:m.start()])
+        deadline = re.search(r"\b(na|do|przed|by|until|before)\s+$", low[:m.start()])
         pin = {"due_day": day} if deadline else {"due_day": day, "not_before_day": day}
         tasks = [t.model_copy(update=pin) for t in tasks]
     return req.model_copy(update={"events": [e.model_copy(update={"day": day}) for e in req.events],
@@ -208,7 +208,7 @@ def _only_day(when: str) -> bool:
     low = when.lower()
     for pattern, _ in _DAY_WORDS:
         low = re.sub(rf"(?:{pattern})\w*", " ", low)
-    return low != when.lower() and not re.sub(r"\b(na|do|w|we|on|by|until|before|the)\b|\W", "", low)
+    return low != when.lower() and not re.sub(r"\b(na|do|przed|w|we|on|by|until|before|the)\b|\W", "", low)
 
 
 class LLMUnavailable(RuntimeError):
