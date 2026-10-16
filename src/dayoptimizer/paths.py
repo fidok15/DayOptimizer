@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def app_dir() -> Path:
-    return Path(os.environ.get("DAYOPTIMIZER_HOME", "~/.dayoptimizer")).expanduser()
+    return Path(os.environ.get("DAYOPTIMIZER_HOME", "~/.dayoptimizer")).expanduser().resolve()
 
 
 def user_config_path() -> Path:

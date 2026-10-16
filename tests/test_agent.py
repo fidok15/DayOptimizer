@@ -165,3 +165,11 @@ def test_cli_rejects_a_bad_agent_time():
     from dayoptimizer import cli
     with pytest.raises(SystemExit):
         cli.main(["agent", "install", "--at", "7am"])
+
+
+def test_the_agent_keeps_a_custom_app_dir(tmp_path, monkeypatch):
+    monkeypatch.delenv("DAYOPTIMIZER_HOME", raising=False)
+    assert "EnvironmentVariables" not in agent.build_plist("/a", "/b")
+    monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
+    assert f"<string>{tmp_path.resolve()}</string>" in agent.build_plist("/a", "/b")
+    assert repr(str(agent.CHECK_LOG_PATH)) in agent.build_runner("/repo")
