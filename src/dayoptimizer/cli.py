@@ -380,7 +380,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     checked, deduplicated against the open tasks, numbered. Says why for each
     one that isn't kept. The model's time-of-day words count only when they
     are in the message; a lone task reads them from the whole message."""
-    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, task_from_request
+    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, task_from_request
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
                     due_day=None if e.day == "today" else e.day, not_before_day=None if e.day == "today" else e.day)
@@ -396,7 +396,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     lone = len(reqs) == 1 and not to_create
     for r in reqs:
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
-        r = r.model_copy(update={"when": when})
+        r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
         task, problem = task_from_request(r, list(rules.categories), now, f"t{first + len(out)}", today_events,
                                           getattr(rules, "day_start", time(5)))
         if task is None:

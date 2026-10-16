@@ -133,3 +133,10 @@ def test_mixed_message_adds_events_and_saves_tasks_in_one_run(monkeypatch):
     (argv,) = calls
     assert argv[0] == "add" and argv[2:] == ["--week", "2"]
     assert [e["title"] for e in json.loads(argv[1])] == ["meeting"]
+
+
+def test_chunks_only_when_the_message_asks_to_split(monkeypatch):
+    req = TaskRequest(title="nauka", category="Learn", duration_minutes=120, min_chunk_minutes=60)  # the model's idea
+    run(monkeypatch, ["jutro", "po", "południu", "nauka", "2h"], req)
+    run(monkeypatch, ["nauka", "4h", "w", "kawałkach", "po", "godzinę"], req.model_copy(update={"title": "x", "duration_minutes": 240}))
+    assert [t.min_chunk_min for t in Storage(paths.db_path()).open_tasks()] == [None, 60]

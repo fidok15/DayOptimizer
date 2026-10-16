@@ -18,6 +18,15 @@ _PARTS = [
 ]
 
 
+# the message asks to split the work: only then may a task get min chunks (models invent them)
+_SPLIT = re.compile(r"\bpo\s+\d+\s*(?:min|h\b|godz)|kawał|częściach|\bczęści\b|podziel|rozbij|\bna raty|w blokach"
+                    r"|chunk|\bsplit|\bpieces\b|\bin parts\b|\d+\s*(?:min|h)\w*\s+(?:each|at a time)", re.I)
+
+
+def asks_split(text: str) -> bool:
+    return bool(_SPLIT.search(text))
+
+
 def _hhmm(value: str | None) -> time | None:
     m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", (value or "").strip())
     return time(int(m.group(1)), int(m.group(2))) if m else None
