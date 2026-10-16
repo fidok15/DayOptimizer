@@ -136,3 +136,18 @@ def test_ek_to_event_carries_task_id():
     e = ek_to_event("X", "Work", "Report", datetime(2026, 7, 3, 9), datetime(2026, 7, 3, 10), None,
                     managed=True, task_id="t3")
     assert e.task_id == "t3" and e.managed
+
+
+def test_access_already_given_is_not_asked_again_and_the_store_is_shared(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from dayoptimizer.core.calendar import CalendarClient
+    made, asked = [], []
+    store = SimpleNamespace(requestFullAccessToEventsWithCompletion_=lambda h: asked.append(h))
+    ek = SimpleNamespace(EKEntityTypeEvent=0, EKAuthorizationStatusFullAccess=3, EKEventStore=SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: made.append(1) or store),
+        authorizationStatusForEntityType_=lambda t: 3))
+    monkeypatch.setitem(sys.modules, "EventKit", ek)
+    monkeypatch.setattr(CalendarClient, "_shared", None)
+    assert all(CalendarClient().request_access() for _ in range(20))
+    assert made == [1] and asked == []

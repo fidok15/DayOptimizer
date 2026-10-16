@@ -42,13 +42,23 @@ def ek_to_event(identifier, calendar_title, title, start, end, location, all_day
                  task_id=task_id)
 
 class CalendarClient:
+    _shared = None  # one EKEventStore per process: a long-lived caller (MCP server) makes many clients
+
     def __init__(self):
         import EventKit
         self._EventKit = EventKit
-        self._store = EventKit.EKEventStore.alloc().init()
+        if CalendarClient._shared is None:
+            CalendarClient._shared = EventKit.EKEventStore.alloc().init()
+        self._store = CalendarClient._shared
 
     def request_access(self) -> bool:
+        """True when DayOptimizer may read and write the calendar. Asks (and
+        waits for the answer) only when macOS hasn't been asked yet: asking again
+        and again from one process starts being refused."""
         from Foundation import NSDate, NSRunLoop
+        status = self._EventKit.EKEventStore.authorizationStatusForEntityType_(self._EventKit.EKEntityTypeEvent)
+        if status == getattr(self._EventKit, "EKAuthorizationStatusFullAccess", 3):
+            return True
 
         granted_holder = {}
 
