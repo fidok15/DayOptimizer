@@ -150,6 +150,14 @@ def test_each_clause_pins_its_own_items():
     model = DayRequest(tasks=[TaskRequest(title="report"), TaskRequest(title="clean the garage")])
     req = pin_day("before Friday write the report 2h and after Saturday clean the garage 2h", model)
     assert [(t.not_before_day, t.due_day) for t in req.tasks] == [(None, "thursday"), ("sunday", None)]
+    # a clause with no day of its own: its clock time stays an event, not an inherited 'do' deadline
+    model = DayRequest(tasks=[TaskRequest(title="raport"), TaskRequest(title="spotkanie z anią")])
+    req = pin_day("do piątku raport i spotkanie z anią o 15", model)
+    assert [(e.title, e.day, e.start_time) for e in req.events] == [("spotkanie z anią", "friday", "15:00")]
+    # ...and a day the model gave it stands
+    model = DayRequest(tasks=[TaskRequest(title="report"), TaskRequest(title="call mom", due_day="sunday")])
+    req = pin_day("write a report by friday and call mom", model)
+    assert [t.due_day for t in req.tasks] == ["friday", "sunday"]
 
 
 def test_a_deadline_time_is_not_an_event():

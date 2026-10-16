@@ -224,7 +224,10 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
         part, m, day = said or ("", None, None)
-        word = m and re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
+        own = c is None or part == c  # no clause matched: the whole message is its clause
+        if said and not own and (t.due_day or t.not_before_day) and day not in (t.due_day, t.not_before_day):
+            said, part, m, day = None, "", None, None  # its clause names no day: the model's other day stands
+        word = m and own and re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
         word = word and word.group(1)
         deadline = word in ("na", "do", "przed", "by", "until", "before")
         if clock(c) and not deadline and not t.due_time:  # a clock time makes it an event, unless it is a deadline
