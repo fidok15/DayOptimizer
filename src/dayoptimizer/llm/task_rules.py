@@ -92,7 +92,7 @@ def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
     """Tasks that had to be finished within the planned days, still have
     minutes left, and were not listed as unscheduled: the model went quiet.
     With `before` (minutes left before planning), a task without a deadline
-    that got no time at all is reported too."""
+    that got only part of its time, or none, is reported too."""
     out = []
     for t in tasks:
         n = left_after.get(t.id, 0)
@@ -104,7 +104,10 @@ def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
         elif t.due is not None and t.due.date() <= last_day:
             out.append(f"{t.id}: {n} min of '{t.title}' left before {t.due:%a %Y-%m-%d %H:%M} - "
                        "place them or list the task in unscheduled")
-        elif (t.due is None and before is not None and n >= before.get(t.id, 0)
+        elif (t.due is None and before is not None
               and not (t.not_before and t.not_before.date() > last_day)):  # one that starts later had no chance
-            out.append(f"{t.id}: '{t.title}' (no deadline) got no time in the planned days")
+            had = before.get(t.id, 0)
+            out.append(f"{t.id}: '{t.title}' (no deadline) got no time in the planned days" if n >= had else
+                       f"{t.id}: '{t.title}' (no deadline): placed {had - n} of {had} min, {n} min don't fit "
+                       "in the planned days")
     return out

@@ -858,6 +858,14 @@ def test_a_task_due_on_a_day_too_late_to_plan_and_one_that_got_no_time_are_repor
                            "t2: 'Taxes' (no deadline) got no time in the planned days"]
 
 
+def test_a_task_without_a_deadline_that_got_only_part_of_its_time_is_reported():
+    wall = ev("w", "Uni", "Wall", MON, "09:00", "23:59")
+    _, _, _, unscheduled = plan_days(Small(WeekPlan()), [MON], "# routine", WCATS, [wall], NOTES, [], NOW,
+                                     attempts=1, tasks=[task(due=None, duration_min=240)], left={"t1": 240},
+                                     routine_days=sleep_only(MON))
+    assert unscheduled == ["t1: 'Report' (no deadline): placed 120 of 240 min, 120 min don't fit in the planned days"]
+
+
 def test_a_routine_block_does_not_move_more_than_three_hours_for_a_task():
     lunch = {MON: sleep_only(MON)[MON] + [(at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
     busy = [ev("a", "Uni", "A", MON, "07:00", "11:00"), ev("b", "Uni", "B", MON, "14:00", "19:00")]
