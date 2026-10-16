@@ -700,7 +700,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                             continue
                         a = place(d, a, n)
             while need > 0 and (room := _make_room(d, min(t.min_chunk_min or t.duration_min, need), t.category,
-                                                   lo, hi, busy(), rules, now)):
+                                                   lo, hi, busy(), rules, now, taken + _reserved_events(reserved))):
                 a, shifts = room
                 for e, s, z in shifts:
                     taken = [replace(x, start=s, end=z) if x.id == e.id else x for x in taken]
@@ -712,10 +712,11 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
 
 
 def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None, busy: list[Event],
-               rules: list[NoteRule], now: datetime):
+               rules: list[NoteRule], now: datetime, everything: list[Event]):
     """The earliest start for an n-minute block on day d that is blocked only
-    by movable blocks (id "kept:<n>"), each of which fits elsewhere that day
-    (nearest its time, keeping the notes): (start, [(event, new start, new end)]) or None."""
+    by movable blocks (id "kept:<n>") in `busy`, each of which fits elsewhere
+    that day, clear of `everything` (all blocks and reserved time) and within
+    two hours of its time, keeping the notes: (start, [(event, new start, new end)]) or None."""
     midnight = datetime.combine(d, time(0)).astimezone()
     day_end = midnight + timedelta(days=1)
     a = max(lo, now, midnight)
@@ -725,10 +726,11 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
         way = [e for e in busy if e.start < b and e.end > a]
         if way and all(e.id.startswith("kept:") for e in way) and window_rule(
                 rules, category, minutes(midnight, a), minutes(midnight, b), d.weekday()) is None:
-            rest = [e for e in busy if e not in way] + [Event(id="new", calendar=category, title="", start=a, end=b)]
+            rest = [e for e in everything if e not in way] + [Event(id="new", calendar=category, title="", start=a, end=b)]
             shifts = []
             for e in way:
-                s = _nearest_start(rest, e.start, e.end - e.start, max(now, midnight), day_end)
+                s = _nearest_start(rest, e.start, e.end - e.start, max(now, midnight, e.start - timedelta(hours=2)),
+                                   min(day_end, e.end + timedelta(hours=2)))
                 if s is None or window_rule(rules, e.calendar, minutes(midnight, s),
                                             minutes(midnight, s + (e.end - e.start)), d.weekday()) is not None:
                     break

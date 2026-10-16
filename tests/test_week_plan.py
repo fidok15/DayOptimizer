@@ -786,16 +786,30 @@ def test_a_task_due_on_a_day_too_late_to_plan_and_one_that_got_no_time_are_repor
 
 
 def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does_not():
-    busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, LAB, ev("b", "Uni", "Evening", MON, "17:00", "23:59")]
-    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "15:00", "16:00", "Food", "Free time")])
+    # Free time moves at most two hours (12:00-13:00 is too far), never onto another block
+    busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, LAB, ev("b", "Uni", "Evening", MON, "18:00", "23:59")]
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "15:30", "16:30", "Food", "Free time")])
     for kept in (False, True):
-        routine = {MON: sleep_only(MON)[MON] + [(at(MON, "15:00"), at(MON, "16:00"), "Food", "Free time", False, kept)]}
+        routine = {MON: sleep_only(MON)[MON] + [(at(MON, "15:30"), at(MON, "16:30"), "Food", "Free time", False, kept)]}
         tasks = [task(min_chunk_min=None, due=at(MON, "23:00"))]
         creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=tasks, left={"t1": 120},
                               report_unplaced=True, routine_days=routine, fill_until=MON)
         got = sorted((c.title, c.new_start, c.new_end) for c in creates if c.title != "Sleep")
-        assert got == ([("Free time", at(MON, "15:00"), at(MON, "16:00"))] if kept else
-                       [("Free time", at(MON, "12:00"), at(MON, "13:00")), ("Report", at(MON, "15:00"), at(MON, "17:00"))])
+        assert got == ([("Free time", at(MON, "15:30"), at(MON, "16:30"))] if kept else
+                       [("Free time", at(MON, "17:00"), at(MON, "18:00")), ("Report", at(MON, "15:00"), at(MON, "17:00"))])
+
+
+def test_a_moved_block_does_not_land_on_the_tasks_own_routine_block():
+    busy = [ev("a", "Uni", "Morning", MON, "07:00", "11:00"), ev("b", "Uni", "Night", MON, "18:00", "23:59")]
+    routine = {MON: sleep_only(MON)[MON] + [(at(MON, "11:00"), at(MON, "12:00"), "Food", "Lunch", False),
+                                            (at(MON, "15:00"), at(MON, "18:00"), "Learn", "Study", False)]}
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "11:00", "12:00", "Food", "Lunch"),
+                            block(MON, "15:00", "18:00", "Learn", "Study")])
+    t = Task(id="t1", title="Exam prep", category="Learn", duration_min=240, due=at(MON, "15:00"))
+    creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[t], left={"t1": 240},
+                          report_unplaced=True, routine_days=routine, fill_until=MON)
+    spans = sorted((c.new_start, c.new_end) for c in creates)
+    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:]))
 
 
 def test_code_places_an_overdue_task_the_model_left_out():
