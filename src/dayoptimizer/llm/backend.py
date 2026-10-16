@@ -112,7 +112,8 @@ def format_changes(changes: list[PlannedChange]) -> str:
 
 _REQUEST_SYSTEM = (
     "You turn a user's message about their day into calendar events for the DayOptimizer "
-    "planner. The message may be in any language; keep event titles in that language.\n"
+    "planner. The message may be in any language; titles are copied from the message word for word, "
+    "never translated (also when the routine or categories are in another language).\n"
     "- One event per activity; never merge two activities or invent one. Example: 'dentist at 10, "
     "then work until 17' is TWO events: dentist 10:00 (no end given) and work from when the "
     "dentist ends until 17:00.\n"
@@ -214,13 +215,20 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         m = c and re.search(r"\b(?:o|at)\s+(\d{1,2})(?:[:.](\d{2}))?\b(?!\s*(?:h\b|min|godz))", c)
         return m and int(m.group(1)) < 24 and f"{int(m.group(1)):02d}:{m.group(2) or '00'}"
     events, tasks = [], []
+    # an event with no clock time anywhere is work to fit in: a task, so its clause's 'do/na/po' count
+    untimed = [e for e in req.events if not e.start_time and not clock(find(e.title)[0])]
     for e in req.events:
+        if e in untimed:
+            continue
         c, said = find(e.title)
         update = {"day": said[2]} if said else {}
         if not e.start_time and clock(c):
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
-    for t in req.tasks:
+    for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
+                                            **dict.fromkeys(("due_day", "not_before_day"),
+                                                            None if e.day == "today" else e.day))
+                                for e in untimed]:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
         part, m, day = said or ("", None, None)

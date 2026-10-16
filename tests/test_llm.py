@@ -160,6 +160,16 @@ def test_each_clause_pins_its_own_items():
     assert [t.due_day for t in req.tasks] == ["friday", "sunday"]
 
 
+def test_an_event_without_a_time_is_a_task_and_do_is_its_deadline():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, pin_day
+    model = DayRequest(events=[NewEvent(title="raport", category="Learn", day="day_after_tomorrow", duration_minutes=180),
+                               NewEvent(title="dentysta", category="Work", day="wednesday", start_time="10:00")])
+    req = pin_day("do czwartku raport 3h i w środę o 10 dentysta", model)
+    assert [(e.title, e.day) for e in req.events] == [("dentysta", "wednesday")]
+    assert [(t.title, t.due_day, t.not_before_day, t.duration_minutes) for t in req.tasks] == [
+        ("raport", "thursday", None, 180)]
+
+
 def test_a_deadline_time_is_not_an_event():
     from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
     raport = DayRequest(tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120)])
