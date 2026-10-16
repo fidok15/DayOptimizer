@@ -1008,3 +1008,17 @@ def test_the_first_day_holds_back_only_what_later_days_can_take():
         if c.task_id:
             per_day[c.new_start.date()] = per_day.get(c.new_start.date(), 0) + (c.new_end - c.new_start).seconds // 60
     assert per_day == {MON: 480, TUE: 60, wed: 60} and unscheduled == []
+
+
+def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
+    from dayoptimizer.llm.task_rules import remaining
+    old = Event(id="o1", calendar="Work", title="Essay", start=at(MON, "14:00"), end=at(MON, "17:00"),
+                managed=True, task_id="t1")
+    t = task(title="Essay", duration_min=180, min_chunk_min=None)
+    rd = {MON: sleep_only(MON)[MON] + [(at(MON, "15:00"), at(MON, "16:00"), "Food", "Tea", True)]}
+    changes, _, dropped, _ = plan_days(Picker(), [MON], "# r", WCATS + ["Food"], [old], NOTES, [], NOW,
+                                       attempts=2, tasks=[t], left=remaining([t], [old], NOW, {MON}), routine_days=rd)
+    made = [(c.title, f"{c.new_start:%H:%M}") for c in changes if c.kind == "create"]
+    assert ("Tea", "15:00") in made and dropped == []
+    assert not any(c.title == "Essay" and c.new_start < at(MON, "16:00") and c.new_end > at(MON, "15:00")
+                   for c in changes if c.kind == "create")

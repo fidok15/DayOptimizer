@@ -912,11 +912,15 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     slots = getattr(backend, "slots", False)  # the model only picks among slots code found (slot_items)
     placed, still, items = [], dict(left or {}), None
     stay = []
+    guard = [x[:3] for spans in routine_days.values() for x in spans if x[4] or _guarded(x)]
+
+    def covered(e):  # fixed or protected routine time of another category is over an old block: it goes
+        return any(s < e.end and z > e.start and c != e.calendar for s, z, c in guard)
     if slots:  # a task block or moved routine block from the last plan that still fits stays: no churn
         user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
         usual = {(x[2], x[3], x[0]) for x in routine_days.get(days[0], [])}
         mid = datetime.combine(days[0], time(0)).astimezone()
-        fine = [e for e in previous if not any(u.start < e.end and u.end > e.start for u in user)
+        fine = [e for e in previous if not covered(e) and not any(u.start < e.end and u.end > e.start for u in user)
                 and window_rule(rules, e.calendar, minutes(mid, e.start), minutes(mid, e.end), days[0].weekday()) is None]
         # what stays is in the way of new picks; a routine block at its usual time already is
         stay = [replace(e, id=f"stay:{e.id}", managed=False) for e in fine
@@ -932,7 +936,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         blocks = good + answer.blocks
         if small and not good:
             solid = [e for e in events if not skippable(rules, e)]
-            blocks += _unmentioned(answer.blocks, previous, solid, now)
+            blocks += _unmentioned(answer.blocks, [e for e in previous if not covered(e)], solid, now)
             back, lost = _forgotten_routine(blocks, routine_days, solid, now)
             blocks += back
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
