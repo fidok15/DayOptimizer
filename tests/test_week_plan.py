@@ -595,6 +595,17 @@ def test_code_fills_a_task_before_its_due_day_when_that_day_is_full():
     assert unscheduled == []
 
 
+def test_no_routine_block_moves_for_a_task_a_weekly_note_rules_out():
+    rules = parse_rules([{"type": "max_per_week", "category": "Work", "count": 1, "source": "Work once a week"}])
+    busy = [ev("a", "Uni", "Morning", MON, "07:00", "14:00"), ev("z", "Uni", "Eve", MON, "17:00", "23:59")]
+    routine = {MON: sleep_only(MON)[MON] + [(at(MON, "15:00"), at(MON, "16:00"), "Food", "Snack", False)]}
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "15:00", "16:00", "Food", "Snack")])
+    creates, _ = validate(plan, [MON], WCATS, busy, NOTES, rules, NOW, history={"Work": [MON + timedelta(days=2)]},
+                          tasks=[task(due=at(MON, "23:00"))], left={"t1": 120}, report_unplaced=True,
+                          routine_days=routine, fill_until=MON)
+    assert [(c.title, c.new_start) for c in creates if c.title == "Snack"] == [("Snack", at(MON, "15:00"))]
+
+
 def test_a_task_that_does_not_fit_is_reported_once_not_once_a_day():
     days = [MON, TUE, MON + timedelta(days=2)]
     _, _, _, unscheduled = plan_days(

@@ -454,8 +454,11 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         taken = blocking + [Event(id=f"kept:{i}" if b.task_id is None and (b.day, b.category, b.title.strip().casefold())
                                   in flexible else "kept", calendar=b.category, title=b.title, start=s, end=e,
                                   task_id=b.task_id) for i, (s, e, b) in enumerate(kept)]
+        seen = {c: list(ds) for c, ds in (history or {}).items()}
+        for s, _, b in kept:
+            seen.setdefault(b.category, []).append(s.date())
         filled, moved = _fill(list(tasks), after, days, fill_until, taken, rules, now,
-                              routine_days or {}, pushed or {}, reserved)
+                              routine_days or {}, pushed or {}, reserved, seen)
         for i, (s, e) in moved.items():
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
@@ -642,7 +645,8 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
 
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
           rules: list[NoteRule], now: datetime, routine_days: dict, pushed: dict[str, int],
-          reserved: Reserved | None = None) -> tuple[list[tuple[datetime, datetime, Block]], dict]:
+          reserved: Reserved | None = None, seen: dict[str, list[date]] | None = None
+          ) -> tuple[list[tuple[datetime, datetime, Block]], dict]:
     """Task minutes the model left out, placed by code in the earliest free time
     that keeps the task's chunks and the notes (on each day the routine time of
     the task's own category first), only on days with a routine (so sleep is
@@ -657,6 +661,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     Returns the task blocks and the moves, {n: (start, end)}."""
     out, moved = [], {}
     taken = list(taken)
+    seen = seen if seen is not None else {}
     for t in sorted((t for t in tasks if not t.done),
                     key=lambda t: (t.due is None, t.due or now)):
         need = after.get(t.id, 0)
@@ -673,6 +678,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             out.append((a, end, Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, end)]).split("-")[1],
                                       category=t.category, title=t.title, task_id=t.id, why="placed by code")))
             taken.append(Event(id="filled", calendar=t.category, title=t.title, start=a, end=end))
+            seen.setdefault(t.category, []).append(d)
             need -= n
             return end
 
@@ -693,6 +699,9 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
 
         for d in sorted(x for x in days if x <= last and routine_days.get(x)):
             midnight = datetime.combine(d, time(0)).astimezone()
+            if _count_rules([(midnight, midnight, Block(day=d.isoformat(), start="00:00", end="00:00",
+                                                        category=t.category, title=""))], rules, seen)[1]:
+                continue  # a weekly note rules the category out that day: don't move anything for it
             # twice: the short last piece may fit a gap the full chunk skipped
             for own_slot in (True, False, True, False):
                 gaps = free_gaps(d, busy(), now)
