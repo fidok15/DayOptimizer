@@ -914,8 +914,12 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     stay = []
     guard = [x[:3] for spans in routine_days.values() for x in spans if x[4] or _guarded(x)]
 
-    def covered(e):  # fixed or protected routine time of another category is over an old block: it goes
-        return any(s < e.end and z > e.start and c != e.calendar for s, z, c in guard)
+    by_id = {t.id: t for t in tasks}
+
+    def covered(e):  # an old block goes, silently: fixed or protected routine of another category is over it,
+        return any(s < e.end and z > e.start and c != e.calendar for s, z, c in guard) or (  # or its task
+            e.task_id is not None and block_problem(by_id.get(e.task_id), e.calendar, e.start, e.end,
+                                                    minutes(e.start, e.end), now) is not None)  # no longer wants it
     if slots:  # a task block or moved routine block from the last plan that still fits stays: no churn
         user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
         usual = {(x[2], x[3], x[0]) for x in routine_days.get(days[0], [])}

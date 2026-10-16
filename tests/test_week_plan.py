@@ -950,6 +950,7 @@ def _apply(events, changes):
 
 def test_replanning_the_same_day_twice_changes_nothing():
     # the model re-places the task block it placed before; code must not add the pushed minutes on top
+    from dataclasses import replace
     from dayoptimizer.llm.task_rules import remaining
     t = task(title="Thesis", category="Learn", duration_min=600, due=at(MON + timedelta(days=2), "18:00"))
     pick = WeekPlan(blocks=[Block(day=MON.isoformat(), start="13:00", end="16:00", category="Learn",
@@ -984,6 +985,7 @@ def test_slot_mode_keeps_a_block_that_still_fits_on_a_rerun():
             Fickle.calls += 1
             return {k: {"slot": v["properties"]["slot"]["enum"][Fickle.calls % len(v["properties"]["slot"]["enum"])],
                         "why": "fickle"} for k, v in schema["properties"].items()}
+    from dataclasses import replace
     from dayoptimizer.llm.task_rules import remaining
     t = task(due=at(MON, "23:00"))
     events = [LECTURE, LAB]
@@ -1011,6 +1013,7 @@ def test_the_first_day_holds_back_only_what_later_days_can_take():
 
 
 def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
+    from dataclasses import replace
     from dayoptimizer.llm.task_rules import remaining
     old = Event(id="o1", calendar="Work", title="Essay", start=at(MON, "14:00"), end=at(MON, "17:00"),
                 managed=True, task_id="t1")
@@ -1020,5 +1023,9 @@ def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
                                        attempts=2, tasks=[t], left=remaining([t], [old], NOW, {MON}), routine_days=rd)
     made = [(c.title, f"{c.new_start:%H:%M}") for c in changes if c.kind == "create"]
     assert ("Tea", "15:00") in made and dropped == []
+    # a block of a task now done goes without a word
+    changes, _, dropped, _ = plan_days(Picker(), [MON], "# r", WCATS + ["Food"], [old], NOTES, [], NOW, attempts=2,
+                                       tasks=[replace(t, done=True)], left={}, routine_days=rd)
+    assert [c.kind for c in changes if c.title == "Essay"] == ["delete"] and dropped == []
     assert not any(c.title == "Essay" and c.new_start < at(MON, "16:00") and c.new_end > at(MON, "15:00")
                    for c in changes if c.kind == "create")
