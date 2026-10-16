@@ -585,6 +585,16 @@ def test_code_fills_a_task_on_its_last_planned_day_not_the_first():
     assert unscheduled == []
 
 
+def test_code_fills_a_task_before_its_due_day_when_that_day_is_full():
+    wed = MON + timedelta(days=2)
+    changes, _, _, unscheduled = plan_days(
+        Small(*[WeekPlan() for _ in range(9)]), [MON, TUE, wed], "# routine", WCATS,
+        [ev("w", "Uni", "Wall", wed, "07:00", "23:59")], NOTES, [], NOW, attempts=1,
+        tasks=[task(due=at(wed, "20:00"))], left={"t1": 120}, routine_days=sleep_only(MON, TUE, wed))
+    assert [(c.new_start, c.new_end) for c in changes if c.task_id] == [(at(TUE, "07:00"), at(TUE, "09:00"))]
+    assert unscheduled == []
+
+
 def test_blocks_outside_the_routine_are_dropped_and_routine_blocks_keep_their_length():
     plan = WeekPlan(blocks=[block(MON, "17:00", "18:00", "Food", "Food"), block(MON, "15:00", "17:00")])
     creates, problems = validate(plan, [MON], CATS, [LECTURE, LAB], NOTES, [], NOW, routine_days=SLEEP_LUNCH)

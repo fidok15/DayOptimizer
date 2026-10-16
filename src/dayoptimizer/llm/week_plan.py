@@ -663,7 +663,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
         if t.due is not None and t.due.date() > fill_until:
             need = min(need, pushed.get(t.id, 0))
         last = min(t.due.date(), fill_until) if t.due and not overdue(t, now) else max(days)  # overdue: now
-        if need <= 0 or last not in days:
+        if need <= 0:
             continue
         lo, hi = window(t, now)
 
@@ -679,6 +679,17 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
         def busy():
             return [e for e in taken if not (e.id.startswith("kept") and e.task_id is None
                                              and e.calendar == t.category)] + _reserved_events(reserved, t.category)
+
+        if last > max(days):  # due on a later day of the run (planned one day at a time)
+            chunk = min(t.min_chunk_min or t.duration_min, need)
+            later = [max(days) + timedelta(days=k) for k in range(1, (last - max(days)).days + 1)]
+            if any(minutes(max(a, lo), b if hi is None else min(b, hi)) >= chunk for d in later if routine_days.get(d)
+                   for a, b in free_gaps(d, busy() + [Event(id="routine", calendar=x[2], title=x[3], start=x[0], end=x[1])
+                                                      for x in routine_days[d] if x[2] != t.category or _guarded(x)], now)):
+                continue  # that day's plan places it
+            last = max(days)  # the days up to the deadline are full: now
+        if last not in days:
+            continue
 
         for d in sorted(x for x in days if x <= last and routine_days.get(x)):
             midnight = datetime.combine(d, time(0)).astimezone()
@@ -851,7 +862,8 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         if e.task_id:
             pushed[e.task_id] = pushed.get(e.task_id, 0) + minutes(e.start, e.end)
     small = getattr(backend, "one_day_at_a_time", False)
-    routine_days = {d: v for d, v in (routine_days or {}).items() if d in planned}
+    all_routine = routine_days or {}  # code filling a task looks at the later days too
+    routine_days = {d: v for d, v in all_routine.items() if d in planned}
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,
                           routine_days=routine_days)
     open_ids = [t.id for t in _shown(list(tasks), days, shown, now, left or {}, reserved)]
@@ -879,7 +891,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         last = attempt == attempts - 1 or (slots and not items)  # nothing left to choose: another round can't help
         creates, problems = validate(plan, days, categories, events, notes, rules, now, history, expect,
                                      tasks=tasks, left=left, report_unplaced=last, reserved=reserved,
-                                     routine_days=routine_days, fill_until=fill_until, pushed=pushed)
+                                     routine_days=all_routine, fill_until=fill_until, pushed=pushed)
         if not problems or last:
             return (creates, diff(creates, previous), plan.summary, problems + lost,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
