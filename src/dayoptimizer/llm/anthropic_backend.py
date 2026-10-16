@@ -1,8 +1,8 @@
 from __future__ import annotations
 import anthropic
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import (_NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, compile_prompt, format_changes, request_prompt)
+from dayoptimizer.llm.backend import (_FIX_SYSTEM, _NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
+                                      DayRequest, TaskFix, compile_prompt, fix_prompt, format_changes, request_prompt)
 
 class AnthropicBackend:
     def __init__(self, model: str = "claude-sonnet-5-5"):
@@ -35,6 +35,16 @@ class AnthropicBackend:
             response = stream.get_final_message()
         if response.stop_reason in ("refusal", "max_tokens"):
             raise RuntimeError(f"the model stopped early ({response.stop_reason})")
+        return response.parsed_output
+
+    def task_fix(self, reply: str, task_line: str, blocks: list[str]) -> TaskFix:
+        response = self.client.messages.parse(
+            model=self.model,
+            max_tokens=1024,
+            system=_FIX_SYSTEM,
+            messages=[{"role": "user", "content": fix_prompt(reply, task_line, blocks)}],
+            output_format=TaskFix,
+        )
         return response.parsed_output
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:

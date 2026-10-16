@@ -93,8 +93,8 @@ TASK_RULES = (
     "routine says when that kind of work happens, the task says what it is. Leave that part of the "
     "routine block out. Task blocks never overlap events or routine blocks of other categories. "
     "They start after 'not before' and end by the deadline. Never in a routine block marked (protected).\n"
-    "- 'chunks >= N min': split the task into blocks of at least N minutes; only the very last "
-    "piece may be shorter, to finish it. 'in one piece': one block for all its minutes.\n"
+    "- 'chunks >= N min': split the task into blocks of at least N minutes each, the last one too. "
+    "'in one piece': one block for all its minutes.\n"
     "- Never place more minutes than are left. Overdue tasks first, then nearer deadlines, then "
     "higher priority.\n"
     "- Spread a long task over days rather than one marathon: at most about 3 hours of one task a day "
@@ -460,17 +460,27 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
             seen.setdefault(b.category, []).append(s.date())
         # code gives back only what the model's plan lost: pushed minus what it placed again
         lost = {tid: max(0, n - (left.get(tid, 0) - after.get(tid, 0))) for tid, n in (pushed or {}).items()}
+        base, before, seen0 = list(kept), dict(after), {c: list(ds) for c, ds in seen.items()}
         filled, moved, ruled = _fill(list(tasks), after, days, fill_until, taken, rules, now,
                                      routine_days or {}, lost, reserved, seen)
-        for i, (s, e) in moved.items():
+
+        def would_take(t):  # the flexible blocks this task would take if the user let it (a suggestion only)
+            sim = [replace(x, may_take=["*"]) if x.id == t.id else x for x in tasks]
+            _, mv, _ = _fill(sim, before, days, fill_until, taken, rules, now, routine_days or {}, lost, reserved,
+                             {c: list(ds) for c, ds in seen0.items()})
+            names = [f"{base[i][2].title} ({base[i][0]:%a %H:%M})" for i, m in sorted(mv.items())
+                     if m is None and moved.get(i, 0) is not None]
+            return f". Taking {' and '.join(names)} would make room" if names else ""
+        for i, (s, e) in [(i, m) for i, m in moved.items() if m is not None]:
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
                                                   "why": "moved to make room for a task"}))
+        kept = [k for i, k in enumerate(kept) if i not in moved or moved[i] is not None]  # gave way to a task
         # code's blocks keep the weekly notes too; one that breaks them is just not placed
         kept, _ = _count_rules(kept + filled, rules, history or {})
         after = leftover()
     else:
-        ruled = {}
+        ruled, would_take = {}, lambda t: ""
     listed = {u.task_id for u in plan.unscheduled}
     problems += [f"unscheduled {u.task_id}: not one of the tasks" for u in plan.unscheduled if u.task_id not in by_id]
     if not report_unplaced:
@@ -483,7 +493,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
                        if overdue(t, now) else
                        f"'{t.title}': your note {ruled[t.id]} rules it out before {t.due:%a %Y-%m-%d %H:%M}"
                        if t.id in ruled else
-                       f"'{t.title}' doesn't fit before {t.due:%a %Y-%m-%d %H:%M} - missing {after[t.id]} min")
+                       f"'{t.title}' doesn't fit before {t.due:%a %Y-%m-%d %H:%M} - missing {after[t.id]} min"
+                       + ("" if t.may_take is not None else would_take(t)))
                 plan.unscheduled.append(Unscheduled(task_id=t.id, reason=why))
     filled = {s.date() for s, _, _ in kept}
     problems += [f"{d.isoformat()}: no blocks planned for this day - return its full plan"
@@ -642,7 +653,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
                         x < b and y > a and not (task and (_guarded(span) or task == cat)) for x, y, task in taken):
                     break
             else:
-                if not (moving or fixed):
+                if not (moving or fixed) and s >= now:  # a block whose time is over isn't moved into the evening
                     queue.append((span, True))
                 elif s >= now:
                     lost.append((d, s, title, f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time"))
@@ -740,18 +751,22 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                         s_m = minutes(midnight, a)
                         # the longest piece from here the notes allow (a "not after" cuts it short)
                         n = next((n for n in range(min(need, minutes(a, b)), chunk - 1, -15)
-                                  if window_rule(rules, t.category, s_m, s_m + n, d.weekday()) is None), None)
+                                  if not 0 < need - n < chunk  # no stub under the chunk left behind
+                                  and window_rule(rules, t.category, s_m, s_m + n, d.weekday()) is None), None)
                         if n is None:
                             a += timedelta(minutes=15)
                             continue
                         a = place(d, a, n)
-            while need > 0 and (room := _make_room(d, min(t.min_chunk_min or t.duration_min, need), t.category,
-                                                   lo, hi, busy(), rules, now, taken + _reserved_events(reserved))):
+            size = lambda: need if need < 2 * min(t.min_chunk_min or t.duration_min, need) else t.min_chunk_min
+            # a task the user let take routine blocks (may_take) takes their place when no move makes room
+            while need > 0 and (room := next(filter(None, (
+                    _make_room(d, size(), t.category, lo, hi, busy(), rules, now, taken + _reserved_events(reserved),
+                               drop) for drop in (None, t.may_take)[:1 + (t.may_take is not None)])), None)):
                 a, shifts = room
                 for e, s, z in shifts:
-                    taken = [replace(x, start=s, end=z) if x.id == e.id else x for x in taken]
-                    moved[int(e.id.split(":")[1])] = (s, z)
-                place(d, a, min(t.min_chunk_min or t.duration_min, need))
+                    taken = [x if x.id != e.id else replace(x, start=s, end=z) for x in taken if x.id != e.id or s is not None]
+                    moved[int(e.id.split(":")[1])] = None if s is None else (s, z)
+                place(d, a, size())
             need += hold
             if need <= 0:
                 break
@@ -759,11 +774,13 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
 
 
 def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None, busy: list[Event],
-               rules: list[NoteRule], now: datetime, everything: list[Event]):
+               rules: list[NoteRule], now: datetime, everything: list[Event], drop: list[str] | None = None):
     """The earliest start for an n-minute block on day d that is blocked only
     by movable blocks (id "kept:<n>") in `busy`, each of which fits elsewhere
     that day, nearest its time (3 hours away at most) and clear of `everything`
-    (all blocks and reserved time), keeping the notes: (start, [(event, new start, new end)]) or None."""
+    (all blocks and reserved time), keeping the notes: (start, [(event, new start, new end)]) or None.
+    With `drop` (routine titles; [] or ["*"] = any), such a block that fits
+    nowhere else goes: (event, None, None)."""
     midnight = datetime.combine(d, time(0)).astimezone()
     day_end = midnight + timedelta(days=1)
     a = max(lo, now, midnight)
@@ -782,6 +799,10 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
                                    min(day_end, e.end + far))
                 if s is None or window_rule(rules, e.calendar, minutes(midnight, s),
                                             minutes(midnight, s + (e.end - e.start)), d.weekday()) is not None:
+                    if drop is not None and (not drop or "*" in drop or e.title.strip().casefold()
+                                             in {x.strip().casefold() for x in drop}):
+                        shifts.append((e, None, None))
+                        continue
                     break
                 shifts.append((e, s, s + (e.end - e.start)))
                 rest.append(replace(e, start=s, end=s + (e.end - e.start)))
@@ -829,8 +850,10 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
             mine = []
             while minutes(a, b) >= chunk:
                 length = min(size, minutes(a, b))
+                if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
+                    length = n - chunk
                 s_m = minutes(midnight, a)
-                if window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
+                if length >= chunk and window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
                     mine.append((a, a + timedelta(minutes=length)))
                 a += timedelta(minutes=max(length, 60))
             starts.append(mine)

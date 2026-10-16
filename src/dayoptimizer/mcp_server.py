@@ -276,11 +276,32 @@ def task_done(task_id: str) -> str:
     return f"Done: {task_id}. Call plan to remove its planned blocks from the calendar."
 
 
+def task_fix(task_id: str, reply: str) -> str:
+    """Say what to do with a task plan reported as not fitting, in the user's words (e.g. 'take the break',
+    'move it to Friday', 'make it 2h', 'split into 1h pieces', 'drop it'). Call plan afterwards to apply it."""
+    from dayoptimizer import cli
+    from dotenv import load_dotenv
+    load_dotenv(_DEFAULT_CONFIG.parent / ".env")
+    rules, config = load_rules(_DEFAULT_CONFIG), load_config_data(_DEFAULT_CONFIG)
+    s = _storage()
+    try:
+        task = s.get_task(task_id)
+        if task is None or task.done:
+            return f"No open task '{task_id}'. Use list_tasks to see the ids."
+        new, said = cli.understand_fix(task, reply, rules, config)
+        if new is None:
+            return "Didn't get that — nothing changed. Say e.g. 'move it to Friday' or 'drop it'."
+        s.save_task(new)
+    finally:
+        s.close()
+    return f"Got it: {said}. Call plan to place it."
+
+
 def main() -> None:
     from mcp.server.fastmcp import FastMCP
     server = FastMCP("dayoptimizer")
     for fn in (get_events, get_health, get_stats, get_config, save_config,
-               plan, apply_changes, recent_changes, list_calendars, add_task, list_tasks, task_done):
+               plan, apply_changes, recent_changes, list_calendars, add_task, list_tasks, task_done, task_fix):
         server.tool()(fn)
     server.run()
 

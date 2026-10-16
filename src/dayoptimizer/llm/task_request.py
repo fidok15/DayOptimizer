@@ -6,7 +6,8 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, time, timedelta
 from dayoptimizer.core.models import Task
-from dayoptimizer.llm.backend import TaskRequest, resolve_day  # noqa: F401  (TaskRequest re-exported)
+from dataclasses import replace
+from dayoptimizer.llm.backend import _DAY_WORDS, TaskFix, TaskRequest, resolve_day  # noqa: F401  (TaskRequest re-exported)
 
 DEFAULT_MINUTES = 60
 
@@ -16,6 +17,15 @@ _PARTS = [
     (r"wieczor|wieczór|evening|tonight", (18, 22)),
     (r"\brano\b|\bz rana\b|przed ?połud|morning", (None, 12)),
 ]
+
+
+# the message asks to split the work: only then may a task get min chunks (models invent them)
+_SPLIT = re.compile(r"\bpo\s+\d+\s*(?:min|h\b|godz)|kawał|częściach|\bczęści\b|podziel|rozbij|\bna raty|w blokach"
+                    r"|chunk|\bsplit|\bpieces\b|\bin parts\b|\d+\s*(?:min|h)\w*\s+(?:each|at a time)", re.I)
+
+
+def asks_split(text: str) -> bool:
+    return bool(_SPLIT.search(text))
 
 
 def _hhmm(value: str | None) -> time | None:
@@ -88,3 +98,59 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
         chunk = None
     return Task(id=task_id, title=title[:100], category=req.category, duration_min=duration,
                 due=due, not_before=not_before, min_chunk_min=chunk, priority=req.priority), None
+
+
+_DROP = re.compile(r"\b(?:usu[nń]|skasuj|wywal|odpu[sś][cć]|nie r[oó]b|drop|skip|delete|remove|forget)\w*")
+# what may stand next to it: 'usuń przerwę' is about a routine block, that goes to the model
+_FILLER = re.compile(r"\b(?:to|it|go|j[aą]|je|tego|this|that|the|task|zadanie|po prostu|just)\b|\W")
+
+
+def _minutes(low: str) -> int | None:
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*(h\b|godz|hours?|min)", low)
+    if m:
+        return round(float(m.group(1).replace(",", ".")) * (1 if m.group(2).startswith("min") else 60))
+    if re.search(r"p[oó][lł] godziny|half an hour", low):
+        return 30
+    if re.search(r"\bgodzin(?:a|ę|y|ą|ie)?\b|\ban hour\b|\bone hour\b", low):
+        return 60
+    return None
+
+
+def quick_fix(reply: str) -> TaskFix | None:
+    """The reply about a task that didn't fit, read by code when that's easy
+    (drop it / a length / pieces / one day word); None = ask the model."""
+    low = reply.lower().strip()
+    if _DROP.search(low) and not _FILLER.sub("", _DROP.sub("", low)):
+        return TaskFix(action="drop_task")
+    n = _minutes(low)
+    days = [d for pattern, d in _DAY_WORDS if re.search(pattern, low)]
+    clock = re.search(r"\b([01]?\d|2[0-3]):[0-5]\d\b", low)
+    if n and not days and not clock:
+        return TaskFix(action="allow_split", chunk_minutes=n) if asks_split(low) else TaskFix(action="new_duration", minutes=n)
+    if len(days) == 1 and not n:
+        return TaskFix(action="new_deadline", day=days[0], time=clock.group(0) if clock else None)
+    return None
+
+
+def apply_fix(task: Task, fix: TaskFix, now: datetime) -> tuple[Task | None, str]:
+    """The task changed as the fix says, and what was understood ("move 'X'
+    deadline to Fri 23:59"); (None, "") when the fix says nothing usable."""
+    t = f"'{task.title}'"
+    if fix.action == "drop_task":
+        return replace(task, done=True), f"drop {t}"
+    if fix.action == "new_duration" and fix.minutes and 0 < fix.minutes < 24 * 60:
+        chunk = task.min_chunk_min if (task.min_chunk_min or 0) < fix.minutes else None
+        return replace(task, duration_min=fix.minutes, min_chunk_min=chunk), f"make {t} {fix.minutes} min"
+    if fix.action == "allow_split":
+        n = fix.chunk_minutes if fix.chunk_minutes and fix.chunk_minutes > 0 else 60
+        if n < task.duration_min:
+            return replace(task, min_chunk_min=n), f"split {t} into pieces of at least {n} min"
+    if fix.action == "new_deadline" and (fix.day or _hhmm(fix.time)):
+        day = resolve_day(fix.day, now.date()) if fix.day else (task.due or now).date()
+        due = datetime.combine(day, _hhmm(fix.time) or time(23, 59)).astimezone()
+        return replace(task, due=due), f"move {t} deadline to {due:%a %d.%m %H:%M}"
+    if fix.action == "take_routine":
+        blocks = [b.strip() for b in fix.blocks if b.strip()] or ["*"]
+        said = "any flexible routine block" if blocks == ["*"] else " and ".join(blocks)
+        return replace(task, may_take=blocks), f"let {t} take {said}"
+    return None, ""

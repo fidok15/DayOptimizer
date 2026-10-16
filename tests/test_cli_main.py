@@ -97,10 +97,10 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
         def request_access(self):
             return True
 
-        def create_event(self, category, title, start, end):
+        def create_event(self, category, title, start, end, managed=True):
             if category == "Gym":
                 raise KeyError(category)
-            created.append((category, title, f"{start:%H:%M}", f"{end:%H:%M}"))
+            created.append((category, title, f"{start:%H:%M}", f"{end:%H:%M}", managed))
 
     cli.paths.ensure_private_dir()
     monkeypatch.setattr(cli, "CalendarClient", Cal)
@@ -112,7 +112,7 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
         {"category": "Nope", "title": "X", "start": "2026-09-22T17:00:00+02:00", "end": "2026-09-22T18:00:00+02:00"}])
     cli.cmd_add(type("A", (), {"events": events})(), RULES, {"llm": {}})
     out = capsys.readouterr().out
-    assert created == [("Meeting", "Spotkanie", "14:00", "15:00")]
+    assert created == [("Meeting", "Spotkanie", "14:00", "15:00", False)]  # the user's event: no replan removes it
     assert planned == [date(2026, 9, 22)]
     assert "no 'Gym' calendar" in out and "summary" in out
 
@@ -126,7 +126,7 @@ def test_add_with_tasks_plans_their_days_once_then_later_event_days(monkeypatch)
         def request_access(self):
             return True
 
-        def create_event(self, *a):
+        def create_event(self, *a, **kw):
             pass
 
     cli.paths.ensure_private_dir()
@@ -174,3 +174,10 @@ def test_background_check_without_access_notifies_once_a_day(monkeypatch):
     for _ in range(3):
         cli.cmd_check(None, None, None)
     assert len(sent) == 1 and "Calendars" in sent[0]
+
+
+def test_blocks_kept_out_by_the_notes_are_one_short_line():
+    noted, rest = cli._by_notes(['2026-10-17 18:30-19:45 Gym: Gym: breaks the note "Gym at most twice a week"',
+                                 '2026-10-19 18:30-19:45 Gym: Gym: breaks the note "A rest day between"',
+                                 "Tue 20:00-21:00 Food: Supper: no free time near its usual time"])
+    assert noted == ["Sat Gym", "Mon Gym"] and rest == ["Tue 20:00-21:00 Food: Supper: no free time near its usual time"]

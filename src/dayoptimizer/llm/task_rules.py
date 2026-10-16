@@ -67,8 +67,8 @@ def task_lines(tasks: list[Task], left: dict[str, int], now: datetime,
 def block_problem(task: Task | None, category: str, start: datetime, end: datetime,
                   left: int, now: datetime) -> str | None:
     """Why a block for this task can't stay, or None. `left` is what remains of
-    the task before this block; only the block that finishes the task may be
-    shorter than the minimum chunk."""
+    the task before this block; no piece of a split task, the last one
+    included, is shorter than its minimum chunk."""
     if task is None or task.done:
         return "is not an open task"
     if category != task.category:
@@ -84,6 +84,8 @@ def block_problem(task: Task | None, category: str, start: datetime, end: dateti
     chunk = task.min_chunk_min or task.duration_min
     if length < chunk and length != left:
         return f"is shorter than the task's minimum chunk of {chunk} min"
+    if 0 < left - length < chunk:
+        return f"leaves {left - length} min, a piece shorter than the task's minimum chunk of {chunk} min"
     return None
 
 

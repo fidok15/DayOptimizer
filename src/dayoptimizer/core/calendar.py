@@ -42,13 +42,23 @@ def ek_to_event(identifier, calendar_title, title, start, end, location, all_day
                  task_id=task_id)
 
 class CalendarClient:
+    _shared = None  # one EKEventStore per process: a long-lived caller (MCP server) makes many clients
+
     def __init__(self):
         import EventKit
         self._EventKit = EventKit
-        self._store = EventKit.EKEventStore.alloc().init()
+        if CalendarClient._shared is None:
+            CalendarClient._shared = EventKit.EKEventStore.alloc().init()
+        self._store = CalendarClient._shared
 
     def request_access(self) -> bool:
+        """True when DayOptimizer may read and write the calendar. Asks (and
+        waits for the answer) only when macOS hasn't been asked yet: asking again
+        and again from one process starts being refused."""
         from Foundation import NSDate, NSRunLoop
+        status = self._EventKit.EKEventStore.authorizationStatusForEntityType_(self._EventKit.EKEntityTypeEvent)
+        if status == getattr(self._EventKit, "EKAuthorizationStatusFullAccess", 3):
+            return True
 
         granted_holder = {}
 
@@ -154,7 +164,9 @@ class CalendarClient:
         return True
 
     def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime,
-                     task_id: str | None = None) -> str:
+                     task_id: str | None = None, managed: bool = True) -> str:
+        """A planner block (marked, so replans may move or remove it), or with
+        managed=False an event the user asked for: theirs, never touched again."""
         EventKit = self._EventKit
         target = self._find_calendar(calendar_name)
         if target is None:
@@ -167,7 +179,8 @@ class CalendarClient:
         ev.setStartDate_(self._nsdate(start))
         ev.setEndDate_(self._nsdate(end))
         ev.setCalendar_(target)
-        ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else ""))
+        if managed:
+            ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else ""))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")

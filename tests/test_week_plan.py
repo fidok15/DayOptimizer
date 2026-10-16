@@ -202,10 +202,16 @@ def test_task_due_today_must_be_placed_or_listed():
 
 
 def test_chunk_and_left_rules_apply_in_order():
-    plan = WeekPlan(blocks=[tblock("16:00", "17:30"), tblock("18:00", "18:20"), tblock("19:00", "19:30")])
+    plan = WeekPlan(blocks=[tblock("16:00", "17:00"), tblock("18:00", "18:20"), tblock("19:00", "20:30")])
     creates, problems = tcheck(plan, [task()])
-    assert [c.new_start for c in creates] == [at(MON, "16:00"), at(MON, "19:00")]
+    assert [(c.new_start, c.new_end) for c in creates] == [(at(MON, "16:00"), at(MON, "17:00")),
+                                                           (at(MON, "19:00"), at(MON, "20:00"))]
     assert "minimum chunk of 60" in problems[0]
+
+
+def test_a_task_block_never_leaves_a_piece_under_the_chunk():
+    creates, problems = tcheck(WeekPlan(blocks=[tblock("16:00", "17:15")]), [task()])  # 75 of 120: 45 would be left
+    assert creates == [] and "leaves 45 min" in problems[0]
 
 
 def test_unknown_task_block_and_unscheduled_are_problems():
@@ -670,6 +676,15 @@ def test_a_meal_pushed_by_an_event_does_not_take_the_usual_time_of_the_blocks_af
     assert [x.split(": ")[1] for x in lost] == ["Free time"]
 
 
+def test_a_routine_block_whose_time_is_over_is_not_moved_later():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    late = at(MON, "18:40")
+    day = {MON: [(at(MON, "18:00"), at(MON, "18:15"), "Free time", "Plan tomorrow", False),
+                 (at(MON, "21:00"), at(MON, "22:00"), "Free time", "Free time", False)]}
+    back, lost = _forgotten_routine([], day, [], late)
+    assert [(b.title, b.start) for b in back] == [("Free time", "21:00")] and lost == []
+
+
 def test_a_category_with_only_a_time_rule_does_not_let_filler_blocks_through():
     rules = parse_rules([{"type": "not_after", "category": "Food", "time": "21:00", "source": "x"}])
     plan = WeekPlan(blocks=[block(MON, "17:00", "18:00", "Food", "Free time")])
@@ -687,14 +702,13 @@ def test_a_routine_block_the_model_put_on_an_event_is_refilled_once_and_a_second
         ("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "00:00")), ("Sleep", at(MON, "23:00"))]
 
 
-def test_code_puts_the_last_short_piece_of_a_task_in_an_earlier_small_gap():
+def test_code_leaves_no_piece_under_the_chunk_for_a_small_gap():
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, ev("b", "Uni", "Call", MON, "12:30", "13:00"),
             LAB, ev("c", "Uni", "Evening", MON, "16:30", "23:59")]
     plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
     creates, problems = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(MON, "23:00"))],
                                  left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
-    assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [
-        (at(MON, "12:00"), at(MON, "12:30")), (at(MON, "15:00"), at(MON, "16:30"))]
+    assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [(at(MON, "15:00"), at(MON, "16:00"))]
 
 
 def test_a_task_without_a_deadline_is_not_lost_when_a_replan_pushes_it_out():
@@ -875,6 +889,21 @@ def test_a_routine_block_does_not_move_more_than_three_hours_for_a_task():
         routine_days=lunch)
     assert [(c.title, c.new_start) for c in changes if c.title == "Lunch"] == [("Lunch", at(MON, "12:00"))]
     assert len(unscheduled) == 1
+    assert unscheduled[0].endswith("missing 180 min. Taking Lunch (Mon 12:00) would make room")
+
+
+def test_a_task_takes_only_the_routine_blocks_the_user_let_it_take():
+    lunch = {MON: sleep_only(MON)[MON] + [(at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
+    busy = [ev("a", "Uni", "A", MON, "07:00", "11:00"), ev("b", "Uni", "B", MON, "14:00", "19:00")]
+
+    def run(may_take):
+        changes, _, _, unscheduled = plan_days(
+            Small(WeekPlan(), WeekPlan()), [MON], "# routine", WCATS, busy, NOTES, [], NOW, attempts=1,
+            tasks=[task(duration_min=180, min_chunk_min=None, due=at(MON, "14:00"), may_take=may_take)],
+            left={"t1": 180}, routine_days=lunch)
+        return [(c.title, c.new_start) for c in changes if c.title != "Sleep"], unscheduled
+    assert run(["lunch"]) == ([("Report", at(MON, "11:00"))], [])
+    assert run(["Snack"])[0] == [("Lunch", at(MON, "12:00"))]
 
 
 def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does_not():
@@ -889,6 +918,19 @@ def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does
         got = sorted((c.title, c.new_start, c.new_end) for c in creates if c.title != "Sleep")
         assert got == ([("Free time", at(MON, "15:30"), at(MON, "16:30"))] if kept else
                        [("Free time", at(MON, "17:00"), at(MON, "18:00")), ("Report", at(MON, "15:00"), at(MON, "17:00"))])
+
+
+def test_a_second_move_for_a_task_does_not_lose_where_the_other_blocks_are():
+    busy = [ev("a", "Uni", "A", MON, "07:00", "10:00"), ev("b", "Uni", "B", MON, "12:00", "14:00"),
+            ev("c", "Uni", "C", MON, "16:00", "23:59")]
+    free = [(at(MON, "10:30"), at(MON, "11:30"), "Food", "Snack", False), (at(MON, "14:30"), at(MON, "15:30"), "Food", "Tea", False)]
+    plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep"), block(MON, "10:30", "11:30", "Food", "Snack"),
+                            block(MON, "14:30", "15:30", "Food", "Tea")])
+    creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(MON, "23:00"))], left={"t1": 120},
+                          report_unplaced=True, routine_days={MON: sleep_only(MON)[MON] + free}, fill_until=MON)
+    spans = sorted((c.new_start, c.new_end, c.title) for c in creates)
+    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), spans  # nothing on top of anything
+    assert sum((e - s).seconds // 60 for s, e, t in spans if t == "Report") == 120
 
 
 def test_a_moved_block_does_not_land_on_the_tasks_own_routine_block():

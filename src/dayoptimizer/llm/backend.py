@@ -42,6 +42,26 @@ class DayRequest(BaseModel):
     tasks: list[TaskRequest] = []
     reply: str | None = None
 
+class TaskFix(BaseModel):
+    """What the user said to do with a task that didn't fit."""
+    action: Literal["take_routine", "new_deadline", "new_duration", "allow_split", "drop_task", "unclear"]
+    day: DayWord | None = None
+    time: str | None = None
+    minutes: int | None = None
+    chunk_minutes: int | None = None
+    blocks: list[str] = []
+
+_FIX_SYSTEM = (
+    "A task didn't fit in the user's calendar and they said what to do (in any language). Turn the reply into "
+    "one action: take_routine = the task may take the place of routine blocks (blocks: the ones named, copied "
+    "from the listed routine blocks; empty when none is named); new_deadline = a new deadline (day, and time "
+    "HH:MM only if said); new_duration = a new length (minutes); allow_split = it may be done in pieces "
+    "(chunk_minutes = one piece); drop_task = don't do it at all; unclear = anything else, or the user doesn't know."
+)
+
+def fix_prompt(reply: str, task_line: str, blocks: list[str]) -> str:
+    return f"task: {task_line}\nroutine blocks: {', '.join(blocks) or 'none'}\nreply: {reply}"
+
 Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 class TimeRule(BaseModel):
@@ -112,7 +132,8 @@ def format_changes(changes: list[PlannedChange]) -> str:
 
 _REQUEST_SYSTEM = (
     "You turn a user's message about their day into calendar events for the DayOptimizer "
-    "planner. The message may be in any language; keep event titles in that language.\n"
+    "planner. The message may be in any language; titles are copied from the message word for word, "
+    "never translated (also when the routine or categories are in another language).\n"
     "- One event per activity; never merge two activities or invent one. Example: 'dentist at 10, "
     "then work until 17' is TWO events: dentist 10:00 (no end given) and work from when the "
     "dentist ends until 17:00.\n"
@@ -134,7 +155,8 @@ _REQUEST_SYSTEM = (
     "is FOR that day ('jutro zrób X', 'tomorrow do X'), never for a deadline; due_time: HH:MM only "
     "for a deadline hour ('do 17'); when: the words saying when in the day, copied from the "
     "message ('po południu', 'wieczorem', 'rano', 'za 2h', 'po pracy'), else empty; "
-    "min_chunk_minutes when it may be split ('kawałki min. godzinę' = 60); priority high for "
+    "min_chunk_minutes only when the message asks to split it ('w kawałkach po godzinę' = 60), else empty; "
+    "priority high for "
     "'ważne'/'pilne'/'urgent', low for 'kiedyś'/'when there's time', else normal.\n"
     "- If the message isn't about the schedule or work to do, return nothing and a short reply.\n"
     "Example, with categories Important, Meeting, Work, Food, Gym:\n"
@@ -214,13 +236,24 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         m = c and re.search(r"\b(?:o|at)\s+(\d{1,2})(?:[:.](\d{2}))?\b(?!\s*(?:h\b|min|godz))", c)
         return m and int(m.group(1)) < 24 and f"{int(m.group(1)):02d}:{m.group(2) or '00'}"
     events, tasks = [], []
+    # an event with no clock time anywhere is work to fit in: a task, so its clause's 'do/na/po' count
+    from dayoptimizer.llm.task_request import _offset
+    # no clock time of its own, or only 'za 2h': the model made the time up, so it is a task
+    untimed = [e for e in req.events if not clock(find(e.title)[0])
+               and (not e.start_time or _offset(find(e.title)[0] or low) is not None)]
     for e in req.events:
+        if e in untimed:
+            continue
         c, said = find(e.title)
         update = {"day": said[2]} if said else {}
         if not e.start_time and clock(c):
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
-    for t in req.tasks:
+    for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
+                                            when=(find(e.title)[0] or low) if _offset(find(e.title)[0] or low) else None,
+                                            **dict.fromkeys(("due_day", "not_before_day"),
+                                                            None if e.day == "today" else e.day))
+                                for e in untimed]:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
         part, m, day = said or ("", None, None)

@@ -212,7 +212,7 @@ a running `dayoptimizer web --no-open`); `npm run build` writes the bundle into
 | `/dayoptimizer:stats` | 14-day Garmin trends and planning suggestions |
 
 Claude can also manage tasks through the MCP tools `add_task` (plain words, like
-`dayoptimizer task`), `list_tasks` and `task_done`.
+`dayoptimizer task`), `list_tasks`, `task_done` and `task_fix` (what to do with a task that didn't fit).
 
 ## CLI reference
 

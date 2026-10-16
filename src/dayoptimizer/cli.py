@@ -183,6 +183,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
                           markup=False, style="yellow")
             continue
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
+        _note_unplaced(unscheduled)
         return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
@@ -249,6 +250,9 @@ def cmd_plan(args, rules, config):
         console.print(f"[green]Applied {len(applied)} changes.[/green]")
         if summary:
             console.print(summary, markup=False)
+        noted, dropped = _by_notes(dropped)
+        if noted:
+            console.print(f"Skipped by your notes: {', '.join(noted)}", markup=False, style="dim")
         if dropped:
             console.print(f"Left out {len(dropped)} block(s) that broke a rule:", markup=False, style="yellow")
             for line in dropped:
@@ -260,6 +264,9 @@ def cmd_plan(args, rules, config):
         for line in _moved(changes, storage.open_tasks(), date.today()):
             console.print(line, markup=False, style="yellow")
         _print_errors(errors)
+        if getattr(args, "ask", True) and not _in_bundle():  # in the bundle, the terminal asks (_calendar_run)
+            _take_unplaced()
+            _decide_unplaced(unscheduled)
         return
     for offset in range(days):
         day = start_day + timedelta(days=offset)
@@ -273,6 +280,22 @@ def cmd_plan(args, rules, config):
                           "Draw that day in `dayoptimizer setup`.[/yellow]")
         _print_errors(errors)
     _print_pending(storage)
+
+_NOTED = re.compile(r"^(\d{4}-\d{2}-\d{2}) \S+ [^:]+: (.+?): breaks the note ")
+
+
+def _by_notes(dropped: list[str]) -> tuple[list[str], list[str]]:
+    """Blocks the user's own notes keep out ('Sat Gym': expected, one short
+    line) apart from the rest of what was left out."""
+    noted, rest = [], []
+    for line in dropped:
+        m = _NOTED.match(line)
+        if m:
+            noted.append(f"{date.fromisoformat(m.group(1)):%a} {m.group(2)}")
+        else:
+            rest.append(line)
+    return list(dict.fromkeys(noted)), rest
+
 
 def _moved(changes, tasks, today: date) -> list[str]:
     """A task placed whole in this run, that could start today and was meant
@@ -343,7 +366,16 @@ def cmd_check(args, rules, config):
             storage.set_state(key, "1")
         return
     storage = Storage(paths.db_path())
+    _take_unplaced()
     actions = run_check(calendar, storage, rules, datetime.now().astimezone())
+    unplaced = _take_unplaced()
+    key, told = f"unplaced:{date.today().isoformat()}", ",".join(sorted({u.split(":")[0] for u in unplaced}))
+    if unplaced and storage.get_state(key) != told:  # once a day per set of tasks, not every cycle
+        titles = list(dict.fromkeys(m.group(1) if (m := re.match(r"[^:]*: '(.*?)'(?=[ :])", u)) else u.split(":")[0]
+                                    for u in unplaced))
+        notify("DayOptimizer", f"{', '.join(repr(t) for t in titles)} {'doesn' if len(titles) == 1 else 'don'}'t fit. "
+                               "Run dayoptimizer to decide what to do.")
+        storage.set_state(key, told)
     if actions:
         console.print(f"[green]Actions taken: {', '.join(actions)}[/green]")
     else:
@@ -380,7 +412,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     checked, deduplicated against the open tasks, numbered. Says why for each
     one that isn't kept. The model's time-of-day words count only when they
     are in the message; a lone task reads them from the whole message."""
-    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, task_from_request
+    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, task_from_request
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
                     due_day=None if e.day == "today" else e.day, not_before_day=None if e.day == "today" else e.day)
@@ -396,7 +428,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     lone = len(reqs) == 1 and not to_create
     for r in reqs:
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
-        r = r.model_copy(update={"when": when})
+        r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
         task, problem = task_from_request(r, list(rules.categories), now, f"t{first + len(out)}", today_events,
                                           getattr(rules, "day_start", time(5)))
         if task is None:
@@ -492,7 +524,7 @@ def cmd_add(args, rules, config):
         if category not in rules.categories or end <= start:
             continue
         try:
-            calendar.create_event(category, title, start, end)
+            calendar.create_event(category, title, start, end, managed=False)  # the user's: replans keep it
         except KeyError:
             console.print(f"'{title}': there's no '{category}' calendar — create it in the Calendar app",
                           markup=False, style="yellow")
@@ -559,14 +591,93 @@ def _task_days(tasks) -> int:
             max(today, t.not_before.date() if t.not_before else today) + timedelta(days=1) for t in tasks]
     return max(1, min(7, (max(last) - today).days + 1))
 
-def _replan_for(tasks, rules, config):
+def _replan_for(tasks, rules, config, ask=True):
     """Replan the tasks' days in the calendar bundle: that places new tasks and
     removes a finished one's blocks."""
     days = _task_days(tasks)
     if _in_bundle() or sys.platform != "darwin":
-        cmd_plan(argparse.Namespace(date=None, week=days), rules, config)
+        cmd_plan(argparse.Namespace(date=None, week=days, ask=ask), rules, config)
     else:
-        _calendar_run(["plan", "--week", str(days)])
+        _calendar_run(["plan", "--week", str(days)], ask=ask)
+
+def _unplaced_file() -> Path:
+    return paths.ensure_private_dir() / "unplaced.json"
+
+def _note_unplaced(lines: list[str]) -> None:
+    """Keep what the last plan runs couldn't fit ("t1: reason"): the calendar
+    bundle has no terminal to ask in, so the terminal (and check) read it after."""
+    import json
+    f = _unplaced_file()
+    try:
+        old = json.loads(f.read_text()) if f.exists() else []
+    except ValueError:
+        old = []
+    f.write_text(json.dumps(list(dict.fromkeys(old + list(lines))), ensure_ascii=False))
+
+def _take_unplaced() -> list[str]:
+    import json
+    f = _unplaced_file()
+    try:
+        return json.loads(f.read_text()) if f.exists() else []
+    except ValueError:
+        return []
+    finally:
+        f.unlink(missing_ok=True)
+
+def _flexible_titles(rules) -> list[str]:
+    """The routine blocks a task may be let take: flexible and not protected."""
+    from dayoptimizer.llm.week_plan import _guarded, routine_spans
+    days = [date.today() + timedelta(days=i) for i in range(7)]
+    spans, _ = routine_spans(rules.typical_week, getattr(rules, "categories", {}), days)
+    return list(dict.fromkeys(x[3] for d in days for x in spans[d] if not x[4] and not _guarded(x)))
+
+def understand_fix(task, reply: str, rules, config):
+    """The user's reply about a task that didn't fit -> (the changed task, what
+    was understood), or (None, "") when it wasn't understood. Code reads the
+    easy replies; the model the rest."""
+    from dayoptimizer.llm.backend import TaskFix
+    from dayoptimizer.llm.task_request import apply_fix, quick_fix
+    fix = quick_fix(reply)
+    if fix is None:
+        try:
+            fix = make_backend(config["llm"]).task_fix(reply, _task_line(task), _flexible_titles(rules))
+        except Exception:  # no model, or an answer that isn't one: not understood
+            fix = TaskFix(action="unclear")
+    return apply_fix(task, fix, datetime.now().astimezone())
+
+def _decide_unplaced(lines: list[str]) -> None:
+    """In a terminal, ask once per task that didn't fit what to do, save what
+    the user decides and replan those days once (without asking again). Never
+    asks without a terminal (check, MCP, the calendar bundle)."""
+    if not lines or not sys.stdin.isatty() or _in_bundle():
+        return
+    rules, config = _load_config()
+    storage = Storage(paths.db_path())
+    take = " and ".join(_flexible_titles(rules)[:2]) or "a routine block"
+    changed = []
+    for line in lines:
+        tid, _, reason = line.partition(": ")
+        task = storage.get_task(tid)
+        if task is None or task.done or any(t.id == tid for t in changed):
+            continue
+        try:
+            reply = console.input(f"{reason}. What should I do? (e.g. \"take {take}\", \"move it to Friday\", "
+                                  "\"make it 2h\", \"split into 1h pieces\", \"drop it\"; Enter = leave it) ",
+                                  markup=False).strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not reply:
+            continue
+        new, said = understand_fix(task, reply, rules, config)
+        if new is None:
+            console.print("I didn't get that — leaving it.", markup=False, style="yellow")
+            continue
+        console.print(f"Got it: {said}.", markup=False, style="green")
+        storage.save_task(new)
+        changed.append(new)
+    if changed:
+        console.print("Replanning...", style="dim")
+        _replan_for(changed, rules, config, ask=False)
 
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
@@ -667,19 +778,24 @@ CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "calendars"}
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
 
-def _calendar_run(argv: list[str]) -> None:
+def _calendar_run(argv: list[str], ask: bool = True) -> None:
     """Run a command in the calendar bundle, showing its output as it comes:
-    a local model can plan for many minutes (Ctrl+C stops waiting, not the run)."""
+    a local model can plan for many minutes (Ctrl+C stops waiting, not the run).
+    The bundle has no terminal: after a plan, the tasks it couldn't fit are
+    asked about here (it leaves them in _unplaced_file)."""
     from dayoptimizer.mcp_server import _bundle_run
     exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not exe.exists():
         console.print("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
                       "folder run:  scripts/setup-bundle.sh", markup=False)
         return
+    _take_unplaced()  # an older run's are no news
     rest = _bundle_run([a.replace("\n", " ") for a in argv], timeout=None,
                        echo=lambda text: print(text, end="", flush=True))
     if rest.strip():
         console.print(rest.rstrip(), markup=False)
+    if ask and argv[:1] in (["plan"], ["add"]):
+        _decide_unplaced(_take_unplaced())
 
 def _first_run() -> bool:
     """No typical week drawn yet: the user hasn't done the setup."""
