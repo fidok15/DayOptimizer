@@ -492,7 +492,7 @@ def cmd_add(args, rules, config):
         if category not in rules.categories or end <= start:
             continue
         try:
-            calendar.create_event(category, title, start, end)
+            calendar.create_event(category, title, start, end, managed=False)  # the user's: replans keep it
         except KeyError:
             console.print(f"'{title}': there's no '{category}' calendar — create it in the Calendar app",
                           markup=False, style="yellow")

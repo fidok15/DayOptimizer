@@ -97,10 +97,10 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
         def request_access(self):
             return True
 
-        def create_event(self, category, title, start, end):
+        def create_event(self, category, title, start, end, managed=True):
             if category == "Gym":
                 raise KeyError(category)
-            created.append((category, title, f"{start:%H:%M}", f"{end:%H:%M}"))
+            created.append((category, title, f"{start:%H:%M}", f"{end:%H:%M}", managed))
 
     cli.paths.ensure_private_dir()
     monkeypatch.setattr(cli, "CalendarClient", Cal)
@@ -112,7 +112,7 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
         {"category": "Nope", "title": "X", "start": "2026-09-22T17:00:00+02:00", "end": "2026-09-22T18:00:00+02:00"}])
     cli.cmd_add(type("A", (), {"events": events})(), RULES, {"llm": {}})
     out = capsys.readouterr().out
-    assert created == [("Meeting", "Spotkanie", "14:00", "15:00")]
+    assert created == [("Meeting", "Spotkanie", "14:00", "15:00", False)]  # the user's event: no replan removes it
     assert planned == [date(2026, 9, 22)]
     assert "no 'Gym' calendar" in out and "summary" in out
 
@@ -126,7 +126,7 @@ def test_add_with_tasks_plans_their_days_once_then_later_event_days(monkeypatch)
         def request_access(self):
             return True
 
-        def create_event(self, *a):
+        def create_event(self, *a, **kw):
             pass
 
     cli.paths.ensure_private_dir()

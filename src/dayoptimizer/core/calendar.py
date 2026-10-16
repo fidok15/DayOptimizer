@@ -154,7 +154,9 @@ class CalendarClient:
         return True
 
     def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime,
-                     task_id: str | None = None) -> str:
+                     task_id: str | None = None, managed: bool = True) -> str:
+        """A planner block (marked, so replans may move or remove it), or with
+        managed=False an event the user asked for: theirs, never touched again."""
         EventKit = self._EventKit
         target = self._find_calendar(calendar_name)
         if target is None:
@@ -167,7 +169,8 @@ class CalendarClient:
         ev.setStartDate_(self._nsdate(start))
         ev.setEndDate_(self._nsdate(end))
         ev.setCalendar_(target)
-        ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else ""))
+        if managed:
+            ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else ""))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")
