@@ -67,3 +67,5 @@ class Task:
     min_chunk_min: int | None = None
     priority: Literal["low", "normal", "high"] = "normal"
     done: bool = False
+    # routine block titles the user let it take when nothing can move ([] or ["*"] = any flexible one)
+    may_take: list[str] | None = None

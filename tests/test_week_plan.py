@@ -880,17 +880,30 @@ def test_a_task_without_a_deadline_that_got_only_part_of_its_time_is_reported():
     assert unscheduled == ["t1: 'Report' (no deadline): placed 120 of 240 min, 120 min don't fit in the planned days"]
 
 
-def test_a_routine_block_does_not_move_more_than_three_hours_for_a_task_it_gives_way():
+def test_a_routine_block_does_not_move_more_than_three_hours_for_a_task():
     lunch = {MON: sleep_only(MON)[MON] + [(at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
     busy = [ev("a", "Uni", "A", MON, "07:00", "11:00"), ev("b", "Uni", "B", MON, "14:00", "19:00")]
     changes, _, _, unscheduled = plan_days(
         Small(WeekPlan(), WeekPlan()), [MON], "# routine", WCATS, busy, NOTES, [], NOW, attempts=1,
         tasks=[task(duration_min=180, min_chunk_min=None, due=at(MON, "14:00"))], left={"t1": 180},
         routine_days=lunch)
-    # no room 3h around lunch: a task due by 14:00 takes its place, it is not moved to the evening
-    assert [(c.title, c.new_start, c.new_end) for c in changes if c.title != "Sleep"] == [
-        ("Report", at(MON, "11:00"), at(MON, "14:00"))]
-    assert unscheduled == []
+    assert [(c.title, c.new_start) for c in changes if c.title == "Lunch"] == [("Lunch", at(MON, "12:00"))]
+    assert len(unscheduled) == 1
+    assert unscheduled[0].endswith("missing 180 min. Taking Lunch (Mon 12:00) would make room")
+
+
+def test_a_task_takes_only_the_routine_blocks_the_user_let_it_take():
+    lunch = {MON: sleep_only(MON)[MON] + [(at(MON, "12:00"), at(MON, "13:00"), "Food", "Lunch", False)]}
+    busy = [ev("a", "Uni", "A", MON, "07:00", "11:00"), ev("b", "Uni", "B", MON, "14:00", "19:00")]
+
+    def run(may_take):
+        changes, _, _, unscheduled = plan_days(
+            Small(WeekPlan(), WeekPlan()), [MON], "# routine", WCATS, busy, NOTES, [], NOW, attempts=1,
+            tasks=[task(duration_min=180, min_chunk_min=None, due=at(MON, "14:00"), may_take=may_take)],
+            left={"t1": 180}, routine_days=lunch)
+        return [(c.title, c.new_start) for c in changes if c.title != "Sleep"], unscheduled
+    assert run(["lunch"]) == ([("Report", at(MON, "11:00"))], [])
+    assert run(["Snack"])[0] == [("Lunch", at(MON, "12:00"))]
 
 
 def test_a_flexible_block_moves_to_make_room_for_a_task_and_a_protected_one_does_not():
