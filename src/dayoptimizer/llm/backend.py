@@ -173,10 +173,10 @@ _DAY_WORDS = [
     (r"\bdziś\b|\bdzis\b|\bdzisiaj|\btoday\b|\btonight\b", "today"),
     (r"\bponiedzia|\bmonday", "monday"),
     (r"\bwtor|\btuesday", "tuesday"),
-    (r"\b[sś]rod(?:a|y|ę|e|ą)\b|\bwednesday", "wednesday"),  # not "w środku" (in the middle)
+    (r"\b[sś]rod(?:a|y|ę|e|ą|zie)\b|\bwednesday", "wednesday"),  # not "w środku" (in the middle)
     (r"\bczwart(?:ek|k)|\bthursday", "thursday"),  # not "o czwartej" (at four)
     (r"\bpi[aą]t(?:ek|ku|kiem)\b|\bfriday", "friday"),  # not "o piątej" (at five), "piątka" (a grade)
-    (r"\bsobot|\bsaturday", "saturday"),
+    (r"\bsobo[tc]|\bsaturday", "saturday"),
     (r"\bniedziel|\bsunday", "sunday"),
 ]
 

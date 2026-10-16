@@ -103,7 +103,9 @@ def test_one_named_day_overrides_the_model():
     assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"
     days = [("w poniedziałku", "monday"), ("w poniedzialku", "monday"), ("we wtorku", "tuesday"),
             ("do środy", "wednesday"), ("do srody", "wednesday"), ("w czwartku", "thursday"),
-            ("w piątku", "friday"), ("w piatku", "friday"), ("do soboty", "saturday"), ("w niedzieli", "sunday")]
+            ("w piątku", "friday"), ("w piatku", "friday"), ("do soboty", "saturday"), ("w niedzieli", "sunday"),
+            ("po środzie", "wednesday"), ("po sobocie", "saturday"), ("w poniedziałek", "monday"),
+            ("we wtorek", "tuesday"), ("w niedzielę", "sunday"), ("po niedzieli", "sunday")]
     for text, day in days:
         assert pin_day(f"{text} o 14", wrong).events[0].day == day, text
     for text in ("o piątej", "o czwartej", "w środku dnia", "piątka z matmy", "dostałem piątkę"):  # an hour or 'the middle', not a weekday
