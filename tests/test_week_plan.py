@@ -595,6 +595,18 @@ def test_code_fills_a_task_before_its_due_day_when_that_day_is_full():
     assert unscheduled == []
 
 
+def test_a_deadline_task_too_big_for_its_last_days_starts_earlier():
+    wed = MON + timedelta(days=2)
+    days = [MON, TUE, wed]
+    labs = [ev(f"l{i}", "Uni", "Lab", d, "08:00", "10:00") for i, d in enumerate(days)]
+    big = Task(id="t1", title="Thesis", category="Learn", duration_min=600, due=at(wed, "18:00"), min_chunk_min=60)
+    changes, _, _, unscheduled = plan_days(Small(*[WeekPlan() for _ in range(9)]), days, "# routine", WCATS, labs,
+                                           NOTES, [], NOW, attempts=1, tasks=[big], left={"t1": 600},
+                                           routine_days=sleep_only(*days))
+    assert sum((c.new_end - c.new_start).seconds // 60 for c in changes if c.task_id) == 600
+    assert unscheduled == []
+
+
 def test_no_routine_block_moves_for_a_task_a_weekly_note_rules_out():
     rules = parse_rules([{"type": "max_per_week", "category": "Work", "count": 1, "source": "Work once a week"}])
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "14:00"), ev("z", "Uni", "Eve", MON, "17:00", "23:59")]

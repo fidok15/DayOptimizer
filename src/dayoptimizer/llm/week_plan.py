@@ -690,11 +690,15 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
         if last > max(days):  # due on a later day of the run (planned one day at a time)
             chunk = min(t.min_chunk_min or t.duration_min, need)
             later = [max(days) + timedelta(days=k) for k in range(1, (last - max(days)).days + 1)]
-            if any(minutes(max(a, lo), b if hi is None else min(b, hi)) >= chunk for d in later if routine_days.get(d)
-                   for a, b in free_gaps(d, busy() + [Event(id="routine", calendar=x[2], title=x[3], start=x[0], end=x[1])
-                                                      for x in routine_days[d] if x[2] != t.category or _guarded(x)], now)):
-                continue  # that day's plan places it
-            last = max(days)  # the days up to the deadline are full: now
+            room = sum(n for d in later if routine_days.get(d)
+                       for a, b in free_gaps(d, busy() + [Event(id="routine", calendar=x[2], title=x[3], start=x[0],
+                                                                end=x[1]) for x in routine_days[d]
+                                                          if x[2] != t.category or _guarded(x)], now)
+                       if (n := minutes(max(a, lo), b if hi is None else min(b, hi))) >= chunk)
+            need -= min(need, room)  # what the later days can take, their plans place
+            if need <= 0:
+                continue
+            last = max(days)  # the rest goes now
         if last not in days:
             continue
 
