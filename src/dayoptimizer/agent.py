@@ -3,10 +3,11 @@ import os
 import subprocess
 from pathlib import Path
 from xml.sax.saxutils import escape
+from dayoptimizer import paths
 
 LABEL = "com.dayoptimizer.check"
 
-HOME_DIR = Path.home() / ".dayoptimizer"
+HOME_DIR = paths.app_dir()
 BUNDLE_BINARY = str(HOME_DIR / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt")
 RUNNER_PATH = HOME_DIR / "check_runner.py"
 LAUNCHD_LOG_PATH = HOME_DIR / "check.launchd.log"

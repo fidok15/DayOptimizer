@@ -28,7 +28,7 @@ def test_build_plist_run_at_load_false():
 
 def test_build_plist_log_paths_expanded_absolute():
     xml = agent.build_plist("/a", "/b")
-    assert xml.count("/.dayoptimizer/check.launchd.log") == 2
+    assert xml.count(f"{agent.HOME_DIR}/check.launchd.log") == 2 and agent.HOME_DIR.is_absolute()  # DAYOPTIMIZER_HOME too
     assert "~" not in xml
 
 def test_build_plist_escapes_xml_specials():
