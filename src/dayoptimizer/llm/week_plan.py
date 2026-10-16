@@ -462,10 +462,11 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         lost = {tid: max(0, n - (left.get(tid, 0) - after.get(tid, 0))) for tid, n in (pushed or {}).items()}
         filled, moved, ruled = _fill(list(tasks), after, days, fill_until, taken, rules, now,
                                      routine_days or {}, lost, reserved, seen)
-        for i, (s, e) in moved.items():
+        for i, (s, e) in [(i, m) for i, m in moved.items() if m is not None]:
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
                                                   "why": "moved to make room for a task"}))
+        kept = [k for i, k in enumerate(kept) if i not in moved or moved[i] is not None]  # gave way to a task
         # code's blocks keep the weekly notes too; one that breaks them is just not placed
         kept, _ = _count_rules(kept + filled, rules, history or {})
         after = leftover()
@@ -747,12 +748,14 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                             continue
                         a = place(d, a, n)
             size = lambda: need if need < 2 * min(t.min_chunk_min or t.duration_min, need) else t.min_chunk_min
-            while need > 0 and (room := _make_room(d, size(), t.category,
-                                                   lo, hi, busy(), rules, now, taken + _reserved_events(reserved))):
+            # a task with a deadline that no move makes room for takes a flexible block's place (it is left out)
+            while need > 0 and (room := next(filter(None, (
+                    _make_room(d, size(), t.category, lo, hi, busy(), rules, now, taken + _reserved_events(reserved),
+                               drop) for drop in (False, True) if not drop or t.due is not None)), None)):
                 a, shifts = room
                 for e, s, z in shifts:
-                    taken = [replace(x, start=s, end=z) if x.id == e.id else x for x in taken]
-                    moved[int(e.id.split(":")[1])] = (s, z)
+                    taken = [replace(x, start=s, end=z) for x in taken if x.id != e.id or s is not None]
+                    moved[int(e.id.split(":")[1])] = None if s is None else (s, z)
                 place(d, a, size())
             need += hold
             if need <= 0:
@@ -761,11 +764,12 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
 
 
 def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None, busy: list[Event],
-               rules: list[NoteRule], now: datetime, everything: list[Event]):
+               rules: list[NoteRule], now: datetime, everything: list[Event], drop: bool = False):
     """The earliest start for an n-minute block on day d that is blocked only
     by movable blocks (id "kept:<n>") in `busy`, each of which fits elsewhere
     that day, nearest its time (3 hours away at most) and clear of `everything`
-    (all blocks and reserved time), keeping the notes: (start, [(event, new start, new end)]) or None."""
+    (all blocks and reserved time), keeping the notes: (start, [(event, new start, new end)]) or None.
+    With `drop`, a block that fits nowhere else goes: (event, None, None)."""
     midnight = datetime.combine(d, time(0)).astimezone()
     day_end = midnight + timedelta(days=1)
     a = max(lo, now, midnight)
@@ -784,6 +788,9 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
                                    min(day_end, e.end + far))
                 if s is None or window_rule(rules, e.calendar, minutes(midnight, s),
                                             minutes(midnight, s + (e.end - e.start)), d.weekday()) is not None:
+                    if drop:
+                        shifts.append((e, None, None))
+                        continue
                     break
                 shifts.append((e, s, s + (e.end - e.start)))
                 rest.append(replace(e, start=s, end=s + (e.end - e.start)))
