@@ -150,3 +150,21 @@ def test_each_clause_pins_its_own_items():
     model = DayRequest(tasks=[TaskRequest(title="report"), TaskRequest(title="clean the garage")])
     req = pin_day("before Friday write the report 2h and after Saturday clean the garage 2h", model)
     assert [(t.not_before_day, t.due_day) for t in req.tasks] == [(None, "thursday"), ("sunday", None)]
+
+
+def test_a_deadline_time_is_not_an_event():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    raport = DayRequest(tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120)])
+    for text in ("do piątku o 17 raport 2h", "przed piątkiem o 17 oddaj raport"):
+        req = pin_day(text, raport)
+        assert req.events == [] and (req.tasks[0].due_day, req.tasks[0].due_time) == ("friday", "17:00"), text
+    model = DayRequest(tasks=[TaskRequest(title="raport", category="Work", duration_minutes=120, due_time="15:00")])
+    req = pin_day("raport 2h przed spotkaniem o 15", model)
+    assert req.events == [] and req.tasks[0].due_time == "15:00"
+
+
+def test_an_item_goes_with_the_clause_sharing_most_of_its_title():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    model = DayRequest(tasks=[TaskRequest(title="zadzwoń do mamy", category="Family")])
+    req = pin_day("w niedzielę obiad u mamy, w piątek zadzwoń do mamy", model)
+    assert req.tasks[0].due_day == "friday"

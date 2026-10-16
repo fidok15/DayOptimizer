@@ -189,7 +189,8 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     it as its deadline after 'na/do/by/until' (end of that day), 'przed/before'
     (end of the day before), 'po/after' (not before the next day), else as the day
     it goes on. A task whose clause has a clock time ('o 12', 'at 10') is an event
-    at that time. A task `when` that only names a day is dropped. No day found:
+    at that time, unless the model gave it a due time or the day is a deadline
+    ('do piątku o 17': due Friday 17:00, 'przed' too). A task `when` that only names a day is dropped. No day found:
     the model decides."""
     import re
     low = text.lower()
@@ -205,8 +206,9 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
 
     def find(title):
         stems = {w[:4] for w in re.findall(r"\w{4,}", title.lower())}
-        return next(((c, said or whole) for c, said in clauses if stems & {w[:4] for w in re.findall(r"\w+", c)}),
-                    (None, whole))
+        hits = [len(stems & {w[:4] for w in re.findall(r"\w+", c)}) for c, _ in clauses]
+        best = max(range(len(hits)), key=hits.__getitem__)  # the clause sharing most of the title; ties: the first
+        return (clauses[best][0], clauses[best][1] or whole) if hits[best] else (None, whole)
 
     def clock(c):
         m = c and re.search(r"\b(?:o|at)\s+(\d{1,2})(?:[:.](\d{2}))?\b(?!\s*(?:h\b|min|godz))", c)
@@ -221,16 +223,20 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     for t in req.tasks:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
-        if clock(c):  # a clock time makes it an event
-            events.append(NewEvent(title=t.title, category=t.category, day=said[2] if said else "today",
+        part, m, day = said or ("", None, None)
+        word = m and re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
+        word = word and word.group(1)
+        deadline = word in ("na", "do", "przed", "by", "until", "before")
+        if clock(c) and not deadline and not t.due_time:  # a clock time makes it an event, unless it is a deadline
+            events.append(NewEvent(title=t.title, category=t.category, day=day or "today",
                                    start_time=clock(c), duration_minutes=t.duration_minutes))
             continue
-        if said and said[2] != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
-            part, m, day = said
-            word = re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
-            word = word and word.group(1)
+        if clock(c) and deadline:  # 'do/przed piątku o 17': due Friday 17:00
+            t = t.model_copy(update={"due_time": clock(c)})
+        if said and day != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
             # the clause's one day is all it says: a model's other day for the task goes
-            t = t.model_copy(update={"due_day": _shift(day, -1), "not_before_day": None} if word in ("przed", "before")
+            t = t.model_copy(update={"due_day": _shift(day, 0 if clock(c) else -1), "not_before_day": None}
+                             if word in ("przed", "before")
                              else {"not_before_day": _shift(day, 1), "due_day": None} if word in ("po", "after")
                              else {"due_day": day, "not_before_day": None} if word
                              else {"due_day": day, "not_before_day": day})
