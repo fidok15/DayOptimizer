@@ -202,10 +202,16 @@ def test_task_due_today_must_be_placed_or_listed():
 
 
 def test_chunk_and_left_rules_apply_in_order():
-    plan = WeekPlan(blocks=[tblock("16:00", "17:30"), tblock("18:00", "18:20"), tblock("19:00", "19:30")])
+    plan = WeekPlan(blocks=[tblock("16:00", "17:00"), tblock("18:00", "18:20"), tblock("19:00", "20:30")])
     creates, problems = tcheck(plan, [task()])
-    assert [c.new_start for c in creates] == [at(MON, "16:00"), at(MON, "19:00")]
+    assert [(c.new_start, c.new_end) for c in creates] == [(at(MON, "16:00"), at(MON, "17:00")),
+                                                           (at(MON, "19:00"), at(MON, "20:00"))]
     assert "minimum chunk of 60" in problems[0]
+
+
+def test_a_task_block_never_leaves_a_piece_under_the_chunk():
+    creates, problems = tcheck(WeekPlan(blocks=[tblock("16:00", "17:15")]), [task()])  # 75 of 120: 45 would be left
+    assert creates == [] and "leaves 45 min" in problems[0]
 
 
 def test_unknown_task_block_and_unscheduled_are_problems():
@@ -687,14 +693,13 @@ def test_a_routine_block_the_model_put_on_an_event_is_refilled_once_and_a_second
         ("Lunch", at(MON, "12:00")), ("Sleep", at(MON, "00:00")), ("Sleep", at(MON, "23:00"))]
 
 
-def test_code_puts_the_last_short_piece_of_a_task_in_an_earlier_small_gap():
+def test_code_leaves_no_piece_under_the_chunk_for_a_small_gap():
     busy = [ev("a", "Uni", "Morning", MON, "07:00", "10:00"), LECTURE, ev("b", "Uni", "Call", MON, "12:30", "13:00"),
             LAB, ev("c", "Uni", "Evening", MON, "16:30", "23:59")]
     plan = WeekPlan(blocks=[block(MON, "00:00", "07:00", "Gym", "Sleep")])
     creates, problems = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(MON, "23:00"))],
                                  left={"t1": 120}, routine_days=sleep_only(MON), fill_until=MON)
-    assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [
-        (at(MON, "12:00"), at(MON, "12:30")), (at(MON, "15:00"), at(MON, "16:30"))]
+    assert sorted((c.new_start, c.new_end) for c in creates if c.task_id) == [(at(MON, "15:00"), at(MON, "16:00"))]
 
 
 def test_a_task_without_a_deadline_is_not_lost_when_a_replan_pushes_it_out():

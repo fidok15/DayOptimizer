@@ -93,8 +93,8 @@ TASK_RULES = (
     "routine says when that kind of work happens, the task says what it is. Leave that part of the "
     "routine block out. Task blocks never overlap events or routine blocks of other categories. "
     "They start after 'not before' and end by the deadline. Never in a routine block marked (protected).\n"
-    "- 'chunks >= N min': split the task into blocks of at least N minutes; only the very last "
-    "piece may be shorter, to finish it. 'in one piece': one block for all its minutes.\n"
+    "- 'chunks >= N min': split the task into blocks of at least N minutes each, the last one too. "
+    "'in one piece': one block for all its minutes.\n"
     "- Never place more minutes than are left. Overdue tasks first, then nearer deadlines, then "
     "higher priority.\n"
     "- Spread a long task over days rather than one marathon: at most about 3 hours of one task a day "
@@ -740,18 +740,20 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                         s_m = minutes(midnight, a)
                         # the longest piece from here the notes allow (a "not after" cuts it short)
                         n = next((n for n in range(min(need, minutes(a, b)), chunk - 1, -15)
-                                  if window_rule(rules, t.category, s_m, s_m + n, d.weekday()) is None), None)
+                                  if not 0 < need - n < chunk  # no stub under the chunk left behind
+                                  and window_rule(rules, t.category, s_m, s_m + n, d.weekday()) is None), None)
                         if n is None:
                             a += timedelta(minutes=15)
                             continue
                         a = place(d, a, n)
-            while need > 0 and (room := _make_room(d, min(t.min_chunk_min or t.duration_min, need), t.category,
+            size = lambda: need if need < 2 * min(t.min_chunk_min or t.duration_min, need) else t.min_chunk_min
+            while need > 0 and (room := _make_room(d, size(), t.category,
                                                    lo, hi, busy(), rules, now, taken + _reserved_events(reserved))):
                 a, shifts = room
                 for e, s, z in shifts:
                     taken = [replace(x, start=s, end=z) if x.id == e.id else x for x in taken]
                     moved[int(e.id.split(":")[1])] = (s, z)
-                place(d, a, min(t.min_chunk_min or t.duration_min, need))
+                place(d, a, size())
             need += hold
             if need <= 0:
                 break
@@ -829,8 +831,10 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
             mine = []
             while minutes(a, b) >= chunk:
                 length = min(size, minutes(a, b))
+                if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
+                    length = n - chunk
                 s_m = minutes(midnight, a)
-                if window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
+                if length >= chunk and window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
                     mine.append((a, a + timedelta(minutes=length)))
                 a += timedelta(minutes=max(length, 60))
             starts.append(mine)
