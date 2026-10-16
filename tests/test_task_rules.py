@@ -86,3 +86,9 @@ def test_unplaced_only_for_tasks_due_within_the_plan():
     assert len(out) == 2 and out[0].startswith("t1: 60 min") and "overdue" in out[1]
     assert unplaced([due_mon], {"t1": 60}, {"t1"}, MON, NOW) == []
     assert unplaced([due_mon], {"t1": 0}, set(), MON, NOW) == []
+
+
+def test_a_task_that_starts_after_the_planned_days_is_not_reported():
+    later = task(due=None, not_before=at(MON + timedelta(days=1), "00:00"))
+    assert unplaced([later], {"t1": 60}, set(), MON, NOW, before={"t1": 60}) == []
+    assert len(unplaced([task(due=None)], {"t1": 60}, set(), MON, NOW, before={"t1": 60})) == 1

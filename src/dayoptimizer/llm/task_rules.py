@@ -104,6 +104,7 @@ def unplaced(tasks: list[Task], left_after: dict[str, int], listed: set[str],
         elif t.due is not None and t.due.date() <= last_day:
             out.append(f"{t.id}: {n} min of '{t.title}' left before {t.due:%a %Y-%m-%d %H:%M} - "
                        "place them or list the task in unscheduled")
-        elif t.due is None and before is not None and n >= before.get(t.id, 0):
+        elif (t.due is None and before is not None and n >= before.get(t.id, 0)
+              and not (t.not_before and t.not_before.date() > last_day)):  # one that starts later had no chance
             out.append(f"{t.id}: '{t.title}' (no deadline) got no time in the planned days")
     return out
