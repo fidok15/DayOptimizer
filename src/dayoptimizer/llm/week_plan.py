@@ -616,7 +616,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     back at its usual time where nothing else is; a movable one (a meal) at
     the free time nearest its usual time, up to two hours either way. A
     protected one ignores task blocks (they will be refused there). Returns
-    the blocks and a note for each one that found no room."""
+    the blocks and a note for each one that found no room (one per day for three or more)."""
     busy = [(e.start, e.end) for e in events if not e.all_day and (not e.managed or e.start < now)]
     # a block the model placed on top of an event will be refused, so it is neither there nor in the way
     placed = [(b, t) for b, t in ((b, _times(b)) for b in blocks)
@@ -640,12 +640,16 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
                     break
             else:
                 if s >= now:
-                    lost.append(f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time")
+                    lost.append((d, s, title, f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time"))
                 continue
             taken.append((a, b, None))
             out.append(Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, b)]).split("-")[1],
                              category=cat, title=title))
-    return out, lost
+    lost.sort(key=lambda x: x[1])
+    days = [d for d, *_ in lost]  # a day that lost three or more gets one line, not one each
+    return out, [line for d, _, _, line in lost if days.count(d) < 3] + [
+        f"{d:%a}: {', '.join(t for x, _, t, _ in lost if x == d)} - no time left around events"
+        for d in dict.fromkeys(days) if days.count(d) >= 3]
 
 
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],

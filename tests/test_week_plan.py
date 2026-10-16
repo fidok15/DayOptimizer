@@ -787,6 +787,11 @@ def test_a_routine_block_with_no_room_left_is_reported_not_lost():
     changes, _, dropped, _ = plan_days(Small(WeekPlan()), [MON], "# routine", CATS, [wall], NOTES, [], NOW,
                                        routine_days=lunch)
     assert changes == [] and dropped == ["Mon 13:00-14:00 Food: Lunch: no free time near its usual time"]
+    three = {MON: lunch[MON] + [(at(MON, "11:00"), at(MON, "12:00"), "Food", "Snack", False),
+                                (at(MON, "15:00"), at(MON, "16:00"), "Food", "Tea", False)]}
+    _, _, dropped, _ = plan_days(Small(WeekPlan()), [MON], "# routine", CATS,
+                                 [ev("wall", "Uni", "Lab", MON, "08:00", "20:00")], NOTES, [], NOW, routine_days=three)
+    assert dropped == ["Mon: Snack, Lunch, Tea - no time left around events"]
 
 
 def test_code_fills_a_task_over_an_event_the_notes_let_it_plan_over():
