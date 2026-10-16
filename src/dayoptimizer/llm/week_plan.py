@@ -470,7 +470,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
                              {c: list(ds) for c, ds in seen0.items()})
             names = [f"{base[i][2].title} ({base[i][0]:%a %H:%M})" for i, m in sorted(mv.items())
                      if m is None and moved.get(i, 0) is not None]
-            return f". Taking {' and '.join([', '.join(names[:-1]), names[-1]] if len(names) > 1 else names)} would make room" if names else ""
+            return f". Taking {' and '.join(names)} would make room" if names else ""
         for i, (s, e) in [(i, m) for i, m in moved.items() if m is not None]:
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
