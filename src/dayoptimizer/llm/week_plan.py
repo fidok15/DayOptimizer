@@ -648,7 +648,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     lost.sort(key=lambda x: x[1])
     days = [d for d, *_ in lost]  # a day that lost three or more gets one line, not one each
     return out, [line for d, _, _, line in lost if days.count(d) < 3] + [
-        f"{d:%a}: {', '.join(t for x, _, t, _ in lost if x == d)} - no time left around events"
+        f"{d:%a}: {', '.join(dict.fromkeys(t for x, _, t, _ in lost if x == d))} - no time left around events"
         for d in dict.fromkeys(days) if days.count(d) >= 3]
 
 
