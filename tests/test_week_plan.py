@@ -992,3 +992,19 @@ def test_slot_mode_keeps_a_block_that_still_fits_on_a_rerun():
                                 tasks=[t], left=remaining([t], events, NOW, {MON}), routine_days=SLOT_ROUTINE)
         assert run == 0 or changes == []
         events = _apply(events, changes)
+
+
+def test_the_first_day_holds_back_only_what_later_days_can_take():
+    # Tue and Wed have one free hour each: Monday takes the rest, nothing is lost
+    wed = MON + timedelta(days=2)
+    t = task(title="Thesis", duration_min=600, due=at(wed, "23:00"), min_chunk_min=60)
+    walls = [Event(id=f"w{i}", calendar="Work", title="Wall", start=at(d, "08:00"), end=at(d, "23:59"))
+             for i, d in enumerate((TUE, wed))]
+    changes, _, _, unscheduled = plan_days(Small(*[WeekPlan() for _ in range(6)]), [MON, TUE, wed], "# r", WCATS,
+                                           walls, NOTES, [], NOW, attempts=1, tasks=[t], left={"t1": 600},
+                                           routine_days=sleep_only(MON, TUE, wed))
+    per_day = {}
+    for c in changes:
+        if c.task_id:
+            per_day[c.new_start.date()] = per_day.get(c.new_start.date(), 0) + (c.new_end - c.new_start).seconds // 60
+    assert per_day == {MON: 480, TUE: 60, wed: 60} and unscheduled == []

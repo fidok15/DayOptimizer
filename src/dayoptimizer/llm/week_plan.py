@@ -712,13 +712,18 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                     ruled[t.id] = notes_out[0]
                 continue  # a weekly note rules the category out that day: don't move anything for it
             # spread: a day before the deadline takes its share, the deadline day the rest.
-            # ponytail: a later day counts if it has a gap for a piece; notes and other tasks may still fill it
-            ahead = 0 if i >= len(candidates) else sum(
-                1 for x, spans in routine_days.items() if d < x <= last and spans
-                and any(minutes(a, b) >= min(piece, need) for a, b in free_gaps(x, busy(), now)))
+            # ponytail: a later day takes what its gaps hold in whole pieces; notes and other tasks may still fill it
+            unit = min(piece, need)
+            room = [] if i >= len(candidates) else [
+                sum(minutes(a, b) // unit * unit for a, b in free_gaps(x, busy() + [  # its routine comes first
+                    Event(id="routine", calendar=c, title=n, start=s, end=e) for s, e, c, n, *_ in spans
+                    if c != t.category], now))
+                for x, spans in routine_days.items() if d < x <= last and spans]
+            room = [r for r in room if r]
             have = sum(minutes(e.start, e.end) for e in taken if e.task_id == t.id and e.start.date() == d)
-            share = max(180, -(-(need + have) // (ahead + 1)))  # 3h a day is no cram
+            share = max(180, -(-(need + have) // (len(room) + 1)))  # 3h a day is no cram
             hold = max(0, need - -(-max(0, share - have) // piece) * piece)  # whole pieces, no stub under the chunk
+            hold = min(hold, sum(min(share, r) for r in room))  # never hold back more than later days can take
             need -= hold
             # twice: the short last piece may fit a gap the full chunk skipped
             for own_slot in (True, False, True, False):
