@@ -616,6 +616,8 @@ def test_no_routine_block_moves_for_a_task_a_weekly_note_rules_out():
                           tasks=[task(due=at(MON, "23:00"))], left={"t1": 120}, report_unplaced=True,
                           routine_days=routine, fill_until=MON)
     assert [(c.title, c.new_start) for c in creates if c.title == "Snack"] == [("Snack", at(MON, "15:00"))]
+    assert [u.reason for u in plan.unscheduled] == [
+        "'Report': your note \"Work once a week\" rules it out before Mon 2030-10-14 23:00"]
 
 
 def test_a_task_that_does_not_fit_is_reported_once_not_once_a_day():

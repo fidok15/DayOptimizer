@@ -458,8 +458,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         seen = {c: list(ds) for c, ds in (history or {}).items()}
         for s, _, b in kept:
             seen.setdefault(b.category, []).append(s.date())
-        filled, moved = _fill(list(tasks), after, days, fill_until, taken, rules, now,
-                              routine_days or {}, pushed or {}, reserved, seen)
+        filled, moved, ruled = _fill(list(tasks), after, days, fill_until, taken, rules, now,
+                                     routine_days or {}, pushed or {}, reserved, seen)
         for i, (s, e) in moved.items():
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
@@ -467,6 +467,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         # code's blocks keep the weekly notes too; one that breaks them is just not placed
         kept, _ = _count_rules(kept + filled, rules, history or {})
         after = leftover()
+    else:
+        ruled = {}
     listed = {u.task_id for u in plan.unscheduled}
     problems += [f"unscheduled {u.task_id}: not one of the tasks" for u in plan.unscheduled if u.task_id not in by_id]
     if not report_unplaced:
@@ -477,6 +479,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
             if unplaced([t], after, listed, max(days), now):
                 why = (f"'{t.title}' is overdue and {after[t.id]} min of it don't fit in the planned days"
                        if overdue(t, now) else
+                       f"'{t.title}': your note {ruled[t.id]} rules it out before {t.due:%a %Y-%m-%d %H:%M}"
+                       if t.id in ruled else
                        f"'{t.title}' doesn't fit before {t.due:%a %Y-%m-%d %H:%M} - missing {after[t.id]} min")
                 plan.unscheduled.append(Unscheduled(task_id=t.id, reason=why))
     filled = {s.date() for s, _, _ in kept}
@@ -647,7 +651,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
           rules: list[NoteRule], now: datetime, routine_days: dict, pushed: dict[str, int],
           reserved: Reserved | None = None, seen: dict[str, list[date]] | None = None
-          ) -> tuple[list[tuple[datetime, datetime, Block]], dict]:
+          ) -> tuple[list[tuple[datetime, datetime, Block]], dict, dict]:
     """Task minutes the model left out, placed by code in the earliest free time
     that keeps the task's chunks and the notes (on each day the routine time of
     the task's own category first), only on days with a routine (so sleep is
@@ -659,8 +663,9 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
     A day with no gap long enough gets one made before the next day is tried:
     blocks in `taken` with an id "kept:<n>" (flexible, unprotected routine)
     move to the nearest free time that day. Tasks are never split for it.
-    Returns the task blocks and the moves, {n: (start, end)}."""
-    out, moved = [], {}
+    Returns the task blocks, the moves, {n: (start, end)}, and the note that
+    kept a task out of a day, {task id: '"source"'}."""
+    out, moved, ruled = [], {}, {}
     taken = list(taken)
     seen = seen if seen is not None else {}
     for t in sorted((t for t in tasks if not t.done),
@@ -704,8 +709,9 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
 
         for d in sorted(x for x in days if x <= last and routine_days.get(x)):
             midnight = datetime.combine(d, time(0)).astimezone()
-            if _count_rules([(midnight, midnight, Block(day=d.isoformat(), start="00:00", end="00:00",
-                                                        category=t.category, title=""))], rules, seen)[1]:
+            if broken := _count_rules([(midnight, midnight, Block(day=d.isoformat(), start="00:00", end="00:00",
+                                                                  category=t.category, title=""))], rules, seen)[1]:
+                ruled[t.id] = broken[0].split("breaks the note ", 1)[1]
                 continue  # a weekly note rules the category out that day: don't move anything for it
             # twice: the short last piece may fit a gap the full chunk skipped
             for own_slot in (True, False, True, False):
@@ -733,7 +739,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                 place(d, a, min(t.min_chunk_min or t.duration_min, need))
             if need <= 0:
                 break
-    return out, moved
+    return out, moved, ruled
 
 
 def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None, busy: list[Event],
