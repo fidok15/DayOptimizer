@@ -256,11 +256,12 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
                  previous: list[Event], now: datetime, health: str | None = None,
                  tasks: list[Task] = (), left: dict[str, int] | None = None,
                  busy: list[Event] = (), reserved: Reserved | None = None,
-                 routine_days: dict | None = None) -> str:
-    """`busy`: blocks already accepted this round; they take free time but are
-    not listed as calendar events."""
-    taken = list(events) + list(busy)
-    """Everything the model needs, grouped by day so it reads like a calendar."""
+                 routine_days: dict | None = None, rules: list[NoteRule] = ()) -> str:
+    """Everything the model needs, grouped by day so it reads like a calendar.
+    `busy`: blocks already accepted this round; they take free time but are
+    not listed as calendar events. Events the notes let us plan over are
+    listed but don't take free time."""
+    taken = [e for e in list(events) + list(busy) if not skippable(list(rules), e)]
     first = days[0] - timedelta(days=days[0].weekday())
     last = max(days[-1], first + timedelta(days=6))
     lines = [f"Now: {DAY_NAMES[now.weekday()]} {now:%Y-%m-%d %H:%M}",
@@ -874,8 +875,9 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     all_routine = routine_days or {}  # code filling a task looks at the later days too
     routine_days = {d: v for d, v in all_routine.items() if d in planned}
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,
-                          routine_days=routine_days)
-    open_ids = [t.id for t in _shown(list(tasks), days, shown, now, left or {}, reserved)]
+                          routine_days=routine_days, rules=rules)
+    open_ids = [t.id for t in _shown(list(tasks), days, [e for e in shown if not skippable(rules, e)], now,
+                                     left or {}, reserved)]
     schema = plan_schema(categories, days, open_ids, notes, events, rules)
     note_text = _norm(notes)
     good: list[Block] = []
@@ -914,7 +916,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
             if c.task_id in still:
                 still[c.task_id] -= minutes(c.new_start, c.new_end)
         request = (build_prompt(days, routine, categories, shown, previous, now, health, tasks, still, placed,
-                                reserved, routine_days)
+                                reserved, routine_days, rules)
                    + "\n\n# Already placed - they stay, do not return them again\n"
                    + "\n".join(f"- {b.day} {b.start}-{b.end} {b.category}: {b.title}" for b in good)
                    + "\n\n# Problems with the rest of your answer - return only the new blocks of the corrected plan\n"

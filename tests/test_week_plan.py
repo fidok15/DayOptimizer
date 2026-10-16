@@ -892,3 +892,8 @@ def test_slot_mode_turns_the_picks_into_the_plan():
         (at(MON, "17:00"), at(MON, "19:00"), "last")]
     assert ("Snack", at(MON, "15:30")) in [(c.title, c.new_start) for c in changes]
     assert unscheduled == []
+
+
+def test_free_time_in_the_prompt_includes_events_the_notes_let_us_plan_over():
+    text = build_prompt([MON], "# routine", WCATS, [LECTURE, LAB], [], NOW, rules=SKIP)
+    assert "- free: 00:00-13:00, 15:00-24:00" in text and "W - Math" in text
