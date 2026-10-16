@@ -322,10 +322,14 @@ _NOTES_SYSTEM = (
     "'two days of break between' = 2, 'at most once every three days' = 2\n"
     "- max_per_week: `count` = how many times a week at most\n"
     "- skippable: events of `category` whose title starts with `prefix` may be planned over "
-    "(the user doesn't mind missing them). `prefix` is copied exactly from the sentence\n"
+    "(the user doesn't mind missing them). `prefix` is the text event titles begin with, copied "
+    "exactly (usually quoted in the note), never a word naming the kind of event. A sentence saying "
+    "events may NOT be moved or skipped is no rule: not_compiled\n"
     "Rules:\n"
     "- category must be copied EXACTLY from the listed categories, or left empty when the sentence "
     "is about the whole day. Never write 'everything' or a category that isn't listed.\n"
+    "- If the sentence is about an activity that is none of the listed categories, it is not a "
+    "rule: put it in not_compiled. Never move its limit onto a different category.\n"
     "- A span of time the user wants left empty (\"keep free\", \"nothing planned\", \"time for "
     "family\", \"free for myself\") is ALWAYS a keep_free rule with start and end. Never leave "
     "such a sentence uncompiled.\n"
@@ -349,7 +353,7 @@ _NOTES_SYSTEM = (
     '{"min_gap_days":[{"source":"I never train two days in a row","category":"Gym","rest_days":1}]}\n'
     '"gym three times a week at most" -> '
     '{"max_per_week":[{"source":"gym three times a week at most","category":"Gym","count":3}]}\n'
-    '"Uni events starting with \\"L -\\" can be skipped" -> '
+    '"Course events starting with \\"Optional:\\" can be skipped" -> '
     '{"skippable":[{"source":"Course events starting with \\"Optional:\\" can be skipped","category":"Course","prefix":"Optional:"}]}\n'
     '"no work after 18:00" -> '
     '{"not_after":[{"source":"no work after 18:00","time":"18:00","category":"Work"}]}\n'

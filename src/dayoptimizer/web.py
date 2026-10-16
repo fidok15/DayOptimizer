@@ -328,7 +328,8 @@ def _clean_rule(row: dict, categories: list[str], context: str = "") -> dict | N
     """Guard the model's output: a category must be one the user really has
     (models like to invent 'everything'), and keep_free needs a window, which
     they sometimes send as `time`. None means the rule is unusable. `context`
-    is the sentence before, which a skippable rule may lean on."""
+    is the words around it (its sentence and the one before), which a
+    skippable rule may lean on."""
     row = {k: (v.replace("/no_think", "").strip() if isinstance(v, str) else v)
            for k, v in row.items() if v is not None}
     if (row.get("type"), row.get("time")) in (("not_before", "00:00"), ("not_after", "24:00")):
@@ -395,8 +396,9 @@ def compile_notes(notes: str, categories: list[str]) -> dict:
 
     results: list[tuple[str, list[dict]]] = []
     for parts in split_notes(notes):
-        before = results[-1][0] if results else ""
-        results.append((", ".join(parts), [row for part in parts for row in ask(part, before)]))
+        sentence = ", ".join(parts)
+        context = f"{results[-1][0] if results else ''}. {sentence}"
+        results.append((sentence, [row for part in parts for row in ask(part, context)]))
     i = 0
     while i < len(results) - 1:
         if not results[i][1] and not results[i + 1][1]:
