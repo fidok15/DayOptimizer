@@ -124,6 +124,12 @@ def test_a_title_is_one_short_line_and_an_empty_one_is_refused():
     assert refused[0].endswith("no title")
 
 
+def test_a_copy_of_the_users_own_event_is_refused():
+    cal = Cal(plan(SAT) + [ev("u1", "Food", "Kawa z Olą", SAT - timedelta(days=2), "10:00", "11:00")])
+    changes, refused = run(Model(f("14:00", "15:00", "kawa z olą (sugestia)")), cal, Storage(":memory:"), days=(SAT,))
+    assert changes == [] and refused[0].endswith("a copy of one of your own events")
+
+
 def test_variety_low_lets_a_title_come_back_the_next_day():
     asks = {SUN: [(at(SUN, "14:00"), at(SUN, "23:00"))]}
     args = (asks, CATS)

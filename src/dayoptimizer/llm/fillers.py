@@ -53,7 +53,8 @@ SYSTEM = (
     "work: a walk, reading a book, the cinema, stretching, calling a friend, cooking something new, a "
     "short online course or tutorial, journaling.\n"
     "- Vary: don't repeat what was suggested lately, never suggest what they removed. Something they have "
-    "never done is welcome: then set new_idea true.\n"
+    "never done is welcome: then set new_idea true. Never copy one of their own events or name a person: "
+    "suggest something of its own (\"call a friend\", not a friend's name).\n"
     "- category: the one of their categories that fits best, spelled exactly. Keep their notes (limits "
     "on training, times).\n"
     "- title: a few words in the language of their notes (English when there are none). why: a few words."
@@ -93,7 +94,8 @@ def _offered(storage, day: date) -> list:
 
 
 def check(fillers: list[Filler], asks: dict, categories: list[str], rules, history: dict[str, list[date]],
-          recent: list[tuple[date, str]], unwanted: set[str], budget: dict[date, int]) -> tuple[list, list[str]]:
+          recent: list[tuple[date, str]], unwanted: set[str], budget: dict[date, int],
+          own: frozenset[str] = frozenset()) -> tuple[list, list[str]]:
     """The suggestions that keep every rule as (start, end, filler), and why each other one was refused."""
     apart = VARIETY_DAYS.get(rules.variety, 3)
     history = {c: list(ds) for c, ds in history.items()}
@@ -129,6 +131,8 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
                 why = "no title"
             elif name in unwanted:
                 why = "you removed it lately"
+            elif name in own:
+                why = "a copy of one of your own events"
             elif any(n == name and abs((d - x).days) < apart for x, n in recent):
                 why = "suggested lately (variety)"
             elif e_m - s_m > budget[d]:
@@ -250,7 +254,8 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         for e in busy:
             history.setdefault(e.calendar, []).append(e.start.date())
         kept, refused = check(answer.fillers, asks, categories, rules, history,
-                              [(d, bare(t)) for d, t in recent], {bare(t) for t in unwanted}, budget)
+                              [(d, bare(t)) for d, t in recent], {bare(t) for t in unwanted}, budget,
+                              frozenset(bare(e.title) for e in others if not e.managed))
         mark = suffix(notes)
         changes += [PlannedChange(kind="create", category=f.category, title=f"{_SUFFIX.sub('', f.title).strip()} {mark}",
                                   reason=f.why or "free time", new_start=s, new_end=e, suggested=True)
