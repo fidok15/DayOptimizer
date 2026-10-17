@@ -217,7 +217,7 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         own = list(dict.fromkeys(e.title for e in others if not e.managed and e.start < now))[-30:]
         prompt = build_prompt(asks, budget, busy, notes, categories, routine, own,
                               list(dict.fromkeys(_SUFFIX.sub("", t) for _, t in recent)), unwanted, now)
-        answer = None
+        answer, refused = None, ["no suggestions: the model's answer wasn't readable"]
         for _ in range(2):  # one retry for an answer that isn't the JSON asked for
             try:
                 answer = backend.structured(SYSTEM, prompt, Fillers, schema(categories, list(asks),
@@ -226,9 +226,10 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
             except ValueError:
                 continue
             except Exception as exc:  # no model now: the gaps are offered again next time
-                return changes, [f"no suggestions: {' '.join(str(exc).split())[:120]}"]
-        if answer is None:
-            return changes, ["no suggestions: the model's answer wasn't readable"]
+                refused = [f"no suggestions: {' '.join(str(exc).split())[:120]}"]
+                break
+        asks = asks if answer is not None else {}
+    if asks:
         history: dict[str, list[date]] = {}
         for e in busy:
             history.setdefault(e.calendar, []).append(e.start.date())

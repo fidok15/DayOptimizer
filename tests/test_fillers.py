@@ -222,6 +222,16 @@ def test_the_free_time_question_is_asked_once_in_a_terminal_and_saved(monkeypatc
                                                                                 "variety": "high"}
 
 
+def test_no_model_now_means_no_suggestions_and_the_gaps_are_offered_next_time():
+    class Down(Model):
+        def structured(self, *a, **k):
+            raise RuntimeError("Ollama isn't running")
+    storage, cal = Storage(":memory:"), Cal(plan(SAT))
+    assert run(Down(), cal, storage, days=(SAT,)) == ([], ["no suggestions: Ollama isn't running"])
+    model = Model(f("14:00", "15:00"))
+    assert len(run(model, cal, storage, days=(SAT,))[0]) == 1 and model.calls == 1
+
+
 def test_the_suggestion_mark_follows_the_notes_language():
     assert suffix("Siłownia 2 razy w tygodniu") == "(sugestia)" and suffix("Gym twice a week") == "(suggestion)"
     assert suffix("") == "(suggestion)" and bare(" Czytanie  (sugestia)") == "czytanie"
