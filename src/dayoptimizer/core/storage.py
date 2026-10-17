@@ -273,6 +273,8 @@ class Storage:
 
     def update_filler(self, filler_id: int, **fields: str) -> None:
         """Change a suggestion's columns (status, event_id, day, start, end); the names come from code only."""
+        if not fields.keys() <= {"status", "event_id", "day", "start", "end"}:  # column names go into the SQL text
+            raise ValueError(f"not a fillers column: {sorted(fields)}")
         self._conn.execute(f"UPDATE fillers SET {', '.join(f'{k}=?' for k in fields)} WHERE id=?",
                            (*fields.values(), filler_id))
         self._conn.commit()
