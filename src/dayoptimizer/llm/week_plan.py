@@ -447,6 +447,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         kept.append((start, end, b))
     kept, count_problems = _count_rules(kept, rules, history or {})
     problems += count_problems
+    # the commute to a skipped gym goes now, before code may move it for a task (moved, it isn't recognised)
+    kept = _without_orphans(kept, routine_days or {}, now)
 
     def leftover():
         used: dict[str, int] = {}

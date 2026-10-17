@@ -1184,3 +1184,20 @@ def test_blocks_code_moves_to_make_room_start_on_the_minute():
                           routine_days=rd, fill_until=MON)
     assert sorted((c.title, c.new_start, c.new_end) for c in creates) == [
         ("Report", at(MON, "17:45"), at(MON, "19:45")), ("Snack", at(MON, "19:45"), at(MON, "20:00"))]
+
+
+def test_the_commute_to_a_skipped_gym_goes_even_when_a_task_needs_its_time():
+    # live: the notes skipped the gym, code moved the commute 18:15 -> 18:45 for a task, and the moved
+    # commute (no longer at its usual time) stayed, to a gym that wasn't there
+    def r(a, b, cat, title):
+        return (at(MON, a), at(MON, b), cat, title, False, False)
+    rd = {MON: [r("16:30", "18:00", "Work", "Study"), r("18:00", "18:15", "Food", "Plan tomorrow"),
+                r("18:15", "18:30", "Commute", "Commute"), r("18:30", "19:45", "Gym", "Gym"),
+                r("19:45", "20:00", "Commute", "Commute back"), r("20:00", "21:00", "Food", "Supper")]}
+    no_gym = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 0, "source": "No gym."}])
+    plan = WeekPlan(blocks=[block(MON, f"{s:%H:%M}", f"{e:%H:%M}", c, t) for s, e, c, t, *_ in rd[MON]])
+    creates, problems = validate(plan, [MON], WCATS, [ev("w", "Uni", "Wall", MON, "00:00", "16:30"), ev("n", "Uni", "Night", MON, "21:00", "23:59")], NOTES, no_gym,
+                                 NOW, tasks=[task(due=None, min_chunk_min=None)], left={"t1": 120},
+                                 routine_days=rd, fill_until=MON)
+    made = sorted((f"{c.new_start:%H:%M}", c.title) for c in creates)
+    assert made == [("16:30", "Report"), ("18:30", "Plan tomorrow"), ("20:00", "Supper")], made
