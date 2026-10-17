@@ -93,14 +93,15 @@ def test_code_refuses_what_breaks_a_rule():
     asks = {SAT: [(at(SAT, "14:00"), at(SAT, "23:00"))]}
     history = {"Gym": [SAT - timedelta(days=4), SAT - timedelta(days=2)]}
     kept, refused = check(
-        [f("14:00", "14:20"), f("14:00", "16:00"), f("14:00", "15:00", cat="Nope"), f("14:00", "15:00", "Siłka", "Gym"),
+        [f("14:00", "14:20"), f("19:00", "21:00", "Joga"), f("14:00", "15:00", cat="Nope"), f("14:00", "15:00", "Siłka", "Gym"),
          f("21:30", "22:30"), f("12:00", "13:00"), f("15:00", "16:00", "Kino"), f("16:00", "17:00", "Spacer (sugestia)"),
          f("17:00", "18:00", "Czytanie"), f("18:00", "19:00", "czytanie")],
         asks, CATS, rules(), history, recent=[(SAT - timedelta(days=1), "spacer")], unwanted={"kino"},
         budget={SAT: 600})
-    assert [x[2].title for x in kept] == ["Czytanie"]
+    # too long is cut to 90 min (a small model takes the whole gap), too short goes
+    assert [(x[2].title, x[2].end) for x in kept] == [("Joga", "20:30"), ("Czytanie", "18:00")]
     why = [r.rsplit(": ", 1)[1] for r in refused]
-    assert why == ["not 30-90 min", "not 30-90 min", "not one of the categories",
+    assert why == ["not 30-90 min", "not one of the categories",
                    'breaks the note "Gym at most 2 times a week."', 'breaks the note "Nothing after 22."',
                    "not inside a free gap", "you removed it lately", "suggested lately (variety)",
                    "suggested lately (variety)"]
