@@ -185,7 +185,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
                           markup=False, style="yellow")
             continue
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
-        more = _suggest(backend, days, calendar, storage, rules, config)
+        more = _suggest(backend, days, calendar, storage, rules, config, hidden_since=now)
         if more:
             from dayoptimizer.llm.fillers import record
             done, failed = apply_changes(more, calendar, storage, lambda c: True)
@@ -197,7 +197,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
                   markup=False, style="yellow")
     return None
 
-def _suggest(backend, days: list[date], calendar, storage, rules, config) -> list:
+def _suggest(backend, days: list[date], calendar, storage, rules, config, hidden_since=None) -> list:
     """Suggestions for the free time the plan left today and tomorrow (llm/fillers.py)."""
     from dayoptimizer.llm import fillers
     now = datetime.now().astimezone()
@@ -205,7 +205,7 @@ def _suggest(backend, days: list[date], calendar, storage, rules, config) -> lis
         return []
     start = datetime.combine(now.date() - timedelta(days=14), time(0)).astimezone()
     changes, _ = fillers.suggest(backend, days, calendar.list_events(start, start + timedelta(days=22)), storage,
-                                 rules, config.get("notes") or "", list(config["categories"]), now)
+                                 rules, config.get("notes") or "", list(config["categories"]), now, hidden_since)
     return changes
 
 def _plan_day(day: date, calendar, storage, rules, confirm=None):

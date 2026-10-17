@@ -140,6 +140,15 @@ def test_a_suggestion_something_took_goes_and_its_time_is_offered_again():
     assert "Gaps to fill: 14:30-15:30;" in model.prompts[0]
 
 
+def test_a_suggestion_the_planner_hid_and_then_covered_goes_even_if_it_started_meanwhile():
+    # the plan started at 12:55 (the suggestion was still ahead, so hidden from it) and took 8 minutes
+    cal = Cal([ev("x1", "Free", "Spacer (sugestia)", SAT, "13:00", "14:00", managed=True, suggested=True),
+               ev("t1", "Free", "Essay", SAT, "13:00", "14:00", managed=True)])
+    changes, _ = suggest(Model(), [SAT], cal.events, Storage(":memory:"), rules(typical_week={}), "", CATS,
+                         at(SAT, "13:03"), hidden_since=at(SAT, "12:55"))
+    assert [(c.kind, c.event_id) for c in changes] == [("delete", "x1")]
+
+
 def test_a_suggestion_the_user_deleted_leaves_its_time_free_and_is_not_wanted():
     storage, cal = Storage(":memory:"), Cal(plan(SAT))
     run(Model(f("14:00", "15:30")), cal, storage, days=(SAT,))

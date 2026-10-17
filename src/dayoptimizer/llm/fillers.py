@@ -172,11 +172,13 @@ def build_prompt(asks: dict, budget: dict, events: list[Event], notes: str, cate
 
 
 def suggest(backend, days: list[date], events: list[Event], storage, rules, notes: str, categories: list[str],
-            now: datetime) -> tuple[list[PlannedChange], list[str]]:
+            now: datetime, hidden_since: datetime | None = None) -> tuple[list[PlannedChange], list[str]]:
     """Suggestions for today and tomorrow among `days`, as calendar changes:
     removals of suggestions something now overlaps, and new ones for gaps not
     offered before. Notices suggestions the user deleted on the way.
     `events`: the calendar after the plan, from 14 days back to a week ahead.
+    `hidden_since`: the planner's `now`, from which on it didn't see suggestions
+    (so may have put something over them); defaults to `now`.
     Returns the changes and why each refused suggestion was refused."""
     today = now.date()
     near = [today, today + timedelta(days=1)]
@@ -191,7 +193,7 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
             offered[d].append((datetime.fromisoformat(r["start"]), datetime.fromisoformat(r["end"])))
     mine = [e for e in events if e.suggested and not e.all_day]
     others = [e for e in events if not e.suggested and not e.all_day]
-    gone = [e for e in mine if e.start >= now and any(o.start < e.end and o.end > e.start for o in others)]
+    gone = [e for e in mine if e.start >= (hidden_since or now) and any(o.start < e.end and o.end > e.start for o in others)]
     changes = [PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
                              reason="its time went to something else") for e in gone]
     for e in gone:  # its time may get a new suggestion
