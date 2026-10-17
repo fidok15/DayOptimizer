@@ -1201,3 +1201,38 @@ def test_the_commute_to_a_skipped_gym_goes_even_when_a_task_needs_its_time():
                                  routine_days=rd, fill_until=MON)
     made = sorted((f"{c.new_start:%H:%M}", c.title) for c in creates)
     assert made == [("16:30", "Report"), ("18:30", "Plan tomorrow"), ("20:00", "Supper")], made
+
+
+def test_a_routine_block_cut_around_a_task_that_moved_away_grows_back():
+    # live Sunday: the task that had cut Deep work and Study moved to Saturday; the pieces left
+    # (Deep work 10:15-10:30, Study 11:00-12:30) must grow back, not leave holes for suggestions
+    def r(a, b, cat, title):
+        return (at(MON, a), at(MON, b), cat, title, False, False)
+    rd = {MON: [r("08:00", "08:45", "Learn", "Deep work"), r("08:45", "09:00", "Free time", "Break"),
+                r("09:00", "10:30", "Learn", "Deep work"), r("11:00", "14:00", "Learn", "Study")]}
+
+    def old(i, a, b, cat, title, task_id=None):
+        return Event(id=i, calendar=cat, title=title, start=at(MON, a), end=at(MON, b), managed=True, task_id=task_id)
+    events = [ev("w", "Uni", "Wall", MON, "00:00", "08:00"), ev("n", "Uni", "Night", MON, "14:00", "23:59"),
+              old("b", "08:00", "08:15", "Free time", "Break"), old("t", "08:15", "10:15", "Learn", "Essay", "t1"),
+              old("d", "10:15", "10:30", "Learn", "Deep work"), old("s", "11:00", "12:30", "Learn", "Study"),
+              old("x", "12:30", "14:00", "Work", "Work")]
+    cats = WCATS + ["Learn", "Free time"]
+    t = task(title="Essay", category="Learn", due=None)
+    for run in range(2):
+        changes, _, dropped, _ = plan_days(Small(WeekPlan()), [MON], "# r", cats, events, NOTES, [], NOW,
+                                           tasks=[t], left={"t1": 0}, routine_days=rd)
+        assert run == 0 or changes == []
+        events = _apply(events, changes)
+    assert sorted((f"{e.start:%H:%M}", f"{e.end:%H:%M}", e.title) for e in events if e.managed) == [
+        ("08:00", "08:15", "Break"), ("08:15", "09:00", "Deep work"), ("09:00", "10:30", "Deep work"),
+        ("11:00", "14:00", "Study")]
+
+
+def test_a_routine_block_a_weekly_note_rules_out_is_skipped_by_the_note_not_for_no_room():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    gym = {MON: [(at(MON, "18:30"), at(MON, "19:45"), "Gym", "Gym", False, False)]}
+    two = parse_rules([{"type": "min_gap_days", "category": "Gym", "days": 2, "source": "A day of rest."}])
+    full = [ev("m", "Uni", "Meeting", MON, "16:00", "22:00")]
+    back, lost = _forgotten_routine([], gym, full, NOW, two, {"Gym": [MON - timedelta(days=1)]})
+    assert back == [] and lost == [f"{MON} 18:30-19:45 Gym: Gym: breaks the note \"A day of rest.\""]
