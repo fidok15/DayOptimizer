@@ -266,13 +266,15 @@ class Storage:
 
     def fillers_since(self, day: str) -> list[dict]:
         """Suggested blocks from that day on: id, day, start, end, title, category, event_id, status
-        (placed; deleted: by the user; removed: by a replan)."""
+        (placed; moved: by the user, stays; deleted: by the user; removed: by a replan)."""
         cur = self._conn.execute("SELECT * FROM fillers WHERE day >= ? ORDER BY id", (day,))
         names = [c[0] for c in cur.description]
         return [dict(zip(names, row)) for row in cur.fetchall()]
 
-    def set_filler_status(self, filler_id: int, status: str) -> None:
-        self._conn.execute("UPDATE fillers SET status=? WHERE id=?", (status, filler_id))
+    def update_filler(self, filler_id: int, **fields: str) -> None:
+        """Change a suggestion's columns (status, event_id, day, start, end); the names come from code only."""
+        self._conn.execute(f"UPDATE fillers SET {', '.join(f'{k}=?' for k in fields)} WHERE id=?",
+                           (*fields.values(), filler_id))
         self._conn.commit()
 
     def close(self) -> None:

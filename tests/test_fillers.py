@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from dayoptimizer.core.constraints import parse_rules
 from dayoptimizer.core.models import Event
@@ -161,6 +162,26 @@ def test_a_suggestion_the_user_deleted_leaves_its_time_free_and_is_not_wanted():
     model = Model(f("14:00", "15:00", "Czytanie", day=SUN))
     changes, refused = run(model, cal, storage, days=(SUN,), now=NOW + timedelta(days=1))
     assert changes == [] and "never suggest them: Czytanie" in model.prompts[0]
+
+
+def test_a_suggestion_whose_id_a_resync_changed_is_not_taken_for_deleted():
+    storage, cal = Storage(":memory:"), Cal(plan(SAT))
+    run(Model(f("14:00", "15:00")), cal, storage, days=(SAT,))
+    cal.events = [replace(e, id="new-" + e.id) if e.suggested else e for e in cal.events]
+    run(Model(), cal, storage, days=(SAT,), now=NOW + timedelta(minutes=15))
+    [row] = storage.fillers_since("2026-10-01")
+    assert row["status"] == "placed" and row["event_id"].startswith("new-")
+
+
+def test_a_suggestion_the_user_moved_stays_where_they_put_it():
+    storage, cal = Storage(":memory:"), Cal(plan(SAT) + [ev("u1", "Gym", "Trening", SAT, "18:00", "19:00")])
+    run(Model(f("14:00", "15:00")), cal, storage, days=(SAT,))
+    cal.events = [replace(e, start=at(SAT, "18:00"), end=at(SAT, "19:00")) if e.suggested else e for e in cal.events]
+    for minutes_later in (5, 20):  # and the next run too
+        changes, _ = run(Model(), cal, storage, days=(SAT,), now=NOW + timedelta(minutes=minutes_later))
+        assert changes == []
+    [row] = storage.fillers_since("2026-10-01")
+    assert (row["status"], row["start"]) == ("moved", at(SAT, "18:00").isoformat())
 
 
 def test_a_replan_neither_sees_nor_removes_suggestions_and_a_second_one_changes_nothing(monkeypatch):

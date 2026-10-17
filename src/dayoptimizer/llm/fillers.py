@@ -181,22 +181,35 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
     near = [today, today + timedelta(days=1)]
     offered = {d: _offered(storage, d) for d in near}
     rows = storage.fillers_since((today - timedelta(days=AVOID_DAYS)).isoformat())
-    ids = {e.id for e in events}
-    for r in rows:  # a suggestion the user deleted: not wanted, and its time stays free that day
-        d = date.fromisoformat(r["day"])
-        if r["status"] == "placed" and r["event_id"] and r["event_id"] not in ids and d in near:
-            storage.set_filler_status(r["id"], "deleted")
-            r["status"] = "deleted"
-            offered[d].append((datetime.fromisoformat(r["start"]), datetime.fromisoformat(r["end"])))
     mine = [e for e in events if e.suggested and not e.all_day]
+    by_id, by_time = {e.id: e for e in mine}, {(e.title, e.start): e for e in mine}
+    stays = set()  # the ids of suggestions the user moved: their choice, never removed for an overlap
+    for r in rows:
+        d, start = date.fromisoformat(r["day"]), datetime.fromisoformat(r["start"])
+        if r["status"] not in ("placed", "moved") or not r["event_id"] or d not in near:
+            continue
+        # a calendar resync (Google, CalDAV) may give it a new id: the same title and time is the same block
+        e = by_id.get(r["event_id"]) or by_time.get((r["title"], start))
+        if e is None:  # deleted by the user: not wanted, and its time stays free that day
+            storage.update_filler(r["id"], status="deleted")
+            r["status"] = "deleted"
+            offered[d].append((start, datetime.fromisoformat(r["end"])))
+            continue
+        if e.id != r["event_id"] or e.start != start:
+            r.update(event_id=e.id, status="moved" if e.start != start else r["status"])
+            storage.update_filler(r["id"], event_id=e.id, status=r["status"], day=e.start.date().isoformat(),
+                                  start=e.start.isoformat(), end=e.end.isoformat())
+        if r["status"] == "moved":
+            stays.add(e.id)
     others = [e for e in events if not e.suggested and not e.all_day]
-    gone = [e for e in mine if e.start >= (hidden_since or now) and any(o.start < e.end and o.end > e.start for o in others)]
+    gone = [e for e in mine if e.start >= (hidden_since or now) and e.id not in stays
+            and any(o.start < e.end and o.end > e.start for o in others)]
     changes = [PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
                              reason="its time went to something else") for e in gone]
     for e in gone:  # its time may get a new suggestion
         for r in rows:
             if r["event_id"] == e.id:
-                storage.set_filler_status(r["id"], "removed")
+                storage.update_filler(r["id"], status="removed")
         if e.start.date() in offered:
             offered[e.start.date()] = _minus(offered[e.start.date()], [(e.start, e.end)])
     busy = others + [e for e in mine if e not in gone]
@@ -210,7 +223,7 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
     refused: list[str] = []
     if asks:
         recent = [(date.fromisoformat(r["day"]), r["title"]) for r in rows
-                  if r["status"] == "placed" and today - timedelta(days=7) <= date.fromisoformat(r["day"])]
+                  if r["status"] in ("placed", "moved") and today - timedelta(days=7) <= date.fromisoformat(r["day"])]
         unwanted = list(dict.fromkeys(_SUFFIX.sub("", r["title"]) for r in rows if r["status"] == "deleted"))
         routine = list(dict.fromkeys(b.label for bs in rules.typical_week.values() for b in bs))
         own = list(dict.fromkeys(e.title for e in others if not e.managed and e.start < now))[-30:]
