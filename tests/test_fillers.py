@@ -107,6 +107,12 @@ def test_code_refuses_what_breaks_a_rule():
                    "suggested lately (variety)"]
 
 
+def test_a_whole_gap_taken_is_cut_to_what_the_day_may_fill():
+    kept, _ = check([f("18:15", "20:00")], {SAT: [(at(SAT, "18:15"), at(SAT, "20:00"))]}, CATS, rules(), {}, [],
+                    set(), {SAT: 60})
+    assert [(s, e) for s, e, _ in kept] == [(at(SAT, "18:15"), at(SAT, "19:15"))]
+
+
 def test_variety_low_lets_a_title_come_back_the_next_day():
     asks = {SUN: [(at(SUN, "14:00"), at(SUN, "23:00"))]}
     args = (asks, CATS)

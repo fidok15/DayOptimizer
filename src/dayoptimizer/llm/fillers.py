@@ -105,8 +105,9 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
         d = next((x for x in asks if x.isoformat() == f.day), None)
         s_m, e_m = _hhmm(f.start), _hhmm(f.end)
         name, why = bare(f.title), None
-        if s_m is not None and e_m is not None and e_m - s_m > LONGEST:  # a small model takes the whole gap: cut it
-            e_m = s_m + LONGEST
+        cap = min(LONGEST, budget[d]) if d is not None else LONGEST
+        if s_m is not None and e_m is not None and e_m - s_m > cap >= SHORTEST:
+            e_m = s_m + cap  # a small model takes the whole gap: cut it to what may be filled
             f = f.model_copy(update={"end": f"{e_m // 60:02d}:{e_m % 60:02d}"})
         if d is None:
             why = "not a day to fill"
