@@ -1153,3 +1153,19 @@ def test_a_task_in_its_routine_slot_starts_with_the_slot():
     items = slot_items(MON, [], now, [task(category="Study", title="IO", duration_min=60, due=None)],
                        {"t1": 60}, rd, [])
     assert list(items["t1"][1])[0] == "15:45-16:45"
+
+
+def test_a_block_code_places_now_starts_on_the_next_quarter_not_before_now():
+    class GymOnly:  # a block a note forbids forces a correction round, which re-checks what code placed
+        def plan_week(self, system, prompt, schema=None):
+            return WeekPlan(blocks=[Block(day=MON.isoformat(), start="18:30", end="19:45", category="Gym", title="Gym")])
+    rd = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep", "Sleep", True, False),
+                (at(MON, "15:00"), at(MON, "18:00"), "Study", "Study", False, False),
+                (at(MON, "18:30"), at(MON, "19:45"), "Gym", "Gym", False, False)]}
+    no_gym = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 0, "source": "No gym."}])
+    changes, _, dropped, _ = plan_days(GymOnly(), [MON], "# r", CATS + ["Study", "Sleep"], [], NOTES, no_gym,
+                                       at(MON, "15:07").replace(second=13),
+                                       tasks=[task(category="Study", title="IO", duration_min=60, due=None)],
+                                       left={"t1": 60}, routine_days=rd)
+    assert [(c.title, c.new_start) for c in changes if c.task_id] == [("IO", at(MON, "15:15"))]
+    assert not any("before now" in d for d in dropped)

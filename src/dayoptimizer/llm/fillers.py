@@ -82,10 +82,7 @@ def day_gaps(day: date, events: list[Event], now: datetime, awake: tuple[time, t
     event (the user's and the planner's blocks alike)."""
     lo, hi = (datetime.combine(day, t).astimezone() for t in awake)
     busy = [replace(e, managed=False) for e in events if not e.all_day]
-    # the gap that starts now starts at the next quarter hour: 15:15, not 15:07
-    up = (now + timedelta(minutes=14, seconds=59)).replace(second=0, microsecond=0)
-    up -= timedelta(minutes=up.minute % 15)
-    gaps = [(max(up if a == now else a, lo), min(b, hi)) for a, b in free_gaps(day, busy, now)]
+    gaps = [(max(a, lo), min(b, hi)) for a, b in free_gaps(day, busy, now)]
     return [(a, b) for a, b in gaps if b > a]
 
 

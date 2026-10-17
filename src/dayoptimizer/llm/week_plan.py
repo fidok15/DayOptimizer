@@ -152,10 +152,12 @@ def _hhmm(value: str) -> int | None:
 def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datetime, datetime]]:
     """The day's gaps from now on: what the user's events (and planner blocks
     already under way) leave free. A small model reads these far better than it
-    works the gaps out from the event list itself."""
+    works the gaps out from the event list itself. The gap under way starts at
+    the next quarter hour: 15:15, not 15:07:13 (a block there would start before now)."""
     midnight = datetime.combine(day, time(0)).astimezone()
     end = midnight + timedelta(days=1)
-    cur = max(midnight, now)
+    up = (now + timedelta(minutes=14, seconds=59)).replace(second=0, microsecond=0)
+    cur = max(midnight, up - timedelta(minutes=up.minute % 15))
     busy = sorted((max(e.start, midnight), min(e.end, end)) for e in events
                   if not e.all_day and (not e.managed or e.start < now) and e.start < end and e.end > midnight)
     gaps = []
