@@ -598,16 +598,6 @@ def diff(creates: list[PlannedChange], previous: list[Event]) -> list[PlannedCha
     return removed + out
 
 
-def _block_key(b: Block):
-    start = _hhmm(b.start)
-    return b.day, start, b.category, b.title, b.task_id
-
-
-def _change_key(c: PlannedChange):
-    midnight = datetime.combine(c.new_start.date(), time(0)).astimezone()
-    return c.new_start.date().isoformat(), minutes(midnight, c.new_start), c.category, c.title, c.task_id
-
-
 def _as_block(e: Event) -> Block:
     end = f"{e.end:%H:%M}" if e.end.date() == e.start.date() else "24:00"
     return Block(day=e.start.date().isoformat(), start=f"{e.start:%H:%M}", end=end, category=e.calendar,
@@ -1011,8 +1001,10 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         if not problems or last:
             return (creates, diff(creates, previous), plan.summary, problems + lost,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
-        accepted = {_change_key(c) for c in creates}
-        good = [b for b in plan.blocks if _block_key(b) in accepted]
+        # what passed, as it passed: a routine block cut around a task or moved for one stays so
+        good = [Block(day=c.new_start.date().isoformat(), start=f"{c.new_start:%H:%M}",
+                      end=_spans(c.new_start.date(), [(c.new_start, c.new_end)]).split("-")[1], category=c.category,
+                      title=c.title, why=c.reason, task_id=c.task_id) for c in creates]
         over = [p for p in plan.plan_over if len(_norm(p.note)) >= 10 and _norm(p.note) in note_text]
         placed = [Event(id=f"placed-{i}", calendar=c.category, title=c.title, start=c.new_start, end=c.new_end)
                   for i, c in enumerate(creates)]

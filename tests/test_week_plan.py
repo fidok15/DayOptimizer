@@ -1121,6 +1121,24 @@ def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
                    for c in changes if c.kind == "create")
 
 
+def test_a_correction_round_keeps_a_routine_block_cut_around_a_task():
+    # the gym a note rules out sends the plan back; the rest of Study, after the task, must stay
+    class First(Picker):
+        def choose(self, system, prompt, schema):
+            return {k: {"slot": v["properties"]["slot"]["enum"][0], "why": "first"}
+                    for k, v in schema["properties"].items()}
+    rd = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep", "Sleep", True, False),
+                (at(MON, "15:20"), at(MON, "18:00"), "Study", "Study", False, False),
+                (at(MON, "18:30"), at(MON, "19:45"), "Gym", "Gym", False, False)]}
+    no_gym = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 0, "source": "No gym."}])
+    wall = ev("w", "Work", "Work", MON, "07:00", "15:20")
+    changes, *_ = plan_days(First(), [MON], "# r", CATS + ["Study", "Sleep"], [wall], NOTES, no_gym, NOW,
+                            tasks=[task(category="Study", title="IO", duration_min=60, due=None)], left={"t1": 60},
+                            routine_days=rd)
+    made = {(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes}
+    assert {("IO", "15:20", "16:20"), ("Study", "16:20", "18:00")} <= made and not any(c.title == "Gym" for c in changes)
+
+
 def test_a_task_in_its_routine_slot_starts_with_the_slot():
     # routine Study 15:20-16:45 right after lunch: a 60 min Study task is offered 15:20-16:20, not 15:30-16:30
     from dayoptimizer.llm.week_plan import slot_items
