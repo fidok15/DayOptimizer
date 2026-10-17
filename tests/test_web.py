@@ -349,6 +349,15 @@ def test_routine_mode_roundtrip_and_validation():
         write_state(_state_payload(routine_mode="month"))
 
 
+def test_free_time_settings_roundtrip_and_validation():
+    assert (read_state()["min_free_minutes"], read_state()["variety"]) == (None, None)
+    state = write_state(_state_payload(min_free_minutes=90, variety="low"))
+    assert (state["min_free_minutes"], state["variety"]) == (90, "low")
+    assert write_state(_state_payload())["variety"] == "low"  # not sent: kept
+    with pytest.raises(ConfigError):
+        write_state(_state_payload(variety="lots"))
+
+
 def test_a_rule_told_over_two_sentences_compiles_from_both(monkeypatch):
     from dayoptimizer.llm import backend as llm
     from dayoptimizer import web

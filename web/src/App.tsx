@@ -84,7 +84,7 @@ export default function App() {
                 onChange={p.updateWeek}
                 dayStart={p.dayStart}
               />
-              <Notes notes={p.notes} onChange={p.updateNotes} />
+              <Notes notes={p.notes} onChange={p.updateNotes} freeTime={p.freeTime} onFreeTime={p.updateFreeTime} />
             </motion.div>
           </main>
         )}
