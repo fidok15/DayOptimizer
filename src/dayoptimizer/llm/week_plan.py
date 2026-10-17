@@ -500,7 +500,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     problems += [f"{d.isoformat()}: no blocks planned for this day - return its full plan"
                  for d in sorted(expect) if d in wanted.values() and d not in filled
                  and datetime.combine(d, time(23, 59)).astimezone() > now]
-    kept = _yield_to_tasks(kept)
+    kept = _yield_to_tasks(_without_orphans(kept, routine_days or {}, now))
     changes = [PlannedChange(kind="create", category=b.category, title=b.title, reason=b.why or "planned",
                              new_start=s, new_end=e, task_id=b.task_id) for s, e, b in kept]
     return changes, problems
@@ -510,6 +510,28 @@ def _shares_slot(a: Block, b: Block) -> bool:
     """A task block and a routine block of the same category may overlap: the
     task fills that routine time, and the routine block yields (_yield_to_tasks)."""
     return a.category == b.category and (a.task_id is None) != (b.task_id is None)
+
+
+def _without_orphans(kept: list[tuple[datetime, datetime, Block]], routine_days: dict, now: datetime) -> list:
+    """A routine block that isn't planned (a note skipped it, no room) takes with
+    it the short blocks of one other category right before and after it at
+    their usual time: the commute there and back for a skipped gym. Not when a
+    task of its category took its time, nor for one that already began."""
+    def key(d, cat, title, s, e):
+        return d, cat, title.strip().casefold(), s, e
+    have = {(s.date(), b.category, b.title.strip().casefold()) for s, _, b in kept if b.task_id is None}
+    drop = set()
+    for d, spans in routine_days.items():
+        for x in spans:
+            if x[0] < now or (d, x[2], x[3].strip().casefold()) in have or any(
+                    b.task_id and b.category == x[2] and s < x[1] and x[0] < e for s, e, b in kept):
+                continue
+            for a in (y for y in spans if y[1] == x[0]):
+                for z in (y for y in spans if y[0] == x[1]):
+                    if a[2] == z[2] != x[2] and minutes(a[0], a[1]) <= 60 and minutes(z[0], z[1]) <= 60:
+                        drop |= {key(d, *a[2:4], *a[:2]), key(d, *z[2:4], *z[:2])}
+    return [k for k in kept if k[2].task_id is not None or key(k[0].date(), k[2].category, k[2].title, k[0], k[1])
+            not in drop]
 
 
 def _yield_to_tasks(kept: list[tuple[datetime, datetime, Block]]) -> list[tuple[datetime, datetime, Block]]:
