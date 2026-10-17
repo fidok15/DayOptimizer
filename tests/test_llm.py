@@ -98,7 +98,7 @@ def test_one_named_day_overrides_the_model():
     from dayoptimizer.llm.backend import DayRequest, NewEvent, pin_day
     wrong = DayRequest(events=[NewEvent(title="x", category="Gym", day="saturday", start_time="14:00")])
     for text, day in [("spotkanie w środę o 14", "wednesday"), ("jutro o 10", "tomorrow"),
-                      ("pojutrze basen", "day_after_tomorrow"), ("gym on Friday", "friday")]:
+                      ("pojutrze basen o 14", "day_after_tomorrow"), ("gym on Friday at 14", "friday")]:
         assert pin_day(text, wrong).events[0].day == day
     assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"
     days = [("w poniedziałku", "monday"), ("w poniedzialku", "monday"), ("we wtorku", "tuesday"),
@@ -109,7 +109,7 @@ def test_one_named_day_overrides_the_model():
     for text, day in days:
         assert pin_day(f"{text} o 14", wrong).events[0].day == day, text
     for text in ("o piątej", "o czwartej", "w środku dnia", "piątka z matmy", "dostałem piątkę"):  # an hour or 'the middle', not a weekday
-        assert pin_day(text, wrong).events[0].day == "saturday", text
+        assert pin_day(f"{text} 14:00", wrong).events[0].day == "saturday", text
 
 
 def test_one_named_day_pins_tasks():
@@ -176,6 +176,20 @@ def test_an_event_without_a_time_is_a_task_and_do_is_its_deadline():
     assert [e.title for e in req.events] == ["siłownia"]
     assert [(t.title, t.duration_minutes) for t in req.tasks] == [("zadzwoń do mamy", 15)]
     assert "za 2h" in req.tasks[0].when
+
+
+def test_times_the_model_made_up_do_not_make_events():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, pin_day
+    made_up = DayRequest(events=[NewEvent(title=t, category="Learn", day="today", start_time=s, duration_minutes=m)
+                                 for t, s, m in [("transformery", "10:34", 120), ("bazy danych", "12:34", 60),
+                                                 ("IO", "13:34", 60)]])
+    req = pin_day("dziś transformery 2h, bazy danych 1h i IO 1h", made_up)
+    assert req.events == [] and [(t.title, t.duration_minutes) for t in req.tasks] == [
+        ("transformery", 120), ("bazy danych", 60), ("IO", 60)]
+    said = DayRequest(events=[NewEvent(title="spotkanie", category="Work", day="today", start_time="18:00"),
+                              NewEvent(title="kino", category="Free time", day="today", start_time="20:00")])
+    req = pin_day("spotkanie 18:00 i kino o 20", said)
+    assert [e.title for e in req.events] == ["spotkanie", "kino"] and req.tasks == []
 
 
 def test_a_deadline_time_is_not_an_event():

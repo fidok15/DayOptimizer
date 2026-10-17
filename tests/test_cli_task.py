@@ -128,7 +128,7 @@ def test_mixed_message_adds_events_and_saves_tasks_in_one_run(monkeypatch):
         events=[NewEvent(title="meeting", category="Work", start_time="14:00"),
                 NewEvent(title="read notes", category="Learn")],  # no clock time: a task
         tasks=[TaskRequest(title="laundry", category="Work", duration_minutes=30)])
-    calls = run(monkeypatch, ["x"], parsed)
+    calls = run(monkeypatch, ["meeting at 14:00, laundry 30 min, read notes"], parsed)
     assert [t.title for t in Storage(paths.db_path()).open_tasks()] == ["laundry", "read notes"]
     (argv,) = calls
     assert argv[0] == "add" and argv[2:] == ["--week", "2"]
