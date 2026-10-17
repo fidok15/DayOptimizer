@@ -702,15 +702,15 @@ _NUMBERS = {"jedn": 1, "one": 1, "dwie": 2, "dwa": 2, "two": 2, "trzy": 3, "thre
 
 
 def understand_free_time(reply: str) -> int | None:
-    """Minutes from a reply like '1h', '90 min', '1,5h', 'godzinkę', 'pół godziny', 'dwie godziny', '45'."""
+    """Minutes from a reply like '1h', '90 min', '1,5h', '1h 30min', 'godzinkę', 'pół godziny', 'dwie godziny', '45'."""
     t = reply.strip().lower().replace(",", ".")
-    hour = r"(h|hr|hrs|hours?|godz\w*)\b"
+    hour = r"(h|hr|hrs|hours?|godz\w*)(?![^\W\d])"  # '1h30' too
     if re.fullmatch(r"0|none|nothing|nic|zero|brak", t):
         return 0
     if re.search(r"półtor|and a half", t):
         return 90
-    if m := re.search(rf"(\d+(?:\.\d+)?)\s*{hour}", t):
-        return round(float(m.group(1)) * 60)
+    if m := re.search(rf"(\d+(?:\.\d+)?)\s*{hour}\.?\s*(\d+)?", t):  # and the minutes after: '1 godz. 30 min'
+        return round(float(m.group(1)) * 60) + int(m.group(3) or 0)
     if m := re.search(r"(\d+)\s*m(in\w*)?\b", t):
         return int(m.group(1))
     if re.search(r"pół|half", t):
@@ -724,7 +724,9 @@ def understand_free_time(reply: str) -> int | None:
 
 def understand_variety(reply: str) -> str | None:
     t = reply.strip().lower()
-    for level, words in (("low", r"low|little|few|mał|niewiel|nisk|rzadko"),
+    # 'not much' / 'nie za dużo' is low: the negation is read before 'much'
+    for level, words in (("low", r"low|little|few|mał|niewiel|nisk|rzadko"
+                                 r"|\b(not|nie)\b.*(much|many|lot|duż|wiel|bardzo)"),
                          ("high", r"high|lots|a lot|much|many|duż|wysok|bardzo"),
                          ("medium", r"medium|some|average|normal|średni|sredni|umiarkowan|trochę|troche")):
         if re.search(words, t):

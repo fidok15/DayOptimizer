@@ -252,10 +252,12 @@ def test_a_replan_neither_sees_nor_removes_suggestions_and_a_second_one_changes_
 def test_free_time_replies_are_read_without_a_model():
     from dayoptimizer.cli import understand_free_time as minutes_of, understand_variety as variety_of
     assert [minutes_of(x) for x in ("godzinkę", "1h", "90 min", "1,5h", "pół godziny", "dwie godziny", "45", "2",
-                                    "półtorej godziny", "an hour", "nic", "hmm")] == [
-        60, 60, 90, 90, 30, 120, 45, 120, 90, 60, 0, None]
-    assert [variety_of(x) for x in ("dużo", "średnio", "mało", "high", "whatever")] == [
-        "high", "medium", "low", "high", None]
+                                    "półtorej godziny", "an hour", "nic", "hmm", "1h 30min", "1 godz. 30 min",
+                                    "1h30")] == [
+        60, 60, 90, 90, 30, 120, 45, 120, 90, 60, 0, None, 90, 90, 90]
+    assert [variety_of(x) for x in ("dużo", "średnio", "mało", "high", "whatever", "not much", "nie za dużo",
+                                    "niewiele", "nie wiem")] == [
+        "high", "medium", "low", "high", None, "low", "low", "low", None]
 
 
 def test_the_free_time_question_is_asked_once_in_a_terminal_and_saved(monkeypatch):
