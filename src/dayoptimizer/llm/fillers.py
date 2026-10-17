@@ -1,6 +1,7 @@
 """Suggestions for the free time a plan leaves.
 
-After the plan is checked and written, the gaps of 30 minutes or more on
+After the plan is checked and written, the gaps of 30 minutes or more (outside
+the usual time of the routine, see `routine_time`) on
 today and tomorrow go to the language model, which may suggest something
 healthy or productive for them (a walk, a book, a call). Code checks every
 suggestion: inside a gap, 30-90 minutes, one of the user's categories, the
@@ -20,7 +21,7 @@ from pydantic import BaseModel
 from dayoptimizer.core.constraints import window_rule
 from dayoptimizer.core.models import Event, PlannedChange
 from dayoptimizer.llm.task_rules import minutes
-from dayoptimizer.llm.week_plan import DAY_NAMES, _count_rules, _hhmm, _spans, free_gaps
+from dayoptimizer.llm.week_plan import Block, DAY_NAMES, _count_rules, _hhmm, _spans, free_gaps, routine_spans
 
 SHORTEST, LONGEST = 30, 90
 TITLE_MAX, WHY_MAX = 40, 120
@@ -87,6 +88,32 @@ def day_gaps(day: date, events: list[Event], now: datetime, awake: tuple[time, t
     busy = [replace(e, managed=False) for e in events if not e.all_day]
     gaps = [(max(a, lo), min(b, hi)) for a, b in free_gaps(day, busy, now)]
     return [(a, b) for a, b in gaps if b > a]
+
+
+def routine_time(day: date, rules, events: list[Event]) -> list:
+    """The usual time of the day's routine blocks, which a suggestion never
+    takes, even where the calendar shows nothing (a block under way, one a
+    replan didn't put back): only genuinely free time is filled. Not a block
+    moved elsewhere that day, nor one the notes rule out that day."""
+    spans, _ = routine_spans(rules.typical_week, getattr(rules, "categories", {}), [day])
+    history: dict[str, list[date]] = {}
+    for e in events:
+        if not e.all_day:
+            history.setdefault(e.calendar, []).append(e.start.date())
+    out = []
+    for s, e, cat, title, *_ in spans[day]:
+        same = [x for x in events if x.start.date() == day and x.calendar == cat
+                and x.title.strip().casefold() == title.strip().casefold()]
+        if same and not any(x.start < e and x.end > s for x in same):
+            continue  # moved: its usual time is free
+        mid = datetime.combine(day, time(0)).astimezone()
+        block = Block(day=day.isoformat(), start=f"{s:%H:%M}", end=_spans(day, [(s, e)]).split("-")[1],
+                      category=cat, title=title)
+        if window_rule(rules.note_rules, cat, minutes(mid, s), minutes(mid, e), day.weekday()) or _count_rules(
+                [(s, e, block)], rules.note_rules, history)[1]:
+            continue  # the notes skip it that day
+        out.append((s, e))
+    return out
 
 
 def _offered(storage, day: date) -> list:
@@ -237,7 +264,7 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
                                          reason="the day needs its free time"))
     asks, budget = {}, {}
     for d in (d for d in days if d in near and rules.typical_week.get(d.weekday())):
-        gaps = day_gaps(d, busy, now, (rules.day_start, rules.day_end))
+        gaps = _minus(day_gaps(d, busy, now, (rules.day_start, rules.day_end)), routine_time(d, rules, busy))
         budget[d] = sum(minutes(a, b) for a, b in gaps) - rules.min_free_minutes
         new = [(a, b) for a, b in _minus(gaps, offered[d]) if minutes(a, b) >= SHORTEST]
         if new and budget[d] >= SHORTEST:

@@ -321,3 +321,15 @@ def test_no_model_now_means_no_suggestions_and_the_gaps_are_offered_next_time():
 def test_the_suggestion_mark_follows_the_notes_language():
     assert suffix("Siłownia 2 razy w tygodniu") == "(sugestia)" and suffix("Gym twice a week") == "(suggestion)"
     assert suffix("") == "(suggestion)" and bare(" Czytanie  (sugestia)") == "czytanie"
+
+
+def test_suggestions_keep_out_of_routine_time_unless_the_block_moved_or_the_notes_skip_it():
+    # live: a replan lost part of Study and Deep work, and suggestions filled their usual time
+    week = {d: rules().typical_week[d] + [RoutineBlock(900, 1080, "Free", "Nauka"), RoutineBlock(1110, 1185, "Gym", "Gym")]
+            for d in range(7)}
+    gyms = [ev(f"g{i}", "Gym", "Gym", SAT - timedelta(days=i), "18:30", "19:45", managed=True) for i in (3, 5)]
+    moved = [e if e.title != "Obiad" else replace(e, start=at(SAT, "14:00"), end=at(SAT, "15:00")) for e in plan(SAT)]
+    model = Model()
+    run(model, Cal(moved + gyms), Storage(":memory:"), rules(typical_week=week), days=(SAT,))
+    # lunch moved (its hour is free), Nauka is missing but its time is not free, the notes skip the gym
+    assert "Gaps to fill: 12:15-14:00, 18:00-23:00;" in model.prompts[0]
