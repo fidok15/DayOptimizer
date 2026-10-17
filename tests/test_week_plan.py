@@ -1130,3 +1130,8 @@ def test_a_task_in_its_routine_slot_starts_with_the_slot():
     items = slot_items(MON, [], NOW, [task(category="Study", title="IO", duration_min=60, due=None)],
                        {"t1": 60}, rd, [])
     assert "15:20-16:20" in items["t1"][1] and "15:30-16:30" not in items["t1"][1]
+    # a slot already under way: from the next quarter hour, never from this very second
+    now = at(MON, "15:32") + timedelta(seconds=15)
+    items = slot_items(MON, [], now, [task(category="Study", title="IO", duration_min=60, due=None)],
+                       {"t1": 60}, rd, [])
+    assert list(items["t1"][1])[0] == "15:45-16:45"

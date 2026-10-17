@@ -871,7 +871,7 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
         starts: list[list] = []
         for a, b in gaps:
             # in its routine slot a task starts with the slot (15:20, not 15:30): the rest stays one piece
-            firsts = sorted({max(a, s) for s, e in own if s < b and e > a})
+            firsts = sorted({s for s, e in own if a <= s < b})  # one already under way: from the next quarter
             a += timedelta(minutes=-minutes(midnight, a) % 15)
             mine = []
             for x in firsts + [None]:
@@ -882,7 +882,7 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
                     if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
                         length = n - chunk
                     s_m = minutes(midnight, x)
-                    inside = not fixed_start and any(s < x < e for s, e in own)
+                    inside = not fixed_start and any(s < x < e for s, e in own if s in firsts)
                     if length >= chunk and not inside and window_rule(
                             rules, t.category, s_m, s_m + length, day.weekday()) is None:
                         mine.append((x, x + timedelta(minutes=length)))
