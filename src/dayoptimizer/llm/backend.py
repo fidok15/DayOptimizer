@@ -238,9 +238,14 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     events, tasks = [], []
     # an event with no clock time anywhere is work to fit in: a task, so its clause's 'do/na/po' count
     from dayoptimizer.llm.task_request import _offset
-    # no clock time of its own, or only 'za 2h': the model made the time up, so it is a task
-    untimed = [e for e in req.events if not clock(find(e.title)[0])
-               and (not e.start_time or _offset(find(e.title)[0] or low) is not None)]
+    def said_time(c):  # '18:00', 'o 18', '6pm', 'w południe', 'o piątej'
+        return clock(c) or re.search(
+            r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:południe|poludnie|północ|polnoc|noon|midnight)\b"
+            r"|\bo\s+(?:pierwszej|drugiej|trzeciej|czwartej|piątej|piatej|szóstej|szostej|siódmej|siodmej|ósmej"
+            r"|osmej|dziewiątej|dziewiatej|dziesiątej|dziesiatej|jedenastej|dwunastej)\b", c)
+    # no time of its own, or only 'za 2h': any time the model gave is made up, so it is a task
+    untimed = [e for e in req.events if not clock(find(e.title)[0] or low)
+               and (not said_time(find(e.title)[0] or low) or _offset(find(e.title)[0] or low) is not None)]
     for e in req.events:
         if e in untimed:
             continue
