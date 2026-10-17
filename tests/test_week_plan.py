@@ -996,8 +996,9 @@ def test_slots_keep_out_of_events_and_other_routine_but_may_go_over_a_skippable_
     from dayoptimizer.llm.week_plan import slot_items
     items = slot_items(MON, [LECTURE, LAB], NOW, [task(), task(id="t2", due=at(TUE, "12:00"))],
                        {"t1": 120, "t2": 120}, SLOT_ROUTINE, SKIP)
-    # the lecture may be planned over, the lab and the lunch may not; the own routine slot counts as free
-    assert list(items["t1"][1]) == ["07:00-09:00", "09:00-11:00", "11:00-12:00", "15:00-17:00", "17:00-19:00"]
+    # the lecture may be planned over, the lab and the lunch may not; the own routine slot counts as free,
+    # and a task in it starts with it (08:00), not somewhere inside it
+    assert list(items["t1"][1]) == ["07:00-09:00", "08:00-10:00", "11:00-12:00", "15:00-17:00", "17:00-19:00"]
     assert "later" in items["t2"][1] and "later" not in items["t1"][1]
     # a flexible routine block under the lab gets the nearest free times, up to two hours away
     assert list(items["Food: Snack (usually 13:30-14:00)"][1]) == [
@@ -1118,3 +1119,14 @@ def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
     assert [c.kind for c in changes if c.title == "Essay"] == ["delete"] and dropped == []
     assert not any(c.title == "Essay" and c.new_start < at(MON, "16:00") and c.new_end > at(MON, "15:00")
                    for c in changes if c.kind == "create")
+
+
+def test_a_task_in_its_routine_slot_starts_with_the_slot():
+    # routine Study 15:20-16:45 right after lunch: a 60 min Study task is offered 15:20-16:20, not 15:30-16:30
+    from dayoptimizer.llm.week_plan import slot_items
+    rd = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep", "Sleep", True, False),
+                (at(MON, "14:30"), at(MON, "15:20"), "Food", "Lunch", False, False),
+                (at(MON, "15:20"), at(MON, "16:45"), "Study", "Study", False, False)]}
+    items = slot_items(MON, [], NOW, [task(category="Study", title="IO", duration_min=60, due=None)],
+                       {"t1": 60}, rd, [])
+    assert "15:20-16:20" in items["t1"][1] and "15:30-16:30" not in items["t1"][1]

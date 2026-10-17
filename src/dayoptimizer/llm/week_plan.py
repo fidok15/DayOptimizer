@@ -870,17 +870,26 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
                       key=lambda g: (not any(s < g[1] and e > g[0] for s, e in own), g[0]))
         starts: list[list] = []
         for a, b in gaps:
+            # in its routine slot a task starts with the slot (15:20, not 15:30): the rest stays one piece
+            firsts = sorted({max(a, s) for s, e in own if s < b and e > a})
             a += timedelta(minutes=-minutes(midnight, a) % 15)
             mine = []
-            while minutes(a, b) >= chunk:
-                length = min(size, minutes(a, b))
-                if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
-                    length = n - chunk
-                s_m = minutes(midnight, a)
-                if length >= chunk and window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
-                    mine.append((a, a + timedelta(minutes=length)))
-                a += timedelta(minutes=max(length, 60))
-            starts.append(mine)
+            for x in firsts + [None]:
+                fixed_start = x is not None
+                x = x if fixed_start else a
+                while minutes(x, b) >= chunk:
+                    length = min(size, minutes(x, b))
+                    if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
+                        length = n - chunk
+                    s_m = minutes(midnight, x)
+                    inside = not fixed_start and any(s < x < e for s, e in own)
+                    if length >= chunk and not inside and window_rule(
+                            rules, t.category, s_m, s_m + length, day.weekday()) is None:
+                        mine.append((x, x + timedelta(minutes=length)))
+                    if fixed_start:
+                        break
+                    x += timedelta(minutes=max(length, 60))
+            starts.append(list(dict.fromkeys(mine)))
         picked = [x for k in range(3) for mine in starts for x in mine[k:k + 1]][:5]  # each gap's first start first
         slots = {_spans(day, [(a, b)]): Block(day=day.isoformat(), start=f"{a:%H:%M}",
                                               end=_spans(day, [(a, b)]).split("-")[1], category=t.category,
