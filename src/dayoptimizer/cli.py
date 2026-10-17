@@ -145,6 +145,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         apply_changes([PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
                                      reason="its task is done") for e in stale], calendar, storage, lambda c: True)
         events = [e for e in events if e not in stale]
+    # suggestions for free time yield to everything: the planner doesn't see the ones still ahead (llm/fillers.py)
+    events = [e for e in events if not (e.suggested and e.start >= now)]
     if not rules.has_routine and not tasks:
         return None
     _, config = _load_config()
@@ -183,11 +185,28 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
                           markup=False, style="yellow")
             continue
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
+        more = _suggest(backend, days, calendar, storage, rules, config)
+        if more:
+            from dayoptimizer.llm.fillers import record
+            done, failed = apply_changes(more, calendar, storage, lambda c: True)
+            record(done, storage)
+            changes, applied, errors = changes + more, applied + done, errors + failed
         _note_unplaced(unscheduled)
         return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
     return None
+
+def _suggest(backend, days: list[date], calendar, storage, rules, config) -> list:
+    """Suggestions for the free time the plan left today and tomorrow (llm/fillers.py)."""
+    from dayoptimizer.llm import fillers
+    now = datetime.now().astimezone()
+    if not any(0 <= (d - now.date()).days <= 1 for d in days):
+        return []
+    start = datetime.combine(now.date() - timedelta(days=14), time(0)).astimezone()
+    changes, _ = fillers.suggest(backend, days, calendar.list_events(start, start + timedelta(days=22)), storage,
+                                 rules, config.get("notes") or "", list(config["categories"]), now)
+    return changes
 
 def _plan_day(day: date, calendar, storage, rules, confirm=None):
     result = _llm_plan([day], calendar, storage, rules, confirm)

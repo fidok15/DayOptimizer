@@ -53,6 +53,7 @@ class DayRulesConfig(BaseModel):
     gym_per_week: int | None = Field(default=None, ge=0, le=14)
     gym_duration_minutes: int | None = Field(default=None, ge=10, le=300)
     min_free_minutes: int | None = Field(default=None, ge=0, le=720)
+    variety: Literal["low", "medium", "high"] | None = None  # how soon a suggested activity may come back
     deep_work_minutes: int | None = Field(default=None, ge=15, le=300)
     deep_work_blocks_per_day: int | None = Field(default=None, ge=0, le=8)
     buffer_minutes: int | None = Field(default=None, ge=0, le=120)

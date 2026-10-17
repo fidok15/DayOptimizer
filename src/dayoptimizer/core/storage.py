@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS pending_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, data TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS fillers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL,
+    title TEXT NOT NULL, category TEXT NOT NULL, event_id TEXT, status TEXT NOT NULL DEFAULT 'placed'
+);
 """
 
 
@@ -253,6 +257,23 @@ class Storage:
         task.done = True
         self.save_task(task)
         return True
+
+    def save_filler(self, start: datetime, end: datetime, title: str, category: str, event_id: str | None) -> None:
+        """A block suggested for free time (llm/fillers.py), kept to vary them and to notice the user deleted one."""
+        self._conn.execute("INSERT INTO fillers(day, start, end, title, category, event_id) VALUES(?, ?, ?, ?, ?, ?)",
+                           (start.date().isoformat(), start.isoformat(), end.isoformat(), title, category, event_id))
+        self._conn.commit()
+
+    def fillers_since(self, day: str) -> list[dict]:
+        """Suggested blocks from that day on: id, day, start, end, title, category, event_id, status
+        (placed; deleted: by the user; removed: by a replan)."""
+        cur = self._conn.execute("SELECT * FROM fillers WHERE day >= ? ORDER BY id", (day,))
+        names = [c[0] for c in cur.description]
+        return [dict(zip(names, row)) for row in cur.fetchall()]
+
+    def set_filler_status(self, filler_id: int, status: str) -> None:
+        self._conn.execute("UPDATE fillers SET status=? WHERE id=?", (status, filler_id))
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()

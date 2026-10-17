@@ -14,6 +14,7 @@ class Event:
     all_day: bool = False
     managed: bool = False
     task_id: str | None = None
+    suggested: bool = False  # a planner block suggested for free time (llm/fillers.py)
 
 @dataclass
 class GarminSummary:
@@ -52,6 +53,7 @@ class PlannedChange:
     new_end: datetime | None = None
     requires_approval: bool = False
     task_id: str | None = None
+    suggested: bool = False
 
 
 @dataclass

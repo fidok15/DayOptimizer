@@ -135,6 +135,11 @@ class OllamaBackend:
     def choose(self, system: str, prompt: str, schema: dict) -> dict:
         return json.loads(self._chat(system, prompt, schema, timeout=300, num_predict=1000))
 
+    def structured(self, system: str, prompt: str, model, schema: dict | None = None):
+        """One answer as `model` (a pydantic class); `schema` may close its choices (enums)."""
+        return model.model_validate_json(self._chat(system, prompt, schema or model.model_json_schema(),
+                                                    timeout=300, num_predict=1000))
+
     def task_fix(self, reply: str, task_line: str, blocks: list[str]) -> TaskFix:
         schema = TaskFix.model_json_schema()
         if blocks:

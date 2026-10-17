@@ -37,6 +37,18 @@ class AnthropicBackend:
             raise RuntimeError(f"the model stopped early ({response.stop_reason})")
         return response.parsed_output
 
+    def structured(self, system: str, prompt: str, model, schema: dict | None = None):
+        """One answer as `model` (a pydantic class); the closed choices in `schema` are for small
+        local models, the caller checks the answer anyway."""
+        response = self.client.messages.parse(
+            model=self.model,
+            max_tokens=2048,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+            output_format=model,
+        )
+        return response.parsed_output
+
     def task_fix(self, reply: str, task_line: str, blocks: list[str]) -> TaskFix:
         response = self.client.messages.parse(
             model=self.model,
