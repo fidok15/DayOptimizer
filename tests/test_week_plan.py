@@ -784,6 +784,24 @@ def test_a_routine_block_a_task_mostly_took_leaves_no_stubs():
     assert [b.title for _, _, b in _yield_to_tasks([span(study), span(task_block)])] == ["Report"]
 
 
+def test_the_commute_around_a_skipped_routine_block_goes_with_it():
+    from dayoptimizer.llm.week_plan import _without_orphans
+    def r(a, b, cat, title):
+        return (at(MON, a), at(MON, b), cat, title, False, False)
+    spans = {MON: [r("08:00", "08:30", "Commute", "Commute"), r("08:30", "12:00", "Work", "Office"),
+                   r("18:15", "18:30", "Commute", "Commute"), r("18:30", "19:45", "Gym", "Gym"),
+                   r("19:45", "20:00", "Commute", "Commute back")]}
+    def kept(*titles):
+        return [(x[0], x[1], block(MON, f"{x[0]:%H:%M}", f"{x[1]:%H:%M}", x[2], x[3])) for x in spans[MON]
+                if x[3] in titles]
+    early = at(MON, "06:00")
+    out = _without_orphans(kept("Commute", "Office", "Commute back"), spans, early)  # a note skipped the gym
+    assert [(b.title, b.start) for _, _, b in out] == [("Commute", "08:00"), ("Office", "08:30")]
+    every = kept("Commute", "Office", "Gym", "Commute back")
+    assert _without_orphans(every, spans, early) == every
+    assert len(_without_orphans(kept("Commute", "Office", "Commute back"), spans, at(MON, "19:00"))) == 4  # at the gym now
+
+
 def test_fixed_routine_of_another_category_still_keeps_tasks_out():
     gym = {MON: [(at(MON, "16:00"), at(MON, "18:00"), "Training", "Gym")]}
     creates, problems = validate(WeekPlan(blocks=[tblock("16:00", "18:00")]), [MON], WCATS, [LECTURE, LAB], NOTES,
