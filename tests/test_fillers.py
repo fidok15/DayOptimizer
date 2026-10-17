@@ -333,3 +333,15 @@ def test_suggestions_keep_out_of_routine_time_unless_the_block_moved_or_the_note
     run(model, Cal(moved + gyms), Storage(":memory:"), rules(typical_week=week), days=(SAT,))
     # lunch moved (its hour is free), Nauka is missing but its time is not free, the notes skip the gym
     assert "Gaps to fill: 12:15-14:00, 18:00-23:00;" in model.prompts[0]
+
+
+def test_the_model_is_told_outright_to_write_titles_in_the_notes_language():
+    class Spy(Model):
+        def structured(self, system, prompt, model, schema=None):
+            self.system = system
+            return super().structured(system, prompt, model, schema)
+    model = Spy()
+    run(model, Cal(plan(SAT)), Storage(":memory:"), days=(SAT,))  # notes: "Lubię czytać."
+    assert "in Polish" in model.system and "Spacer" in model.system
+    changes, _ = suggest(model, [SAT], plan(SAT), Storage(":memory:"), rules(), "I like reading.", CATS, NOW)
+    assert "in English" in model.system and "in Polish" not in model.system

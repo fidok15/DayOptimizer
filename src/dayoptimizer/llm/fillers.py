@@ -65,9 +65,23 @@ SYSTEM = (
 _SUFFIX = re.compile(r"\s*\((sugestia|suggestion)\)\s*$", re.I)
 
 
+def polish(notes: str) -> bool:
+    """Are the notes in Polish? (the only language besides English the planner speaks)"""
+    return bool(re.search(r"[ąćęłńśźż]", notes or "", re.I))
+
+
 def suffix(notes: str) -> str:
     """What marks a title as only an idea, in the language of the notes."""
-    return "(sugestia)" if re.search(r"[ąćęłńśźż]", notes or "", re.I) else "(suggestion)"
+    return "(sugestia)" if polish(notes) else "(suggestion)"
+
+
+def system_prompt(notes: str) -> str:
+    """The instructions, with the language of the titles said outright: a small model told only
+    'the language of their notes' answers in English (live: 'Walk in nature (sugestia)')."""
+    if not polish(notes):
+        return SYSTEM + "\n- Write every title and why in English."
+    return SYSTEM + ("\n- Write every title and why in Polish, never in English: e.g. \"Spacer\", \"Czytanie "
+                     "książki\", \"Rozciąganie\", \"Telefon do przyjaciela\", \"Krótki kurs online\", \"Kino\".")
 
 
 def bare(title: str) -> str:
@@ -281,7 +295,7 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         answer, refused = None, ["no suggestions: the model's answer wasn't readable"]
         for _ in range(2):  # one retry for an answer that isn't the JSON asked for
             try:
-                answer = backend.structured(SYSTEM, prompt, Fillers, schema(categories, list(asks),
+                answer = backend.structured(system_prompt(notes), prompt, Fillers, schema(categories, list(asks),
                                                                            sum(map(len, asks.values()))))
                 break
             except ValueError:
