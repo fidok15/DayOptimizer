@@ -156,8 +156,7 @@ def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datet
     the next quarter hour: 15:15, not 15:07:13 (a block there would start before now)."""
     midnight = datetime.combine(day, time(0)).astimezone()
     end = midnight + timedelta(days=1)
-    up = (now + timedelta(minutes=14, seconds=59)).replace(second=0, microsecond=0)
-    cur = max(midnight, up - timedelta(minutes=up.minute % 15))
+    cur = max(midnight, _next_quarter(now))
     busy = sorted((max(e.start, midnight), min(e.end, end)) for e in events
                   if not e.all_day and (not e.managed or e.start < now) and e.start < end and e.end > midnight)
     gaps = []
@@ -168,6 +167,12 @@ def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datet
     if cur < end:
         gaps.append((cur, end))
     return gaps
+
+
+def _next_quarter(t: datetime) -> datetime:
+    """The first quarter hour at or after t, on the minute: 15:07:13 -> 15:15:00."""
+    up = (t + timedelta(minutes=14, seconds=59)).replace(second=0, microsecond=0)
+    return up - timedelta(minutes=up.minute % 15)
 
 
 def _spans(day: date, gaps: list[tuple[datetime, datetime]]) -> str:
@@ -799,8 +804,7 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
     nowhere else goes: (event, None, None)."""
     midnight = datetime.combine(d, time(0)).astimezone()
     day_end = midnight + timedelta(days=1)
-    a = max(lo, now, midnight)
-    a += timedelta(minutes=-minutes(midnight, a) % 15)
+    a = _next_quarter(max(lo, now, midnight))  # whole minutes: a replan must find the same start again
     while a + timedelta(minutes=n) <= (day_end if hi is None else min(hi, day_end)):
         b = a + timedelta(minutes=n)
         way = [e for e in busy if e.start < b and e.end > a]

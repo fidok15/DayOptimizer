@@ -1169,3 +1169,18 @@ def test_a_block_code_places_now_starts_on_the_next_quarter_not_before_now():
                                        left={"t1": 60}, routine_days=rd)
     assert [(c.title, c.new_start) for c in changes if c.task_id] == [("IO", at(MON, "15:15"))]
     assert not any("before now" in d for d in dropped)
+
+
+def test_blocks_code_moves_to_make_room_start_on_the_minute():
+    # live: now 13:12:34 -> the task and the blocks moved for it started at 16:30:34, so the next
+    # replan deleted them and made them again at 16:30:00
+    rd = {MON: [(at(MON, "07:00"), at(MON, "17:45"), "Gym", "Classes", True, False),
+                (at(MON, "18:00"), at(MON, "18:15"), "Food", "Snack", False, False)]}
+    wall = ev("w", "Uni", "Wall", MON, "20:00", "23:59")
+    now = at(MON, "13:12") + timedelta(seconds=34, microseconds=567)
+    creates, _ = validate(WeekPlan(blocks=[block(MON, "18:00", "18:15", "Food", "Snack")]), [MON], WCATS, [wall],
+                          NOTES, [], now, tasks=[task(due=None, min_chunk_min=None)], left={"t1": 120},
+                          reserved={MON: [(at(MON, "07:00"), at(MON, "17:45"), "Classes", "Gym")]},
+                          routine_days=rd, fill_until=MON)
+    assert sorted((c.title, c.new_start, c.new_end) for c in creates) == [
+        ("Report", at(MON, "17:45"), at(MON, "19:45")), ("Snack", at(MON, "19:45"), at(MON, "20:00"))]
