@@ -279,6 +279,35 @@ def test_the_free_time_question_is_asked_once_in_a_terminal_and_saved(monkeypatc
                                                                                 "variety": "high"}
 
 
+def test_ctrl_c_at_the_free_time_question_stops_and_a_config_that_wont_save_doesnt(monkeypatch):
+    import yaml
+    from dayoptimizer import cli, onboarding, paths
+    onboarding.save_user_config(yaml.safe_dump({"typical_week": {"mon": [{"start": "09:00", "end": "10:00",
+                                                                           "category": "Gym"}]},
+                                                "categories": {"Gym": {"movable": True}}}))
+    monkeypatch.setattr(cli, "_in_bundle", lambda: False)
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+
+    def replies(*answers):
+        it = iter(answers)
+
+        def ask(*a, **k):
+            x = next(it)
+            if isinstance(x, BaseException):
+                raise x
+            return x
+        monkeypatch.setattr(cli.console, "input", ask)
+    replies("1h", KeyboardInterrupt())
+    assert cli._ask_free_time({"llm": {}}) is False  # the command stops, the first answer isn't kept
+    assert "day_rules" not in yaml.safe_load(paths.user_config_path().read_text())
+
+    def broken(text):
+        raise onboarding.ConfigError("Invalid config: notes too long")
+    monkeypatch.setattr(onboarding, "save_user_config", broken)
+    replies("1h", "dużo")
+    assert cli._ask_free_time({"llm": {}}) is True  # a note, and the plan goes on
+
+
 def test_no_model_now_means_no_suggestions_and_the_gaps_are_offered_next_time():
     class Down(Model):
         def structured(self, *a, **k):

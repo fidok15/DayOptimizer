@@ -734,21 +734,22 @@ def understand_variety(reply: str) -> str | None:
     return None
 
 
-def _ask_free_time(config) -> None:
+def _ask_free_time(config) -> bool:
     """Once, in a terminal: how much of each day stays completely free, and how
     varied the suggestions for free time are. Saved like the setup page saves
-    (save_user_config). Without a terminal nothing is asked: 60 min, medium."""
+    (save_user_config). Without a terminal nothing is asked: 60 min, medium.
+    False when the user pressed Ctrl+C: stop the command, nothing saved."""
     import yaml
     from pydantic import BaseModel
     from typing import Literal
-    from dayoptimizer.onboarding import save_user_config
+    from dayoptimizer.onboarding import ConfigError, save_user_config
     from dayoptimizer.web import _local
     if not sys.stdin.isatty() or _in_bundle():
-        return
+        return True
     local = _local()
     day_rules = dict(local.get("day_rules") or {})
     if not local.get("typical_week") or {"min_free_minutes", "variety"} <= day_rules.keys():
-        return
+        return True
 
     class Reply(BaseModel):
         minutes: int | None = None
@@ -771,18 +772,26 @@ def _ask_free_time(config) -> None:
             continue
         try:
             reply = console.input(question, markup=False).strip()
-        except (EOFError, KeyboardInterrupt):
-            return
-        value = read(reply) if reply else default
-        if value is None:
-            value = getattr(by_model(reply), field)
+            value = read(reply) if reply else default
+            if value is None:
+                value = getattr(by_model(reply), field)
+        except EOFError:
+            return True
+        except KeyboardInterrupt:
+            console.print("\nStopped — nothing saved, nothing planned.", markup=False)
+            return False
         if value is None or (key == "min_free_minutes" and not 0 <= value <= 720):
             console.print(f"I didn't get that — using {default}{' min' if key == 'min_free_minutes' else ''}. "
                           "Change it in  dayoptimizer setup.", markup=False, style="yellow")
             value = default
         day_rules[key] = value
     local["day_rules"] = day_rules
-    save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+    try:
+        save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+    except ConfigError as exc:
+        console.print(f"Couldn't save your answers ({' '.join(str(exc).split())[:200]}): this run uses your saved "
+                      "settings. Fix it in  dayoptimizer setup.", markup=False, style="yellow")
+    return True
 
 
 def cmd_chat(args, rules, config):
@@ -895,8 +904,8 @@ def _calendar_run(argv: list[str], ask: bool = True) -> None:
         console.print("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
                       "folder run:  scripts/setup-bundle.sh", markup=False)
         return
-    if ask and argv[:1] in (["plan"], ["add"]):
-        _ask_free_time(_load_config()[1])  # once, here: the bundle has no terminal
+    if ask and argv[:1] in (["plan"], ["add"]) and not _ask_free_time(_load_config()[1]):
+        return  # once, here: the bundle has no terminal; Ctrl+C stops the command
     _take_unplaced()  # an older run's are no news
     rest = _bundle_run([a.replace("\n", " ") for a in argv], timeout=None,
                        echo=lambda text: print(text, end="", flush=True))
