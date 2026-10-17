@@ -33,6 +33,13 @@ def decide(now: datetime, today: str, garmin: GarminSummary | None,
     return actions
 
 
+def _added(applied) -> str:
+    """The free-time suggestions a run wrote: 'Added: Czytanie (sugestia) 18:15–19:15'."""
+    adds = [f"{c.title} {c.new_start:%H:%M}–{c.new_end:%H:%M}" for c in applied
+            if getattr(c, "suggested", False) and c.kind == "create"]
+    return f". Added: {', '.join(adds)}" if adds else ""
+
+
 def _is_foreign(title: str, extra: set[str] | frozenset[str] = frozenset()) -> bool:
     return (title not in PLANNER_TITLES and title not in extra
             and not title.startswith("Commute:"))
@@ -79,23 +86,25 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
             total_applied = 0
             total_errors = 0
             reasons = []
+            added = []
             for day in days:
                 changes, applied, errors = plan_fn(day, calendar, storage, rules,
                                                     confirm=lambda c: False)
                 total_applied += len(applied)
+                added += applied
                 total_errors += len(errors)
                 if changes:
                     reasons.append(changes[0].reason)
             reason = f" — {reasons[0]}" if reasons else ""
             skipped = f" ({total_errors} skipped — see recent_changes)" if total_errors else ""
             notify("DayOptimizer",
-                   f"{action}: {total_applied} changes across {len(days)} days{reason}{skipped}")
+                   f"{action}: {total_applied} changes across {len(days)} days{reason}{skipped}{_added(added)}")
         else:
             changes, applied, errors = plan_fn(today_date, calendar, storage, rules,
                                                 confirm=lambda c: False)
             reason = f" — {changes[0].reason}" if changes else ""
             skipped = f" ({len(errors)} skipped — see recent_changes)" if errors else ""
-            notify("DayOptimizer", f"{action}: {len(applied)} changes{reason}{skipped}")
+            notify("DayOptimizer", f"{action}: {len(applied)} changes{reason}{skipped}{_added(applied)}")
             if action == "morning_replan":
                 storage.set_state(f"morning:{today}", now.isoformat())
             elif action == "stress_adjust":

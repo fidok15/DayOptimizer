@@ -74,6 +74,9 @@ def read_state() -> dict:
         "defaults": list(_defaults()["categories"]),
         "day_start": rules.get("day_start", "06:00"),
         "day_end": rules.get("day_end", "23:00"),
+        # None until the user picks: then the terminal asks once (cli._ask_free_time)
+        "min_free_minutes": (_local().get("day_rules") or {}).get("min_free_minutes"),
+        "variety": (_local().get("day_rules") or {}).get("variety"),
     }
 
 
@@ -117,6 +120,10 @@ def write_state(payload: object) -> dict:
     week = {day: blocks for day, blocks in week.items() if blocks}
     if week:
         local["typical_week"] = week
+    day_rules = {**(local.get("day_rules") or {}),
+                 **{k: payload[k] for k in ("min_free_minutes", "variety") if payload.get(k) is not None}}
+    if day_rules:
+        local["day_rules"] = day_rules
     save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
     return read_state()
 

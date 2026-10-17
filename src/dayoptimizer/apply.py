@@ -28,8 +28,10 @@ def apply_changes(changes, calendar, storage, confirm: Callable[[PlannedChange],
             if c.kind == "move":
                 calendar.move_event(c.event_id, c.new_start, c.new_end)
             elif c.kind == "create":
-                extra = {"task_id": c.task_id} if c.task_id else {}
-                calendar.create_event(c.category, c.title, c.new_start, c.new_end, **extra)
+                extra = {"task_id": c.task_id} if c.task_id else {"suggested": True} if c.suggested else {}
+                made = calendar.create_event(c.category, c.title, c.new_start, c.new_end, **extra)
+                if c.suggested:
+                    c.event_id = made  # kept to tell later whether the user deleted it
             elif c.kind == "delete":
                 calendar.delete_event(c.event_id)
         except KeyError:

@@ -58,6 +58,7 @@ class Rules:
     work_days: frozenset[int] = field(default_factory=lambda: _DEFAULT_WORK_DAYS)
     holiday_calendars: list[str] = field(default_factory=lambda: list(_DEFAULT_HOLIDAY_CALENDARS))
     typical_week: dict[int, list[RoutineBlock]] = field(default_factory=dict)
+    variety: str = "medium"  # low / medium / high: suggested activities repeat after 1 / 3 / 7 days
 
     @property
     def has_routine(self) -> bool:
@@ -167,4 +168,5 @@ def load_rules(path: str | Path, user_path: str | Path | None = None) -> Rules:
         work_days=work_days,
         holiday_calendars=holiday_calendars,
         typical_week=_parse_typical_week(data.get("typical_week")),
+        variety=d.get("variety") or "medium",
     )

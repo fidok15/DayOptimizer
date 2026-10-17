@@ -996,8 +996,9 @@ def test_slots_keep_out_of_events_and_other_routine_but_may_go_over_a_skippable_
     from dayoptimizer.llm.week_plan import slot_items
     items = slot_items(MON, [LECTURE, LAB], NOW, [task(), task(id="t2", due=at(TUE, "12:00"))],
                        {"t1": 120, "t2": 120}, SLOT_ROUTINE, SKIP)
-    # the lecture may be planned over, the lab and the lunch may not; the own routine slot counts as free
-    assert list(items["t1"][1]) == ["07:00-09:00", "09:00-11:00", "11:00-12:00", "15:00-17:00", "17:00-19:00"]
+    # the lecture may be planned over, the lab and the lunch may not; the own routine slot counts as free,
+    # and a task in it starts with it (08:00), not somewhere inside it
+    assert list(items["t1"][1]) == ["07:00-09:00", "08:00-10:00", "11:00-12:00", "15:00-17:00", "17:00-19:00"]
     assert "later" in items["t2"][1] and "later" not in items["t1"][1]
     # a flexible routine block under the lab gets the nearest free times, up to two hours away
     assert list(items["Food: Snack (usually 13:30-14:00)"][1]) == [
@@ -1118,3 +1119,120 @@ def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
     assert [c.kind for c in changes if c.title == "Essay"] == ["delete"] and dropped == []
     assert not any(c.title == "Essay" and c.new_start < at(MON, "16:00") and c.new_end > at(MON, "15:00")
                    for c in changes if c.kind == "create")
+
+
+def test_a_correction_round_keeps_a_routine_block_cut_around_a_task():
+    # the gym a note rules out sends the plan back; the rest of Study, after the task, must stay
+    class First(Picker):
+        def choose(self, system, prompt, schema):
+            return {k: {"slot": v["properties"]["slot"]["enum"][0], "why": "first"}
+                    for k, v in schema["properties"].items()}
+    rd = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep", "Sleep", True, False),
+                (at(MON, "15:20"), at(MON, "18:00"), "Study", "Study", False, False),
+                (at(MON, "18:30"), at(MON, "19:45"), "Gym", "Gym", False, False)]}
+    no_gym = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 0, "source": "No gym."}])
+    wall = ev("w", "Work", "Work", MON, "07:00", "15:20")
+    changes, *_ = plan_days(First(), [MON], "# r", CATS + ["Study", "Sleep"], [wall], NOTES, no_gym, NOW,
+                            tasks=[task(category="Study", title="IO", duration_min=60, due=None)], left={"t1": 60},
+                            routine_days=rd)
+    made = {(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes}
+    assert {("IO", "15:20", "16:20"), ("Study", "16:20", "18:00")} <= made and not any(c.title == "Gym" for c in changes)
+
+
+def test_a_task_in_its_routine_slot_starts_with_the_slot():
+    # routine Study 15:20-16:45 right after lunch: a 60 min Study task is offered 15:20-16:20, not 15:30-16:30
+    from dayoptimizer.llm.week_plan import slot_items
+    rd = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep", "Sleep", True, False),
+                (at(MON, "14:30"), at(MON, "15:20"), "Food", "Lunch", False, False),
+                (at(MON, "15:20"), at(MON, "16:45"), "Study", "Study", False, False)]}
+    items = slot_items(MON, [], NOW, [task(category="Study", title="IO", duration_min=60, due=None)],
+                       {"t1": 60}, rd, [])
+    assert "15:20-16:20" in items["t1"][1] and "15:30-16:30" not in items["t1"][1]
+    # a slot already under way: from the next quarter hour, never from this very second
+    now = at(MON, "15:32") + timedelta(seconds=15)
+    items = slot_items(MON, [], now, [task(category="Study", title="IO", duration_min=60, due=None)],
+                       {"t1": 60}, rd, [])
+    assert list(items["t1"][1])[0] == "15:45-16:45"
+
+
+def test_a_block_code_places_now_starts_on_the_next_quarter_not_before_now():
+    class GymOnly:  # a block a note forbids forces a correction round, which re-checks what code placed
+        def plan_week(self, system, prompt, schema=None):
+            return WeekPlan(blocks=[Block(day=MON.isoformat(), start="18:30", end="19:45", category="Gym", title="Gym")])
+    rd = {MON: [(at(MON, "00:00"), at(MON, "07:00"), "Sleep", "Sleep", True, False),
+                (at(MON, "15:00"), at(MON, "18:00"), "Study", "Study", False, False),
+                (at(MON, "18:30"), at(MON, "19:45"), "Gym", "Gym", False, False)]}
+    no_gym = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 0, "source": "No gym."}])
+    changes, _, dropped, _ = plan_days(GymOnly(), [MON], "# r", CATS + ["Study", "Sleep"], [], NOTES, no_gym,
+                                       at(MON, "15:07").replace(second=13),
+                                       tasks=[task(category="Study", title="IO", duration_min=60, due=None)],
+                                       left={"t1": 60}, routine_days=rd)
+    assert [(c.title, c.new_start) for c in changes if c.task_id] == [("IO", at(MON, "15:15"))]
+    assert not any("before now" in d for d in dropped)
+
+
+def test_blocks_code_moves_to_make_room_start_on_the_minute():
+    # live: now 13:12:34 -> the task and the blocks moved for it started at 16:30:34, so the next
+    # replan deleted them and made them again at 16:30:00
+    rd = {MON: [(at(MON, "07:00"), at(MON, "17:45"), "Gym", "Classes", True, False),
+                (at(MON, "18:00"), at(MON, "18:15"), "Food", "Snack", False, False)]}
+    wall = ev("w", "Uni", "Wall", MON, "20:00", "23:59")
+    now = at(MON, "13:12") + timedelta(seconds=34, microseconds=567)
+    creates, _ = validate(WeekPlan(blocks=[block(MON, "18:00", "18:15", "Food", "Snack")]), [MON], WCATS, [wall],
+                          NOTES, [], now, tasks=[task(due=None, min_chunk_min=None)], left={"t1": 120},
+                          reserved={MON: [(at(MON, "07:00"), at(MON, "17:45"), "Classes", "Gym")]},
+                          routine_days=rd, fill_until=MON)
+    assert sorted((c.title, c.new_start, c.new_end) for c in creates) == [
+        ("Report", at(MON, "17:45"), at(MON, "19:45")), ("Snack", at(MON, "19:45"), at(MON, "20:00"))]
+
+
+def test_the_commute_to_a_skipped_gym_goes_even_when_a_task_needs_its_time():
+    # live: the notes skipped the gym, code moved the commute 18:15 -> 18:45 for a task, and the moved
+    # commute (no longer at its usual time) stayed, to a gym that wasn't there
+    def r(a, b, cat, title):
+        return (at(MON, a), at(MON, b), cat, title, False, False)
+    rd = {MON: [r("16:30", "18:00", "Work", "Study"), r("18:00", "18:15", "Food", "Plan tomorrow"),
+                r("18:15", "18:30", "Commute", "Commute"), r("18:30", "19:45", "Gym", "Gym"),
+                r("19:45", "20:00", "Commute", "Commute back"), r("20:00", "21:00", "Food", "Supper")]}
+    no_gym = parse_rules([{"type": "max_per_week", "category": "Gym", "count": 0, "source": "No gym."}])
+    plan = WeekPlan(blocks=[block(MON, f"{s:%H:%M}", f"{e:%H:%M}", c, t) for s, e, c, t, *_ in rd[MON]])
+    creates, problems = validate(plan, [MON], WCATS, [ev("w", "Uni", "Wall", MON, "00:00", "16:30"), ev("n", "Uni", "Night", MON, "21:00", "23:59")], NOTES, no_gym,
+                                 NOW, tasks=[task(due=None, min_chunk_min=None)], left={"t1": 120},
+                                 routine_days=rd, fill_until=MON)
+    made = sorted((f"{c.new_start:%H:%M}", c.title) for c in creates)
+    assert made == [("16:30", "Report"), ("18:30", "Plan tomorrow"), ("20:00", "Supper")], made
+
+
+def test_a_routine_block_cut_around_a_task_that_moved_away_grows_back():
+    # live Sunday: the task that had cut Deep work and Study moved to Saturday; the pieces left
+    # (Deep work 10:15-10:30, Study 11:00-12:30) must grow back, not leave holes for suggestions
+    def r(a, b, cat, title):
+        return (at(MON, a), at(MON, b), cat, title, False, False)
+    rd = {MON: [r("08:00", "08:45", "Learn", "Deep work"), r("08:45", "09:00", "Free time", "Break"),
+                r("09:00", "10:30", "Learn", "Deep work"), r("11:00", "14:00", "Learn", "Study")]}
+
+    def old(i, a, b, cat, title, task_id=None):
+        return Event(id=i, calendar=cat, title=title, start=at(MON, a), end=at(MON, b), managed=True, task_id=task_id)
+    events = [ev("w", "Uni", "Wall", MON, "00:00", "08:00"), ev("n", "Uni", "Night", MON, "14:00", "23:59"),
+              old("b", "08:00", "08:15", "Free time", "Break"), old("t", "08:15", "10:15", "Learn", "Essay", "t1"),
+              old("d", "10:15", "10:30", "Learn", "Deep work"), old("s", "11:00", "12:30", "Learn", "Study"),
+              old("x", "12:30", "14:00", "Work", "Work")]
+    cats = WCATS + ["Learn", "Free time"]
+    t = task(title="Essay", category="Learn", due=None)
+    for run in range(2):
+        changes, _, dropped, _ = plan_days(Small(WeekPlan()), [MON], "# r", cats, events, NOTES, [], NOW,
+                                           tasks=[t], left={"t1": 0}, routine_days=rd)
+        assert run == 0 or changes == []
+        events = _apply(events, changes)
+    assert sorted((f"{e.start:%H:%M}", f"{e.end:%H:%M}", e.title) for e in events if e.managed) == [
+        ("08:00", "08:15", "Break"), ("08:15", "09:00", "Deep work"), ("09:00", "10:30", "Deep work"),
+        ("11:00", "14:00", "Study")]
+
+
+def test_a_routine_block_a_weekly_note_rules_out_is_skipped_by_the_note_not_for_no_room():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    gym = {MON: [(at(MON, "18:30"), at(MON, "19:45"), "Gym", "Gym", False, False)]}
+    two = parse_rules([{"type": "min_gap_days", "category": "Gym", "days": 2, "source": "A day of rest."}])
+    full = [ev("m", "Uni", "Meeting", MON, "16:00", "22:00")]
+    back, lost = _forgotten_routine([], gym, full, NOW, two, {"Gym": [MON - timedelta(days=1)]})
+    assert back == [] and lost == [f"{MON} 18:30-19:45 Gym: Gym: breaks the note \"A day of rest.\""]

@@ -145,6 +145,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
         apply_changes([PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
                                      reason="its task is done") for e in stale], calendar, storage, lambda c: True)
         events = [e for e in events if e not in stale]
+    # suggestions for free time yield to everything: the planner doesn't see the ones still ahead (llm/fillers.py)
+    events = [e for e in events if not (e.suggested and e.start >= now)]
     if not rules.has_routine and not tasks:
         return None
     _, config = _load_config()
@@ -183,11 +185,28 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
                           markup=False, style="yellow")
             continue
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
+        more = _suggest(backend, days, calendar, storage, rules, config, hidden_since=now)
+        if more:
+            from dayoptimizer.llm.fillers import record
+            done, failed = apply_changes(more, calendar, storage, lambda c: True)
+            record(done, storage)
+            changes, applied, errors = changes + more, applied + done, errors + failed
         _note_unplaced(unscheduled)
         return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
     return None
+
+def _suggest(backend, days: list[date], calendar, storage, rules, config, hidden_since=None) -> list:
+    """Suggestions for the free time the plan left today and tomorrow (llm/fillers.py)."""
+    from dayoptimizer.llm import fillers
+    now = datetime.now().astimezone()
+    if not any(0 <= (d - now.date()).days <= 1 for d in days):
+        return []
+    start = datetime.combine(now.date() - timedelta(days=14), time(0)).astimezone()
+    changes, _ = fillers.suggest(backend, days, calendar.list_events(start, start + timedelta(days=22)), storage,
+                                 rules, config.get("notes") or "", list(config["categories"]), now, hidden_since)
+    return changes
 
 def _plan_day(day: date, calendar, storage, rules, confirm=None):
     result = _llm_plan([day], calendar, storage, rules, confirm)
@@ -679,6 +698,102 @@ def _decide_unplaced(lines: list[str]) -> None:
         console.print("Replanning...", style="dim")
         _replan_for(changed, rules, config, ask=False)
 
+_NUMBERS = {"jedn": 1, "one": 1, "dwie": 2, "dwa": 2, "two": 2, "trzy": 3, "three": 3, "cztery": 4, "four": 4}
+
+
+def understand_free_time(reply: str) -> int | None:
+    """Minutes from a reply like '1h', '90 min', '1,5h', '1h 30min', 'godzinkę', 'pół godziny', 'dwie godziny', '45'."""
+    t = reply.strip().lower().replace(",", ".")
+    hour = r"(h|hr|hrs|hours?|godz\w*)(?![^\W\d])"  # '1h30' too
+    if re.fullmatch(r"0|none|nothing|nic|zero|brak", t):
+        return 0
+    if re.search(r"półtor|and a half", t):
+        return 90
+    if m := re.search(rf"(\d+(?:\.\d+)?)\s*{hour}\.?\s*(\d+)?", t):  # and the minutes after: '1 godz. 30 min'
+        return round(float(m.group(1)) * 60) + int(m.group(3) or 0)
+    if m := re.search(r"(\d+)\s*m(in\w*)?\b", t):
+        return int(m.group(1))
+    if re.search(r"pół|half", t):
+        return 30
+    if re.search(rf"\b{hour}|godzin", t):
+        return 60 * next((n for w, n in _NUMBERS.items() if w in t), 1)
+    if t.isdigit():
+        return int(t) * 60 if int(t) <= 8 else int(t)  # '2' means hours, '45' minutes
+    return None
+
+
+def understand_variety(reply: str) -> str | None:
+    t = reply.strip().lower()
+    # 'not much' / 'nie za dużo' is low: the negation is read before 'much'
+    for level, words in (("low", r"low|little|few|mał|niewiel|nisk|rzadko"
+                                 r"|\b(not|nie)\b.*(much|many|lot|duż|wiel|bardzo)"),
+                         ("high", r"high|lots|a lot|much|many|duż|wysok|bardzo"),
+                         ("medium", r"medium|some|average|normal|średni|sredni|umiarkowan|trochę|troche")):
+        if re.search(words, t):
+            return level
+    return None
+
+
+def _ask_free_time(config) -> bool:
+    """Once, in a terminal: how much of each day stays completely free, and how
+    varied the suggestions for free time are. Saved like the setup page saves
+    (save_user_config). Without a terminal nothing is asked: 60 min, medium.
+    False when the user pressed Ctrl+C: stop the command, nothing saved."""
+    import yaml
+    from pydantic import BaseModel
+    from typing import Literal
+    from dayoptimizer.onboarding import ConfigError, save_user_config
+    from dayoptimizer.web import _local
+    if not sys.stdin.isatty() or _in_bundle():
+        return True
+    local = _local()
+    day_rules = dict(local.get("day_rules") or {})
+    if not local.get("typical_week") or {"min_free_minutes", "variety"} <= day_rules.keys():
+        return True
+
+    class Reply(BaseModel):
+        minutes: int | None = None
+        variety: Literal["low", "medium", "high"] | None = None
+
+    def by_model(reply: str) -> Reply:
+        try:
+            return make_backend(config["llm"]).structured(
+                "Read the person's reply: how many minutes a day they want completely free, and/or how much "
+                "variety they want (low, medium or high). Leave a field empty when the reply doesn't say.",
+                reply, Reply)
+        except Exception:  # no model, or an answer that isn't one: not understood
+            return Reply()
+    questions = [("min_free_minutes", "How much time a day do you want completely free? (e.g. 1h, 90 min; "
+                                      "Enter = 1 hour) ", understand_free_time, "minutes", 60),
+                 ("variety", "How much variety do you want in suggested activities? (low/medium/high; "
+                             "Enter = medium) ", understand_variety, "variety", "medium")]
+    for key, question, read, field, default in questions:
+        if key in day_rules:
+            continue
+        try:
+            reply = console.input(question, markup=False).strip()
+            value = read(reply) if reply else default
+            if value is None:
+                value = getattr(by_model(reply), field)
+        except EOFError:
+            return True
+        except KeyboardInterrupt:
+            console.print("\nStopped — nothing saved, nothing planned.", markup=False)
+            return False
+        if value is None or (key == "min_free_minutes" and not 0 <= value <= 720):
+            console.print(f"I didn't get that — using {default}{' min' if key == 'min_free_minutes' else ''}. "
+                          "Change it in  dayoptimizer setup.", markup=False, style="yellow")
+            value = default
+        day_rules[key] = value
+    local["day_rules"] = day_rules
+    try:
+        save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+    except ConfigError as exc:
+        console.print(f"Couldn't save your answers ({' '.join(str(exc).split())[:200]}): this run uses your saved "
+                      "settings. Fix it in  dayoptimizer setup.", markup=False, style="yellow")
+    return True
+
+
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
     console.print("[bold]DayOptimizer[/bold] — tell me about your day ('exit' to quit).")
@@ -789,6 +904,8 @@ def _calendar_run(argv: list[str], ask: bool = True) -> None:
         console.print("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
                       "folder run:  scripts/setup-bundle.sh", markup=False)
         return
+    if ask and argv[:1] in (["plan"], ["add"]) and not _ask_free_time(_load_config()[1]):
+        return  # once, here: the bundle has no terminal; Ctrl+C stops the command
     _take_unplaced()  # an older run's are no news
     rest = _bundle_run([a.replace("\n", " ") for a in argv], timeout=None,
                        echo=lambda text: print(text, end="", flush=True))

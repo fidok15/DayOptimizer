@@ -152,10 +152,11 @@ def _hhmm(value: str) -> int | None:
 def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datetime, datetime]]:
     """The day's gaps from now on: what the user's events (and planner blocks
     already under way) leave free. A small model reads these far better than it
-    works the gaps out from the event list itself."""
+    works the gaps out from the event list itself. The gap under way starts at
+    the next quarter hour: 15:15, not 15:07:13 (a block there would start before now)."""
     midnight = datetime.combine(day, time(0)).astimezone()
     end = midnight + timedelta(days=1)
-    cur = max(midnight, now)
+    cur = max(midnight, _next_quarter(now))
     busy = sorted((max(e.start, midnight), min(e.end, end)) for e in events
                   if not e.all_day and (not e.managed or e.start < now) and e.start < end and e.end > midnight)
     gaps = []
@@ -166,6 +167,12 @@ def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datet
     if cur < end:
         gaps.append((cur, end))
     return gaps
+
+
+def _next_quarter(t: datetime) -> datetime:
+    """The first quarter hour at or after t, on the minute: 15:07:13 -> 15:15:00."""
+    up = (t + timedelta(minutes=14, seconds=59)).replace(second=0, microsecond=0)
+    return up - timedelta(minutes=up.minute % 15)
 
 
 def _spans(day: date, gaps: list[tuple[datetime, datetime]]) -> str:
@@ -440,6 +447,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         kept.append((start, end, b))
     kept, count_problems = _count_rules(kept, rules, history or {})
     problems += count_problems
+    # the commute to a skipped gym goes now, before code may move it for a task (moved, it isn't recognised)
+    kept = _without_orphans(kept, routine_days or {}, now)
 
     def leftover():
         used: dict[str, int] = {}
@@ -514,11 +523,12 @@ def _shares_slot(a: Block, b: Block) -> bool:
 
 def _without_orphans(kept: list[tuple[datetime, datetime, Block]], routine_days: dict, now: datetime) -> list:
     """A routine block that isn't planned (a note skipped it, no room) takes with
-    it the short blocks of one other category right before and after it at
-    their usual time: the commute there and back for a skipped gym. Not when a
-    task of its category took its time, nor for one that already began."""
-    def key(d, cat, title, s, e):
-        return d, cat, title.strip().casefold(), s, e
+    it the short blocks of one other category right before and after it, at
+    their usual time or moved up to 2 hours from it: the commute there and back
+    for a skipped gym. Not when a task of its category took its time, nor for
+    one that already began."""
+    def key(d, cat, title):
+        return d, cat, title.strip().casefold()
     have = {(s.date(), b.category, b.title.strip().casefold()) for s, _, b in kept if b.task_id is None}
     drop = set()
     for d, spans in routine_days.items():
@@ -529,9 +539,10 @@ def _without_orphans(kept: list[tuple[datetime, datetime, Block]], routine_days:
             for a in (y for y in spans if y[1] == x[0]):
                 for z in (y for y in spans if y[0] == x[1]):
                     if a[2] == z[2] != x[2] and minutes(a[0], a[1]) <= 60 and minutes(z[0], z[1]) <= 60:
-                        drop |= {key(d, *a[2:4], *a[:2]), key(d, *z[2:4], *z[:2])}
-    return [k for k in kept if k[2].task_id is not None or key(k[0].date(), k[2].category, k[2].title, k[0], k[1])
-            not in drop]
+                        drop |= {(key(d, *a[2:4]), a[0]), (key(d, *z[2:4]), z[0])}
+    return [k for k in kept if k[2].task_id is not None or not any(
+        name == key(k[0].date(), k[2].category, k[2].title) and abs(k[0] - at) <= timedelta(hours=2)
+        for name, at in drop)]
 
 
 def _yield_to_tasks(kept: list[tuple[datetime, datetime, Block]]) -> list[tuple[datetime, datetime, Block]]:
@@ -598,28 +609,20 @@ def diff(creates: list[PlannedChange], previous: list[Event]) -> list[PlannedCha
     return removed + out
 
 
-def _block_key(b: Block):
-    start = _hhmm(b.start)
-    return b.day, start, b.category, b.title, b.task_id
-
-
-def _change_key(c: PlannedChange):
-    midnight = datetime.combine(c.new_start.date(), time(0)).astimezone()
-    return c.new_start.date().isoformat(), minutes(midnight, c.new_start), c.category, c.title, c.task_id
-
-
 def _as_block(e: Event) -> Block:
     end = f"{e.end:%H:%M}" if e.end.date() == e.start.date() else "24:00"
     return Block(day=e.start.date().isoformat(), start=f"{e.start:%H:%M}", end=end, category=e.calendar,
                  title=e.title, task_id=e.task_id)
 
 
-def _unmentioned(blocks: list[Block], previous: list[Event], events: list[Event], now: datetime) -> list[Block]:
+def _unmentioned(blocks: list[Block], previous: list[Event], events: list[Event], now: datetime,
+                 routine_days: dict | None = None) -> list[Block]:
     """Old planner blocks a small model left out of its answer, kept as they
     are: it tends to return only what it changed, and deleting the rest would
     wipe sleep and meals. An old block goes only when the answer moves it (a
     block of the same name, or of the same task, that day) or something now
-    overlaps it."""
+    overlaps it. A piece of a routine block at its usual time grows back over
+    the free rest of it (`_grown`)."""
     when = {}
     for b in blocks:
         s, e = _hhmm(b.start), _hhmm(b.end)
@@ -636,7 +639,39 @@ def _unmentioned(blocks: list[Block], previous: list[Event], events: list[Event]
         if any(s < e.end and t > e.start for s, t in taken):
             continue
         keep.append(_as_block(e))
-    return keep
+    if not routine_days:
+        return keep
+    blocking = [(e.start, e.end) for e in events if not e.all_day and (not e.managed or e.start < now)]
+
+    def routine(b):
+        return any(_same(x, b) for x in routine_days.get(date.fromisoformat(b.day), []))
+    out = []
+    for b in keep:
+        # in the way: events, the answer, and the old blocks that stay - but not a task of the block's own
+        # category (the block yields to it again) nor a block outside the routine (validate drops it)
+        others = blocking + [t for x in blocks + [k for k in keep if k.task_id or routine(k)]
+                             if x is not b and not (x.task_id and x.category == b.category) and (t := _times(x))]
+        out.append(b if b.task_id else _grown(b, routine_days.get(date.fromisoformat(b.day), []), others, now))
+    return out
+
+
+def _same(span, b: Block) -> bool:
+    """Is block b the routine span (start, end, category, title, ...)?"""
+    return (span[2], span[3].strip().casefold()) == (b.category, b.title.strip().casefold())
+
+
+def _grown(b: Block, spans: list, others: list, now: datetime) -> Block:
+    """A piece of a routine block inside its usual time - cut around a task
+    that has since gone elsewhere - grows back over the part of its usual time
+    nothing else takes. A task still there cuts it again (`_yield_to_tasks`),
+    so a replan that changes nothing gets the same piece."""
+    s, e = _times(b)
+    for rs, re_, *_ in (x for x in spans if _same(x, b) and x[0] <= s and e <= x[1]):
+        lo = max([rs, min(s, _next_quarter(now))] + [y for x, y in others if x < s and y > rs])
+        hi = min([re_] + [x for x, y in others if y > e and x < re_])
+        if lo <= s and e <= hi and (lo, hi) != (s, e):
+            return b.model_copy(update={"start": f"{lo:%H:%M}", "end": _spans(lo.date(), [(lo, hi)]).split("-")[1]})
+    return b
 
 
 def _times(b: Block) -> tuple[datetime, datetime] | None:
@@ -647,26 +682,37 @@ def _times(b: Block) -> tuple[datetime, datetime] | None:
     return midnight + timedelta(minutes=s), midnight + timedelta(minutes=e if e else 1440)
 
 
-def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event],
-                       now: datetime) -> tuple[list[Block], list[str]]:
+def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime,
+                       rules: list[NoteRule] = (), history: dict | None = None) -> tuple[list[Block], list[str]]:
     """Routine blocks a small model left out. A fixed one (sleep, ...) goes
     back at its usual time where nothing else is; a movable one (a meal) at
     the free time nearest its usual time, up to two hours either way. A
     protected one ignores task blocks (they will be refused there). Returns
-    the blocks and a note for each one that found no room (one per day for three or more)."""
+    the blocks and a note for each one that found no room (one per day for three or more).
+    One a weekly note rules out that day isn't placed: its note is the reason (not "no room")."""
     busy = [(e.start, e.end) for e in events if not e.all_day and (not e.managed or e.start < now)]
     # a block the model placed on top of an event will be refused, so it is neither there nor in the way
     placed = [(b, t) for b, t in ((b, _times(b)) for b in blocks)
               if t and not any(x < t[1] and y > t[0] for x, y in busy)]
     have = [(b.day, b.category, b.title, t[0]) for b, t in placed]
     taken = [(*t, b.task_id and b.category) for b, t in placed] + [(*t, None) for t in busy]
-    out, lost = [], []
+    out, lost, ruled = [], [], []
     for d, spans in (routine_days or {}).items():
         # every block that fits at its usual time first, fixed ones before the rest; only then
         # the pushed ones move, into time still free: a moved supper must not take sleep's place
-        todo = [x for x in sorted(spans, key=lambda x: (not x[4], x[0] < now))
-                if not any(h[:3] == (d.isoformat(), x[2], x[3]) and abs(h[3] - x[0]) <= timedelta(hours=2)
-                           for h in have)]
+        # a block stands for one routine block of its name (the nearest, up to 2 hours away): with
+        # two "Deep work" a day, one of them in the plan doesn't mean both are
+        pairs = sorted((abs(h[3] - x[0]), i, j) for i, x in enumerate(spans) for j, h in enumerate(have)
+                       if h[:3] == (d.isoformat(), x[2], x[3]) and abs(h[3] - x[0]) <= timedelta(hours=2))
+        found, used = set(), set()
+        for _, i, j in pairs:
+            if i not in found and j not in used:
+                found.add(i), used.add(j)
+        todo = [x for i, x in sorted(enumerate(spans), key=lambda ix: (not ix[1][4], ix[1][0] < now)) if i not in found]
+        noted = {id(x): _count_rules([(x[0], x[1], Block(day=d.isoformat(), start=f"{x[0]:%H:%M}", end=_spans(
+            d, [x[:2]]).split("-")[1], category=x[2], title=x[3]))], list(rules), history or {})[1] for x in todo}
+        ruled += [n[0] for x in todo if x[0] >= now for n in [noted[id(x)]] if n]
+        todo = [x for x in todo if not noted[id(x)]]
         queue = [(x, False) for x in todo]
         for span, moving in queue:  # a block that missed its usual time goes back in line, moving
             s, e, cat, title, fixed = span[:5]
@@ -689,7 +735,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
     days = [d for d, *_ in lost]  # a day that lost three or more gets one line, not one each
     return out, [line for d, _, _, line in lost if days.count(d) < 3] + [
         f"{d:%a}: {', '.join(dict.fromkeys(t for x, _, t, _ in lost if x == d))} - no time left around events"
-        for d in dict.fromkeys(days) if days.count(d) >= 3]
+        for d in dict.fromkeys(days) if days.count(d) >= 3] + ruled
 
 
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
@@ -807,8 +853,7 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
     nowhere else goes: (event, None, None)."""
     midnight = datetime.combine(d, time(0)).astimezone()
     day_end = midnight + timedelta(days=1)
-    a = max(lo, now, midnight)
-    a += timedelta(minutes=-minutes(midnight, a) % 15)
+    a = _next_quarter(max(lo, now, midnight))  # whole minutes: a replan must find the same start again
     while a + timedelta(minutes=n) <= (day_end if hi is None else min(hi, day_end)):
         b = a + timedelta(minutes=n)
         way = [e for e in busy if e.start < b and e.end > a]
@@ -870,17 +915,26 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
                       key=lambda g: (not any(s < g[1] and e > g[0] for s, e in own), g[0]))
         starts: list[list] = []
         for a, b in gaps:
+            # in its routine slot a task starts with the slot (15:20, not 15:30): the rest stays one piece
+            firsts = sorted({s for s, e in own if a <= s < b})  # one already under way: from the next quarter
             a += timedelta(minutes=-minutes(midnight, a) % 15)
             mine = []
-            while minutes(a, b) >= chunk:
-                length = min(size, minutes(a, b))
-                if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
-                    length = n - chunk
-                s_m = minutes(midnight, a)
-                if length >= chunk and window_rule(rules, t.category, s_m, s_m + length, day.weekday()) is None:
-                    mine.append((a, a + timedelta(minutes=length)))
-                a += timedelta(minutes=max(length, 60))
-            starts.append(mine)
+            for x in firsts + [None]:
+                fixed_start = x is not None
+                x = x if fixed_start else a
+                while minutes(x, b) >= chunk:
+                    length = min(size, minutes(x, b))
+                    if 0 < n - length < chunk:  # never leave a piece shorter than the chunk
+                        length = n - chunk
+                    s_m = minutes(midnight, x)
+                    inside = not fixed_start and any(s < x < e for s, e in own if s in firsts)
+                    if length >= chunk and not inside and window_rule(
+                            rules, t.category, s_m, s_m + length, day.weekday()) is None:
+                        mine.append((x, x + timedelta(minutes=length)))
+                    if fixed_start:
+                        break
+                    x += timedelta(minutes=max(length, 60))
+            starts.append(list(dict.fromkeys(mine)))
         picked = [x for k in range(3) for mine in starts for x in mine[k:k + 1]][:5]  # each gap's first start first
         slots = {_spans(day, [(a, b)]): Block(day=day.isoformat(), start=f"{a:%H:%M}",
                                               end=_spans(day, [(a, b)]).split("-")[1], category=t.category,
@@ -990,8 +1044,8 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         blocks = good + answer.blocks
         if small and not good:
             solid = [e for e in events if not skippable(rules, e)]
-            blocks += _unmentioned(answer.blocks, [e for e in previous if not covered(e)], solid, now)
-            back, lost = _forgotten_routine(blocks, routine_days, solid, now)
+            blocks += _unmentioned(answer.blocks, [e for e in previous if not covered(e)], solid, now, routine_days)
+            back, lost = _forgotten_routine(blocks, routine_days, solid, now, rules, history)
             blocks += back
         plan = WeekPlan(blocks=blocks, plan_over=over + answer.plan_over,
                         unscheduled=answer.unscheduled, summary=answer.summary)
@@ -1002,8 +1056,10 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         if not problems or last:
             return (creates, diff(creates, previous), plan.summary, problems + lost,
                     [f"{u.task_id}: {u.reason}" for u in plan.unscheduled])
-        accepted = {_change_key(c) for c in creates}
-        good = [b for b in plan.blocks if _block_key(b) in accepted]
+        # what passed, as it passed: a routine block cut around a task or moved for one stays so
+        good = [Block(day=c.new_start.date().isoformat(), start=f"{c.new_start:%H:%M}",
+                      end=_spans(c.new_start.date(), [(c.new_start, c.new_end)]).split("-")[1], category=c.category,
+                      title=c.title, why=c.reason, task_id=c.task_id) for c in creates]
         over = [p for p in plan.plan_over if len(_norm(p.note)) >= 10 and _norm(p.note) in note_text]
         placed = [Event(id=f"placed-{i}", calendar=c.category, title=c.title, start=c.new_start, end=c.new_end)
                   for i, c in enumerate(creates)]

@@ -24,6 +24,7 @@ def _hex(nscolor) -> str:
                                    (rgb.redComponent(), rgb.greenComponent(), rgb.blueComponent()))
 
 MARKER = "Planned by DayOptimizer"
+SUGGESTED = "Suggested by DayOptimizer"  # a second line on blocks suggested for free time
 
 TASK_TAG = "Task: "
 _TASK_RE = re.compile(r"^Task: (\S+)$", re.M)
@@ -36,10 +37,10 @@ def task_id_from_notes(notes: str) -> str | None:
 
 
 def ek_to_event(identifier, calendar_title, title, start, end, location, all_day=False,
-                managed=False, task_id=None) -> Event:
+                managed=False, task_id=None, suggested=False) -> Event:
     return Event(id=identifier, calendar=normalize_calendar(calendar_title), title=title,
                  start=start, end=end, location=location, all_day=all_day, managed=managed,
-                 task_id=task_id)
+                 task_id=task_id, suggested=suggested)
 
 class CalendarClient:
     _shared = None  # one EKEventStore per process: a long-lived caller (MCP server) makes many clients
@@ -94,6 +95,7 @@ class CalendarClient:
                 bool(ev.isAllDay()),
                 managed,
                 task_id_from_notes(notes) if managed else None,
+                managed and SUGGESTED in notes,
             ))
         return sorted(out, key=lambda e: e.start)
 
@@ -164,7 +166,7 @@ class CalendarClient:
         return True
 
     def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime,
-                     task_id: str | None = None, managed: bool = True) -> str:
+                     task_id: str | None = None, managed: bool = True, suggested: bool = False) -> str:
         """A planner block (marked, so replans may move or remove it), or with
         managed=False an event the user asked for: theirs, never touched again."""
         EventKit = self._EventKit
@@ -180,7 +182,7 @@ class CalendarClient:
         ev.setEndDate_(self._nsdate(end))
         ev.setCalendar_(target)
         if managed:
-            ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else ""))
+            ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else "") + (f"\n{SUGGESTED}" if suggested else ""))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")

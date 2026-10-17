@@ -115,6 +115,18 @@ def test_run_check_notifies_skipped_count_when_apply_errors(monkeypatch):
     notify_args, _ = notify_mock.call_args
     assert "1 skipped — see recent_changes" in notify_args[1]
 
+def test_run_check_says_which_suggestions_it_added(monkeypatch):
+    storage = MagicMock()
+    storage.sync_events.return_value = []
+    storage.get_state.return_value = None
+    tip = PlannedChange(kind="create", category="Free", title="Czytanie (sugestia)", reason="free time",
+                        new_start=datetime(2026, 7, 3, 18, 15).astimezone(),
+                        new_end=datetime(2026, 7, 3, 19, 15).astimezone(), suggested=True)
+    monkeypatch.setattr(check, "notify", notify_mock := MagicMock())
+    check.run_check(MagicMock(), storage, _rules(), NOW_MORNING, plan_fn=MagicMock(return_value=([tip], [tip], [])),
+                    fetch_garmin_fn=MagicMock(return_value=_garmin(sleep_seconds=7 * 3600)))
+    assert "Added: Czytanie (sugestia) 18:15–19:15" in notify_mock.call_args[0][1]
+
 def test_run_check_event_replan_notifies_skipped_count_across_days(monkeypatch):
     calendar = MagicMock()
     storage = MagicMock()
