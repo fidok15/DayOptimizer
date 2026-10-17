@@ -22,6 +22,7 @@ from dayoptimizer.llm.task_rules import minutes
 from dayoptimizer.llm.week_plan import DAY_NAMES, _count_rules, _hhmm, _spans, free_gaps
 
 SHORTEST, LONGEST = 30, 90
+TITLE_MAX, WHY_MAX = 40, 120
 VARIETY_DAYS = {"low": 1, "medium": 3, "high": 7}  # a title comes back only this many days apart
 AVOID_DAYS = 30  # a suggestion the user deleted isn't made again for this long
 
@@ -99,6 +100,9 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
     recent, budget = list(recent), dict(budget)
     kept, refused = [], []
     for f in fillers:
+        # one line each (not every backend keeps the schema's limits): the title fits a calendar block
+        f = f.model_copy(update={"title": _SUFFIX.sub("", " ".join(f.title.split()))[:TITLE_MAX].strip(),
+                                 "why": " ".join(f.why.split())[:WHY_MAX]})
         d = next((x for x in asks if x.isoformat() == f.day), None)
         s_m, e_m = _hhmm(f.start), _hhmm(f.end)
         name, why = bare(f.title), None
@@ -146,7 +150,7 @@ def schema(categories: list[str], days: list[date], n: int) -> dict:
     f = s["$defs"]["Filler"]["properties"]
     f["category"]["enum"] = list(categories)
     f["day"]["enum"] = [d.isoformat() for d in days]
-    f["title"]["maxLength"] = 40
+    f["title"]["maxLength"] = TITLE_MAX
     f["why"]["maxLength"] = 80
     s["properties"]["fillers"]["maxItems"] = n
     return s

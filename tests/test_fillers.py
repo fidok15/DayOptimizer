@@ -114,6 +114,16 @@ def test_a_whole_gap_taken_is_cut_to_what_the_day_may_fill():
     assert [(s, e) for s, e, _ in kept] == [(at(SAT, "18:15"), at(SAT, "19:15"))]
 
 
+def test_a_title_is_one_short_line_and_an_empty_one_is_refused():
+    long = f("14:00", "15:00", "Read\n  a  book" + "x" * 100)
+    long.why = "calm\nevening " * 20
+    kept, refused = check([long, f("16:00", "17:00", " \n (sugestia)")], {SAT: [(at(SAT, "14:00"), at(SAT, "23:00"))]},
+                          CATS, rules(), {}, [], set(), {SAT: 600})
+    [(_, _, x)] = kept
+    assert x.title == ("Read a book" + "x" * 100)[:40] and "\n" not in x.why and len(x.why) == 120
+    assert refused[0].endswith("no title")
+
+
 def test_variety_low_lets_a_title_come_back_the_next_day():
     asks = {SUN: [(at(SUN, "14:00"), at(SUN, "23:00"))]}
     args = (asks, CATS)
