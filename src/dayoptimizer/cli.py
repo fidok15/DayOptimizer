@@ -698,6 +698,91 @@ def _decide_unplaced(lines: list[str]) -> None:
         console.print("Replanning...", style="dim")
         _replan_for(changed, rules, config, ask=False)
 
+_NUMBERS = {"jedn": 1, "one": 1, "dwie": 2, "dwa": 2, "two": 2, "trzy": 3, "three": 3, "cztery": 4, "four": 4}
+
+
+def understand_free_time(reply: str) -> int | None:
+    """Minutes from a reply like '1h', '90 min', '1,5h', 'godzinkę', 'pół godziny', 'dwie godziny', '45'."""
+    t = reply.strip().lower().replace(",", ".")
+    hour = r"(h|hr|hrs|hours?|godz\w*)\b"
+    if re.fullmatch(r"0|none|nothing|nic|zero|brak", t):
+        return 0
+    if re.search(r"półtor|and a half", t):
+        return 90
+    if m := re.search(rf"(\d+(?:\.\d+)?)\s*{hour}", t):
+        return round(float(m.group(1)) * 60)
+    if m := re.search(r"(\d+)\s*m(in\w*)?\b", t):
+        return int(m.group(1))
+    if re.search(r"pół|half", t):
+        return 30
+    if re.search(rf"\b{hour}|godzin", t):
+        return 60 * next((n for w, n in _NUMBERS.items() if w in t), 1)
+    if t.isdigit():
+        return int(t) * 60 if int(t) <= 8 else int(t)  # '2' means hours, '45' minutes
+    return None
+
+
+def understand_variety(reply: str) -> str | None:
+    t = reply.strip().lower()
+    for level, words in (("low", r"low|little|few|mał|niewiel|nisk|rzadko"),
+                         ("high", r"high|lots|a lot|much|many|duż|wysok|bardzo"),
+                         ("medium", r"medium|some|average|normal|średni|sredni|umiarkowan|trochę|troche")):
+        if re.search(words, t):
+            return level
+    return None
+
+
+def _ask_free_time(config) -> None:
+    """Once, in a terminal: how much of each day stays completely free, and how
+    varied the suggestions for free time are. Saved like the setup page saves
+    (save_user_config). Without a terminal nothing is asked: 60 min, medium."""
+    import yaml
+    from pydantic import BaseModel
+    from typing import Literal
+    from dayoptimizer.onboarding import save_user_config
+    from dayoptimizer.web import _local
+    if not sys.stdin.isatty() or _in_bundle():
+        return
+    local = _local()
+    day_rules = dict(local.get("day_rules") or {})
+    if not local.get("typical_week") or {"min_free_minutes", "variety"} <= day_rules.keys():
+        return
+
+    class Reply(BaseModel):
+        minutes: int | None = None
+        variety: Literal["low", "medium", "high"] | None = None
+
+    def by_model(reply: str) -> Reply:
+        try:
+            return make_backend(config["llm"]).structured(
+                "Read the person's reply: how many minutes a day they want completely free, and/or how much "
+                "variety they want (low, medium or high). Leave a field empty when the reply doesn't say.",
+                reply, Reply)
+        except Exception:  # no model, or an answer that isn't one: not understood
+            return Reply()
+    questions = [("min_free_minutes", "How much time a day do you want completely free? (e.g. 1h, 90 min; "
+                                      "Enter = 1 hour) ", understand_free_time, "minutes", 60),
+                 ("variety", "How much variety do you want in suggested activities? (low/medium/high; "
+                             "Enter = medium) ", understand_variety, "variety", "medium")]
+    for key, question, read, field, default in questions:
+        if key in day_rules:
+            continue
+        try:
+            reply = console.input(question, markup=False).strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+        value = read(reply) if reply else default
+        if value is None:
+            value = getattr(by_model(reply), field)
+        if value is None or (key == "min_free_minutes" and not 0 <= value <= 720):
+            console.print(f"I didn't get that — using {default}{' min' if key == 'min_free_minutes' else ''}. "
+                          "Change it in  dayoptimizer setup.", markup=False, style="yellow")
+            value = default
+        day_rules[key] = value
+    local["day_rules"] = day_rules
+    save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+
+
 def cmd_chat(args, rules, config):
     """Keep asking in one session; each line is a `dayoptimizer "..."` request."""
     console.print("[bold]DayOptimizer[/bold] — tell me about your day ('exit' to quit).")
@@ -808,6 +893,8 @@ def _calendar_run(argv: list[str], ask: bool = True) -> None:
         console.print("DayOptimizer isn't set up for calendar access yet. In the DayOptimizer "
                       "folder run:  scripts/setup-bundle.sh", markup=False)
         return
+    if ask and argv[:1] in (["plan"], ["add"]):
+        _ask_free_time(_load_config()[1])  # once, here: the bundle has no terminal
     _take_unplaced()  # an older run's are no news
     rest = _bundle_run([a.replace("\n", " ") for a in argv], timeout=None,
                        echo=lambda text: print(text, end="", flush=True))

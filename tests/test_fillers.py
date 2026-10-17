@@ -187,6 +187,34 @@ def test_a_replan_neither_sees_nor_removes_suggestions_and_a_second_one_changes_
     assert [r["title"] for r in storage.fillers_since(date.today().isoformat())] == ["Reading (suggestion)"]
 
 
+def test_free_time_replies_are_read_without_a_model():
+    from dayoptimizer.cli import understand_free_time as minutes_of, understand_variety as variety_of
+    assert [minutes_of(x) for x in ("godzinkę", "1h", "90 min", "1,5h", "pół godziny", "dwie godziny", "45", "2",
+                                    "półtorej godziny", "an hour", "nic", "hmm")] == [
+        60, 60, 90, 90, 30, 120, 45, 120, 90, 60, 0, None]
+    assert [variety_of(x) for x in ("dużo", "średnio", "mało", "high", "whatever")] == [
+        "high", "medium", "low", "high", None]
+
+
+def test_the_free_time_question_is_asked_once_in_a_terminal_and_saved(monkeypatch):
+    import yaml
+    from dayoptimizer import cli, paths
+    from dayoptimizer.onboarding import save_user_config
+    save_user_config(yaml.safe_dump({"typical_week": {"mon": [{"start": "09:00", "end": "10:00", "category": "Gym"}]},
+                                     "categories": {"Gym": {"movable": True}}}))
+    monkeypatch.setattr(cli, "_in_bundle", lambda: False)
+    replies = iter(["godzinkę", "dużo"])
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: next(replies))
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)
+    cli._ask_free_time({"llm": {}})  # no terminal: nothing asked, nothing saved
+    assert "day_rules" not in yaml.safe_load(paths.user_config_path().read_text())
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    cli._ask_free_time({"llm": {}})
+    cli._ask_free_time({"llm": {}})  # asked once: a second call would run out of replies
+    assert yaml.safe_load(paths.user_config_path().read_text())["day_rules"] == {"min_free_minutes": 60,
+                                                                                "variety": "high"}
+
+
 def test_the_suggestion_mark_follows_the_notes_language():
     assert suffix("Siłownia 2 razy w tygodniu") == "(sugestia)" and suffix("Gym twice a week") == "(suggestion)"
     assert suffix("") == "(suggestion)" and bare(" Czytanie  (sugestia)") == "czytanie"
