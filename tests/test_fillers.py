@@ -166,6 +166,15 @@ def test_a_suggestion_the_planner_hid_and_then_covered_goes_even_if_it_started_m
     assert [(c.kind, c.event_id) for c in changes] == [("delete", "x1")]
 
 
+def test_a_day_left_short_of_its_minimum_free_time_loses_its_newest_suggestions():
+    storage, cal = Storage(":memory:"), Cal(plan(SAT))
+    run(Model(f("14:00", "15:00"), f("16:00", "17:00", "Spacer")), cal, storage, days=(SAT,))
+    cal.events.append(ev("u1", "Gym", "Trening", SAT, "17:00", "22:15"))  # 465 min left free
+    changes, _ = run(Model(), cal, storage, days=(SAT,), r=rules(min_free_minutes=480))
+    assert [(c.kind, c.title) for c in changes] == [("delete", "Spacer (sugestia)")]
+    assert [r["status"] for r in storage.fillers_since("2026-10-01")] == ["placed", "removed"]
+
+
 def test_a_suggestion_the_user_deleted_leaves_its_time_free_and_is_not_wanted():
     storage, cal = Storage(":memory:"), Cal(plan(SAT))
     run(Model(f("14:00", "15:30")), cal, storage, days=(SAT,))

@@ -6,7 +6,8 @@ healthy or productive for them (a walk, a book, a call). Code checks every
 suggestion: inside a gap, 30-90 minutes, one of the user's categories, the
 notes' rules, the day's minimum free time, variety, nothing the user deleted
 lately. A suggestion is the lowest-priority block: the planner doesn't see
-it, and one that something else now overlaps is removed. A gap is offered
+it, and one that something else now overlaps (or whose day falls short of its
+minimum free time) is removed. A gap is offered
 once a day (no new ideas every 15 minutes); the time of a suggestion the user
 deleted stays free that day.
 """
@@ -221,6 +222,19 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         if e.start.date() in offered:
             offered[e.start.date()] = _minus(offered[e.start.date()], [(e.start, e.end)])
     busy = others + [e for e in mine if e not in gone]
+    row_of = {r["event_id"]: r["id"] for r in rows}
+    for d in near:  # later events left the day less than its minimum free time: the newest suggestions go
+        whole = day_gaps(d, busy, datetime.combine(d, rules.day_start).astimezone(), (rules.day_start, rules.day_end))
+        short = rules.min_free_minutes - sum(minutes(a, b) for a, b in whole)
+        for e in sorted((e for e in busy if e.suggested and e.start >= now and e.start.date() == d
+                         and e.id not in stays), key=lambda e: -row_of.get(e.id, 0)):
+            if short <= 0:
+                break
+            busy.remove(e)
+            short -= minutes(e.start, e.end)
+            storage.update_filler(row_of.get(e.id, -1), status="removed")
+            changes.append(PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
+                                         reason="the day needs its free time"))
     asks, budget = {}, {}
     for d in (d for d in days if d in near and rules.typical_week.get(d.weekday())):
         gaps = day_gaps(d, busy, now, (rules.day_start, rules.day_end))
