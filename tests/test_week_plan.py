@@ -776,6 +776,14 @@ def test_a_task_takes_its_categorys_fixed_routine_slot_and_the_routine_yields():
         (at(MON, "18:00"), at(MON, "19:00"), "Deep work")]
 
 
+def test_a_routine_block_a_task_mostly_took_leaves_no_stubs():
+    from dayoptimizer.llm.week_plan import _yield_to_tasks
+    def span(b):
+        return (at(MON, b.start), at(MON, b.end), b)
+    study, task_block = block(MON, "15:20", "16:45", "Work", "Study"), tblock("15:30", "16:30")
+    assert [b.title for _, _, b in _yield_to_tasks([span(study), span(task_block)])] == ["Report"]
+
+
 def test_fixed_routine_of_another_category_still_keeps_tasks_out():
     gym = {MON: [(at(MON, "16:00"), at(MON, "18:00"), "Training", "Gym")]}
     creates, problems = validate(WeekPlan(blocks=[tblock("16:00", "18:00")]), [MON], WCATS, [LECTURE, LAB], NOTES,

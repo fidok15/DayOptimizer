@@ -513,8 +513,10 @@ def _shares_slot(a: Block, b: Block) -> bool:
 
 
 def _yield_to_tasks(kept: list[tuple[datetime, datetime, Block]]) -> list[tuple[datetime, datetime, Block]]:
-    """Cut each non-task block around the task blocks of its category; pieces
-    under 15 minutes go."""
+    """Cut each non-task block around the task blocks of its category. A piece
+    of 30 minutes or less goes: the task took the block's time, and a stub left
+    next to it is noise (a replan that puts the routine back would otherwise
+    grow stubs the first plan didn't have)."""
     out = []
     for s, e, b in kept:
         if b.task_id is not None:
@@ -525,7 +527,7 @@ def _yield_to_tasks(kept: list[tuple[datetime, datetime, Block]]) -> list[tuple[
             if t.task_id is not None and t.category == b.category:
                 pieces = [x for a, z in pieces for x in ((a, min(z, ts)), (max(a, te), z)) if x[1] > x[0]]
         for a, z in pieces:
-            if minutes(a, z) >= 15:
+            if (a, z) == (s, e) or minutes(a, z) > 30:  # ponytail: fixed threshold
                 d = date.fromisoformat(b.day)
                 out.append((a, z, b if (a, z) == (s, e) else
                             b.model_copy(update={"start": f"{a:%H:%M}", "end": _spans(d, [(a, z)]).split("-")[1]})))
