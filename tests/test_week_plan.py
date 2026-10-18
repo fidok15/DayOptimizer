@@ -1236,3 +1236,80 @@ def test_a_routine_block_a_weekly_note_rules_out_is_skipped_by_the_note_not_for_
     full = [ev("m", "Uni", "Meeting", MON, "16:00", "22:00")]
     back, lost = _forgotten_routine([], gym, full, NOW, two, {"Gym": [MON - timedelta(days=1)]})
     assert back == [] and lost == [f"{MON} 18:30-19:45 Gym: Gym: breaks the note \"A day of rest.\""]
+
+
+def test_an_open_blocks_intent_says_whether_tasks_may_take_it():
+    from dayoptimizer.llm.week_plan import intent_kind
+    assert [intent_kind(x) for x in ("coś produktywnego", "Deep work", "nauka do egzaminu", "something relaxing",
+                                     "spacer", "czas z ludźmi", "workout", "coś miłego")] == [
+        "productive", "productive", "productive", "relaxing", "relaxing", "relaxing", "relaxing", "neutral"]
+
+
+def _open(d, start, end, intent, cat="Learn"):
+    return (at(d, start), at(d, end), cat, intent, False, False, intent)
+
+
+OCATS = WCATS + ["Learn", "Free"]
+
+
+def _day(changes, title):
+    return [(f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes if c.kind == "create" and c.title == title]
+
+
+def test_an_open_block_shrinks_around_events_and_is_never_moved():
+    # the model's copy at another time is ignored; a 10-minute piece left before an event goes, 30 minutes stay
+    routine = {MON: sleep_only(MON)[MON] + [_open(MON, "15:00", "18:00", "coś produktywnego")]}
+    events = [ev("a", "Uni", "A", MON, "15:10", "16:00"), ev("b", "Uni", "B", MON, "17:00", "17:30")]
+    moved = WeekPlan(blocks=[block(MON, "19:00", "22:00", "Learn", "coś produktywnego")])
+    changes, *_ = plan_days(Small(moved), [MON], "# r", OCATS, events, NOTES, [], NOW, attempts=1,
+                            routine_days=routine)
+    assert sorted(_day(changes, "coś produktywnego")) == [("16:00", "17:00"), ("17:30", "18:00")]
+
+
+def test_a_task_takes_a_productive_open_block_of_another_category_first():
+    from dayoptimizer.llm.week_plan import slot_items
+    routine = {MON: sleep_only(MON)[MON] + [_open(MON, "15:00", "18:00", "coś produktywnego"),
+                                            _open(MON, "19:00", "21:00", "coś relaksującego", "Free")]}
+    changes, _, _, unscheduled = plan_days(Small(WeekPlan()), [MON], "# r", OCATS, [], NOTES, [], NOW, attempts=1,
+                                           tasks=[task()], left={"t1": 120}, routine_days=routine)
+    assert _day(changes, "Report") == [("15:00", "17:00")] and unscheduled == []
+    assert _day(changes, "coś produktywnego") == [("17:00", "18:00")]
+    assert _day(changes, "coś relaksującego") == [("19:00", "21:00")]
+    # a small model in slot mode is offered the productive one, never the relaxing one
+    slots = list(slot_items(MON, [ev("w", "Uni", "Wall", MON, "07:00", "15:00")], NOW, [task()], {"t1": 120},
+                            routine, [])["t1"][1])
+    assert "15:00-17:00" in slots and not any(s.startswith(("19:", "20:")) for s in slots)
+
+
+def test_a_relaxing_open_block_goes_to_a_task_only_when_the_user_lets_it():
+    routine = {MON: sleep_only(MON)[MON] + [_open(MON, "21:00", "23:00", "coś relaksującego", "Free")]}
+    busy = [ev("w", "Uni", "Wall", MON, "07:00", "21:00"), ev("n", "Uni", "Night", MON, "23:00", "23:59")]
+
+    def run(may_take):
+        changes, _, _, unscheduled = plan_days(
+            Small(WeekPlan(blocks=[tblock("21:00", "22:00")])), [MON], "# r", OCATS, busy, NOTES, [], NOW,
+            attempts=1, tasks=[task(duration_min=60, may_take=may_take)], left={"t1": 60}, routine_days=routine)
+        return _day(changes, "Report"), _day(changes, "coś relaksującego"), unscheduled
+    assert run(None) == ([], [("21:00", "23:00")], [
+        "t1: 'Report' doesn't fit before Mon 2030-10-14 22:00 - missing 60 min. "
+        "Taking coś relaksującego (Mon 21:00) would make room"])
+    assert run(["coś relaksującego"]) == ([("21:00", "22:00")], [("22:00", "23:00")], [])
+
+
+def test_replanning_a_day_with_open_blocks_twice_changes_nothing():
+    from dayoptimizer.llm.task_rules import remaining
+    routine = {MON: sleep_only(MON)[MON] + [_open(MON, "08:00", "12:00", "coś produktywnego"),
+                                            _open(MON, "15:00", "18:00", "coś produktywnego"),
+                                            _open(MON, "21:00", "22:00", "coś relaksującego", "Free")]}
+    ts = [task(duration_min=60, min_chunk_min=None), task(id="t2", title="IO", duration_min=60, min_chunk_min=None),
+          task(id="t3", title="Transformers", duration_min=120, min_chunk_min=None)]
+    for backend in (lambda: Small(*[WeekPlan()] * 2), Picker):
+        events = [ev("lec", "Uni", "Lecture", MON, "09:00", "10:00")]
+        for run in range(2):
+            changes, *_ = plan_days(backend(), [MON], "# r", OCATS, events, NOTES, [], NOW, attempts=1, tasks=ts,
+                                    left=remaining(ts, events, NOW, {MON}), routine_days=routine)
+            assert run == 0 or changes == [], changes
+            events = _apply(events, changes)
+        mine = sorted((e.start, e.end) for e in events if e.start.date() == MON)
+        assert all(a[1] <= b[0] for a, b in zip(mine, mine[1:])), mine  # nothing double-booked
+        assert sum((e.end - e.start).seconds // 60 for e in events if e.task_id) == 240
