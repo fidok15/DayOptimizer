@@ -355,3 +355,98 @@ def test_an_open_blocks_usual_time_is_never_free_for_suggestions():
     piece = [ev("p", "Free", "coś produktywnego", SAT, "16:00", "17:00", managed=True)]
     assert routine_time(SAT, rules(typical_week={d: open_ for d in range(7)}), piece) == [
         (at(SAT, "10:00"), at(SAT, "12:00")), (at(SAT, "15:00"), at(SAT, "17:00"))]
+
+
+def open_rules(intent="coś relaksującego", cat="Free", **kw):
+    week = {d: rules().typical_week[d] + [RoutineBlock(1080, 1260, cat, intent, intent=intent)] for d in range(7)}
+    return rules(typical_week=week, **kw)
+
+
+def holder(d=SAT, s="18:00", e="21:00", title="coś relaksującego", cat="Free"):
+    return ev(f"ph{s}", cat, title, d, s, e, managed=True)
+
+
+def test_an_open_block_gets_activities_of_their_own_length_and_keeps_only_a_leftover_of_30_min():
+    storage, cal = Storage(":memory:"), Cal(plan(SAT) + [holder()])
+    model = Model(f("18:00", "19:00"), f("19:15", "20:15", "Spacer", cat="Nope"), f("20:30", "21:30", "Kino"),
+                  f("20:15", "20:30", "Joga"))
+    # no free time to spare in gaps: an open block is filled anyway
+    changes, refused = run(model, cal, storage, open_rules(min_free_minutes=1000), days=(SAT,))
+    assert "Open block to fill: 18:00-21:00 Free, meant for: coś relaksującego" in model.prompts[0]
+    assert "Gaps to fill" not in model.prompts[0]
+    # a break of 15 min stays empty, 45 min left at the end keep the placeholder; an unknown category is the block's
+    assert [(c.kind, c.title, c.category, c.new_start) for c in changes] == [
+        ("create", "Czytanie (sugestia)", "Free", at(SAT, "18:00")), ("create", "Spacer (sugestia)", "Free", at(SAT, "19:15")),
+        ("delete", "coś relaksującego", "Free", None), ("create", "coś relaksującego", "Free", at(SAT, "20:15"))]
+    assert [r.rsplit(": ", 1)[1] for r in refused] == ["not inside a free gap", "under 30 min"]
+    again = Model(f("20:15", "21:00", "Kino"))
+    assert run(again, cal, storage, open_rules(min_free_minutes=1000), days=(SAT,), now=NOW + timedelta(minutes=15))[0] == []
+    assert again.calls == 0
+
+
+def test_a_productive_block_may_take_a_course_as_its_topic_but_never_copies_a_meeting():
+    mine = [ev("u1", "Uni", "Systemy operacyjne", MON, "10:00", "12:00"),
+            ev("u2", "Free", "Spotkanie z Anią", SAT - timedelta(days=1), "18:00", "19:00")]
+    model = Model(f("18:00", "19:30", "Powtórka: Systemy operacyjne"), f("19:45", "21:00", "Spotkanie z Anią"))
+    changes, refused = run(model, Cal(plan(SAT) + mine + [holder(title="coś produktywnego")]), Storage(":memory:"),
+                           open_rules("coś produktywnego"), days=(SAT,))
+    assert "study topics): Systemy operacyjne" in model.prompts[0]
+    assert [c.title for c in changes if c.suggested] == ["Powtórka: Systemy operacyjne (sugestia)"]
+    assert refused[0].endswith("a copy of one of your own events")
+
+
+def test_no_model_keeps_the_whole_placeholder_and_a_deleted_activity_leaves_it_a_placeholder_that_day():
+    class Down(Model):
+        def structured(self, *a, **k):
+            raise RuntimeError("Ollama isn't running")
+    storage, cal = Storage(":memory:"), Cal(plan(SAT) + [holder()])
+    assert run(Down(), cal, storage, open_rules(), days=(SAT,))[0] == []
+    run(Model(f("18:00", "19:00")), cal, storage, open_rules(), days=(SAT,))
+    assert sorted(e.title for e in cal.events if e.start >= at(SAT, "18:00") and e.end <= at(SAT, "21:00")) == [
+        "Czytanie (sugestia)", "coś relaksującego"]
+    # the user deletes the activity; the planner puts the placeholder back over its time
+    cal.events = [e for e in cal.events if not at(SAT, "18:00") <= e.start < at(SAT, "21:00")] + [holder()]
+    model = Model(f("18:00", "19:00", "Kino"))
+    assert run(model, cal, storage, open_rules(), days=(SAT,), now=NOW + timedelta(minutes=15))[0] == []
+    assert model.calls == 0
+
+
+def test_a_replan_puts_an_open_block_back_only_around_its_activities_and_an_event_over_one_shrinks_it(monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.llm.week_plan import WeekPlan
+    tomorrow = date.today() + timedelta(days=1)
+
+    class Backend(Model):
+        def plan_week(self, system, prompt, schema=None):
+            return WeekPlan()
+
+    class Calendar(Cal):
+        def list_events(self, start, end):
+            return [e for e in self.events if start <= e.start < end]
+
+        def create_event(self, category, title, start, end, task_id=None, suggested=False):
+            self.events.append(Event(id=f"c{start:%H%M}{title}", calendar=category, title=title, start=start, end=end,
+                                     managed=True, suggested=suggested))
+            return self.events[-1].id
+
+        def delete_event(self, event_id):
+            self.events = [e for e in self.events if e.id != event_id]
+
+    cal = Calendar([])
+    monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in CATS}, "llm": {},
+                                                             "notes": "Lubię czytać."}))
+    storage, r = Storage(":memory:"), open_rules(note_rules=[], min_free_minutes=1000)
+
+    def replan():
+        backend = Backend(f("18:00", "19:00", day=tomorrow), f("19:15", "20:15", "Spacer", day=tomorrow))
+        monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [backend])
+        changes, *_ = cli._llm_plan([tomorrow], cal, storage, r, confirm=lambda c: True)
+        return [(c.kind, c.title, c.new_start and f"{c.new_start:%H:%M}") for c in changes
+                if c.kind == "delete" or c.new_start.hour >= 18], backend.calls
+
+    assert replan()[0][-4:] == [("create", "Czytanie (sugestia)", "18:00"), ("create", "Spacer (sugestia)", "19:15"),
+                                ("delete", "coś relaksującego", None), ("create", "coś relaksującego", "20:15")]
+    assert replan() == ([], 0)  # nothing changed: nothing changes, no model asked
+    cal.events.append(ev("u1", "Food", "Kolacja", tomorrow, "19:45", "20:30"))
+    assert sorted(replan()[0]) == [("create", "coś relaksującego", "20:30"), ("delete", "Spacer (sugestia)", None),
+                                   ("delete", "coś relaksującego", None)]

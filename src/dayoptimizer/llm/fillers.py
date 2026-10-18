@@ -11,6 +11,13 @@ it, and one that something else now overlaps (or whose day falls short of its
 minimum free time) is removed. A gap is offered
 once a day (no new ideas every 15 minutes); the time of a suggestion the user
 deleted stays free that day.
+
+An open routine block (one with an intent) is filled the same way: what the
+plan left of it (its placeholder) gets one or more activities of a natural
+length that fit the intent, breaks between them stay empty, and what is left
+of 30 minutes or more keeps the placeholder. The day's minimum free time is
+not spent on it: the user set that time aside to be filled. The planner puts
+the placeholder back only around the activities (`open_left`).
 """
 from __future__ import annotations
 import json
@@ -51,13 +58,20 @@ SYSTEM = (
     "- Each suggestion lies inside one listed gap and lasts 30 to 90 minutes: pick a natural length, the "
     "rest of the gap stays free. At most one suggestion per gap, and never more minutes in a day than "
     "that day allows. Leaving a gap free is fine.\n"
+    "- An open block is time they set aside for what its intent says (their words). Fill each with one or "
+    "more activities that match the intent, each of its natural length (30 minutes or more) inside the "
+    "block, e.g. reading a book 60 min, a break, then a walk in the park 90 min; a focused study session "
+    "45-90 min, a break, another topic. A break is just time without an activity. category: the block's "
+    "own unless another of theirs fits better.\n"
+    "- In a block meant for work or study, a topic may be one of their courses, exams or deadlines, with "
+    "what to do: \"Revision: <course>\", \"Project: <subject>\".\n"
     "- Fit the person: their notes, routine and own events show what they like and need. Mornings suit "
     "focus and learning, afternoons movement, practice or errands, evenings rest and people. Simple ideas "
     "work: a walk, reading a book, the cinema, stretching, calling a friend, cooking something new, a "
     "short online course or tutorial, journaling.\n"
     "- Vary: don't repeat what was suggested lately, never suggest what they removed. Something they have "
-    "never done is welcome: then set new_idea true. Never copy one of their own events or name a person: "
-    "suggest something of its own (\"call a friend\", not a friend's name).\n"
+    "never done is welcome: then set new_idea true. Never copy one of their own events as it is, turn a meeting "
+    "into an activity or name a person: suggest something of its own (\"call a friend\", not a friend's name).\n"
     "- category: the one of their categories that fits best, spelled exactly. Keep their notes (limits "
     "on training, times).\n"
     "- title: a few words in the language of their notes (English when there are none). why: a few words."
@@ -82,7 +96,8 @@ def system_prompt(notes: str) -> str:
     if not polish(notes):
         return SYSTEM + "\n- Write every title and why in English."
     return SYSTEM + ("\n- Write every title and why in Polish, never in English: e.g. \"Spacer\", \"Czytanie "
-                     "książki\", \"Rozciąganie\", \"Telefon do przyjaciela\", \"Krótki kurs online\", \"Kino\".")
+                     "książki\", \"Rozciąganie\", \"Telefon do przyjaciela\", \"Krótki kurs online\", \"Kino\", "
+                     "\"Powtórka: <przedmiot>\", \"Projekt: <temat>\".")
 
 
 def bare(title: str) -> str:
@@ -126,6 +141,16 @@ def routine_time(day: date, rules, events: list[Event]) -> list:
     return out
 
 
+def open_left(routine_days: dict, filled: list[Event]) -> dict:
+    """The routine spans with an open block's usual time less the suggestions in it, in pieces of 30
+    minutes or more: the planner puts its placeholder back only around what fills it."""
+    cuts = [(e.start, e.end) for e in filled]
+    return {d: [y for x in spans for y in ([x] if not _intent(x) else
+                                           [(a, z, *x[2:]) for a, z in _minus([x[:2]], cuts)
+                                            if (a, z) == x[:2] or minutes(a, z) >= SHORTEST])]
+            for d, spans in routine_days.items()}
+
+
 def _offered(storage, day: date) -> list:
     return [tuple(datetime.fromisoformat(x) for x in span)
             for span in json.loads(storage.get_state(f"fillers_offered:{day}", "[]"))]
@@ -134,7 +159,9 @@ def _offered(storage, day: date) -> list:
 def check(fillers: list[Filler], asks: dict, categories: list[str], rules, history: dict[str, list[date]],
           recent: list[tuple[date, str]], unwanted: set[str], budget: dict[date, int],
           own: frozenset[str] = frozenset()) -> tuple[list, list[str]]:
-    """The suggestions that keep every rule as (start, end, filler), and why each other one was refused."""
+    """The suggestions that keep every rule as (start, end, filler), and why each other one was refused.
+    `asks`: each day's gaps (start, end) and open-block pieces (start, end, intent, category); in a
+    piece an activity may be longer than in a gap and doesn't spend the day's free time."""
     apart = VARIETY_DAYS.get(rules.variety, 3)
     history = {c: list(ds) for c, ds in history.items()}
     recent, budget = list(recent), dict(budget)
@@ -146,20 +173,25 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
         d = next((x for x in asks if x.isoformat() == f.day), None)
         s_m, e_m = _hhmm(f.start), _hhmm(f.end)
         name, why = bare(f.title), None
-        cap = min(LONGEST, budget[d]) if d is not None else LONGEST
+        midnight = datetime.combine(d or date.today(), time(0)).astimezone()
+        slot = next((x for x in asks[d] if x[0] <= midnight + timedelta(minutes=s_m) < x[1]), ()) \
+            if d is not None and s_m is not None else ()  # the gap or piece it starts in
+        piece = len(slot) > 2
+        if piece and f.category not in categories:
+            f = f.model_copy(update={"category": slot[3]})
+        cap = 24 * 60 if piece else min(LONGEST, budget[d]) if d is not None else LONGEST
         if s_m is not None and e_m is not None and e_m - s_m > cap >= SHORTEST:
             e_m = s_m + cap  # a small model takes the whole gap: cut it to what may be filled
             f = f.model_copy(update={"end": f"{e_m // 60:02d}:{e_m % 60:02d}"})
         if d is None:
             why = "not a day to fill"
-        elif s_m is None or e_m is None or not SHORTEST <= e_m - s_m <= LONGEST:
-            why = f"not {SHORTEST}-{LONGEST} min"
+        elif s_m is None or e_m is None or not SHORTEST <= e_m - s_m <= (cap if piece else LONGEST):
+            why = f"under {SHORTEST} min" if piece else f"not {SHORTEST}-{LONGEST} min"
         elif f.category not in categories:
             why = "not one of the categories"
         else:
-            midnight = datetime.combine(d, time(0)).astimezone()
             s, e = midnight + timedelta(minutes=s_m), midnight + timedelta(minutes=e_m)
-            if not any(a <= s and e <= b for a, b in asks[d]):
+            if not slot or e > slot[1]:
                 why = "not inside a free gap"
             elif any(ks < e and s < ke for ks, ke, _ in kept):
                 why = "overlaps another suggestion"
@@ -173,7 +205,7 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
                 why = "a copy of one of your own events"
             elif any(n == name and abs((d - x).days) < apart for x, n in recent):
                 why = "suggested lately (variety)"
-            elif e_m - s_m > budget[d]:
+            elif not piece and e_m - s_m > budget[d]:
                 why = "would cut into the day's minimum free time"
             elif broken := _count_rules([(s, e, f)], rules.note_rules, history)[1]:
                 why = "breaks the note " + broken[0].split("breaks the note ", 1)[1]
@@ -181,7 +213,7 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
             refused.append(f"{f.day} {f.start}-{f.end} {f.category}: {f.title}: {why}")
             continue
         kept.append((s, e, f))
-        budget[d] -= e_m - s_m
+        budget[d] -= 0 if piece else e_m - s_m
         recent.append((d, name))
         history.setdefault(f.category, []).append(d)
     return kept, refused
@@ -199,18 +231,24 @@ def schema(categories: list[str], days: list[date], n: int) -> dict:
 
 
 def build_prompt(asks: dict, budget: dict, events: list[Event], notes: str, categories: list[str],
-                 routine: list[str], own: list[str], recent: list[str], unwanted: list[str], now: datetime) -> str:
+                 routine: list[str], own: list[str], recent: list[str], unwanted: list[str], now: datetime,
+                 upcoming: list[str] = ()) -> str:
     lines = [f"Now: {DAY_NAMES[now.weekday()]} {now:%Y-%m-%d %H:%M}", f"Categories: {', '.join(categories)}",
              "", "# Their notes", notes.strip() or "(none)", "",
              f"# Their routine: {', '.join(routine) or '(none)'}",
              f"# Their own events lately: {', '.join(own) or '(none)'}",
+             f"# Their events in the next 7 days (courses, exams, deadlines may be study topics): "
+             f"{', '.join(upcoming) or '(none)'}",
              f"# Suggested lately: {', '.join(recent) or '(none)'}",
              f"# They removed these suggestions, never suggest them: {', '.join(unwanted) or '(none)'}"]
     for d, gaps in asks.items():
         cal = sorted((e for e in events if e.start.date() == d and not e.all_day), key=lambda e: e.start)
         lines += ["", f"## {DAY_NAMES[d.weekday()]} {d.isoformat()}"]
         lines += [f"- {e.start:%H:%M}-{e.end:%H:%M} {e.calendar}: {e.title}" for e in cal] or ["- nothing"]
-        lines += [f"Gaps to fill: {_spans(d, gaps)}; at most {budget[d]} min this day"]
+        free = [x for x in gaps if len(x) == 2]
+        if free:
+            lines += [f"Gaps to fill: {_spans(d, free)}; at most {budget[d]} min this day"]
+        lines += [f"Open block to fill: {_spans(d, [x[:2]])} {x[3]}, meant for: {x[2]}" for x in gaps if len(x) > 2]
     return "\n".join(lines)
 
 
@@ -260,11 +298,16 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
             offered[e.start.date()] = _minus(offered[e.start.date()], [(e.start, e.end)])
     busy = others + [e for e in mine if e not in gone]
     row_of = {r["event_id"]: r["id"] for r in rows}
+    opens = {d: [x for x in spans if _intent(x)]
+             for d, spans in routine_spans(rules.typical_week, getattr(rules, "categories", {}), near)[0].items()}
+
+    def in_open(e):
+        return any(x[0] <= e.start and e.end <= x[1] for x in opens.get(e.start.date(), []))
     for d in near:  # later events left the day less than its minimum free time: the newest suggestions go
         whole = day_gaps(d, busy, datetime.combine(d, rules.day_start).astimezone(), (rules.day_start, rules.day_end))
         short = rules.min_free_minutes - sum(minutes(a, b) for a, b in whole)
         for e in sorted((e for e in busy if e.suggested and e.start >= now and e.start.date() == d
-                         and e.id not in stays), key=lambda e: -row_of.get(e.id, 0)):
+                         and e.id not in stays and not in_open(e)), key=lambda e: -row_of.get(e.id, 0)):
             if short <= 0:
                 break
             busy.remove(e)
@@ -272,13 +315,22 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
             storage.update_filler(row_of.get(e.id, -1), status="removed")
             changes.append(PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
                                          reason="the day needs its free time"))
-    asks, budget = {}, {}
+    asks, budget, holders = {}, {}, []
     for d in (d for d in days if d in near and rules.typical_week.get(d.weekday())):
         gaps = _minus(day_gaps(d, busy, now, (rules.day_start, rules.day_end)), routine_time(d, rules, busy))
         budget[d] = sum(minutes(a, b) for a, b in gaps) - rules.min_free_minutes
-        new = [(a, b) for a, b in _minus(gaps, offered[d]) if minutes(a, b) >= SHORTEST]
-        if new and budget[d] >= SHORTEST:
-            asks[d] = new
+        new = [(a, b) for a, b in _minus(gaps, offered[d]) if minutes(a, b) >= SHORTEST] \
+            if budget[d] >= SHORTEST else []
+        for p in others:  # an open block's placeholder: what the plan left of it
+            x = next((x for x in opens[d] if p.managed and not p.task_id and p.start >= now and p.calendar == x[2]
+                      and p.title.strip().casefold() == x[3].strip().casefold() and x[0] <= p.start
+                      and p.end <= x[1]), None)
+            if x is not None:
+                holders.append(p)
+                new += [(a, b, _intent(x), p.calendar) for a, b in _minus([(p.start, p.end)], offered[d])
+                        if minutes(a, b) >= SHORTEST]
+        if new:
+            asks[d] = sorted(new)
     refused: list[str] = []
     if asks:
         recent = [(date.fromisoformat(r["day"]), r["title"]) for r in rows
@@ -286,13 +338,15 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         unwanted = list(dict.fromkeys(_SUFFIX.sub("", r["title"]) for r in rows if r["status"] == "deleted"))
         routine = list(dict.fromkeys(b.label for bs in rules.typical_week.values() for b in bs))
         own = list(dict.fromkeys(e.title for e in others if not e.managed and e.start < now))[-30:]
+        upcoming = list(dict.fromkeys(e.title for e in events if not e.managed and not e.suggested
+                                      and today <= e.start.date() < today + timedelta(days=7)))[:30]
         prompt = build_prompt(asks, budget, busy, notes, categories, routine, own,
-                              list(dict.fromkeys(_SUFFIX.sub("", t) for _, t in recent)), unwanted, now)
+                              list(dict.fromkeys(_SUFFIX.sub("", t) for _, t in recent)), unwanted, now, upcoming)
         answer, refused = None, ["no suggestions: the model's answer wasn't readable"]
+        n = sum(1 if len(x) == 2 else max(1, minutes(*x[:2]) // 45) for xs in asks.values() for x in xs)
         for _ in range(2):  # one retry for an answer that isn't the JSON asked for
             try:
-                answer = backend.structured(system_prompt(notes), prompt, Fillers, schema(categories, list(asks),
-                                                                           sum(map(len, asks.values()))))
+                answer = backend.structured(system_prompt(notes), prompt, Fillers, schema(categories, list(asks), n))
                 break
             except ValueError:
                 continue
@@ -311,8 +365,16 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         changes += [PlannedChange(kind="create", category=f.category, title=f"{_SUFFIX.sub('', f.title).strip()} {mark}",
                                   reason=f.why or "free time", new_start=s, new_end=e, suggested=True)
                     for s, e, f in kept]
+        for p in holders:  # a placeholder an activity went into keeps only what is left of it, 30 min or more
+            inside = [(s, e) for s, e, _ in kept if p.start <= s and e <= p.end]
+            if inside:
+                changes += [PlannedChange(kind="delete", category=p.calendar, title=p.title, event_id=p.id,
+                                          reason="filled")] + [
+                    PlannedChange(kind="create", category=p.calendar, title=p.title, reason="what is left of it",
+                                  new_start=a, new_end=b)
+                    for a, b in _minus([(p.start, p.end)], inside) if minutes(a, b) >= SHORTEST]
         for d, spans in asks.items():
-            offered[d] += spans
+            offered[d] += [x[:2] for x in spans]
     for d in near:
         storage.set_state(f"fillers_offered:{d}", json.dumps([[a.isoformat(), b.isoformat()] for a, b in offered[d]]))
     return changes, refused
