@@ -152,3 +152,7 @@ def test_work_days_more_than_seven_entries_rejected():
     with pytest.raises(ConfigError):
         validate_config(
             "day_rules:\n  work_days: [mon, tue, wed, thu, fri, sat, sun, mon]\n")
+
+
+def test_protected_block_accepted():
+    validate_config('typical_week:\n  mon:\n  - {start: "09:00", end: "10:00", category: Work, protected: true}\n')
