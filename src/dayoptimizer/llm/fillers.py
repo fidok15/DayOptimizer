@@ -64,7 +64,7 @@ SYSTEM = (
     "45-90 min, a break, another topic. A block over 90 minutes rarely holds just one activity. A break "
     "is just time without an activity. category: the block's own unless another of theirs fits better.\n"
     "- In a block meant for work or study, a topic may be one of their courses, exams or deadlines, with "
-    "what to do: \"Revision: <course>\", \"Project: <subject>\"; spread the topics. Every other activity "
+    "what to do: \"Revision: <course>\", \"Exercises: <course>\"; spread the topics. Every other activity "
     "has a title of its own, not repeated on another day either.\n"
     "- Fit the person: their notes, routine and own events show what they like and need. Mornings suit "
     "focus and learning, afternoons movement, practice or errands, evenings rest and people. Simple ideas "
@@ -98,7 +98,7 @@ def system_prompt(notes: str) -> str:
         return SYSTEM + "\n- Write every title and why in English."
     return SYSTEM + ("\n- Write every title and why in Polish, never in English: e.g. \"Spacer\", \"Czytanie "
                      "książki\", \"Rozciąganie\", \"Telefon do przyjaciela\", \"Krótki kurs online\", \"Kino\", "
-                     "\"Powtórka: <przedmiot>\", \"Projekt: <temat>\".")
+                     "\"Powtórka: <przedmiot>\", \"Zadania: <przedmiot>\".")
 
 
 def bare(title: str) -> str:
