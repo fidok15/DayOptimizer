@@ -29,15 +29,17 @@ def render_routine(categories: dict, week: dict, notes: str = "") -> str:
     groups: dict[tuple, list[str]] = {}
     for d in DAYS:
         blocks = sorted(week.get(d) or [], key=lambda b: b["start"])
-        key = tuple((b["start"], b["end"], b["category"], b.get("title", ""), bool(b.get("protected")))
+        key = tuple((b["start"], b["end"], b["category"], b.get("title", ""), bool(b.get("protected")),
+                     (b.get("intent") or "").strip())
                     for b in blocks)
         groups.setdefault(key, []).append(d)
     for key, days in sorted(groups.items(), key=lambda kv: DAYS.index(kv[1][0])):
         lines += ["", f"## {_day_label(days)}"]
         if not key:
             lines.append("(nothing drawn)")
-        for start, end, cat, title, kept in key:
-            lines.append(f"{start}-{end} {cat}" + (f": {title}" if title and title != cat else "")
+        for start, end, cat, title, kept, intent in key:
+            what = f"open: {intent} ({cat})" if intent else cat
+            lines.append(f"{start}-{end} {what}" + (f": {title}" if title and title not in (cat, intent) else "")
                          + (" (protected: no tasks here)" if kept else ""))
     if notes and notes.strip():
         lines += ["", "## What matters to me", notes.strip()]

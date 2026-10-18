@@ -152,3 +152,21 @@ def test_work_days_more_than_seven_entries_rejected():
     with pytest.raises(ConfigError):
         validate_config(
             "day_rules:\n  work_days: [mon, tue, wed, thu, fri, sat, sun, mon]\n")
+
+
+def test_protected_block_accepted():
+    validate_config('typical_week:\n  mon:\n  - {start: "09:00", end: "10:00", category: Work, protected: true}\n')
+
+
+def test_open_block_intent_accepted_stripped_and_bounded(tmp_path, monkeypatch):
+    from dayoptimizer.onboarding import TemplateBlock
+    block = {"start": "15:20", "end": "18:00", "category": "Learn"}
+    assert TemplateBlock(**block, intent="  something productive ").intent == "something productive"
+    assert TemplateBlock(**block).intent is None
+    for bad in ("", "   ", "x" * 61, "line\nbreak"):
+        with pytest.raises(ValueError):
+            TemplateBlock(**block, intent=bad)
+    monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
+    save_user_config('typical_week:\n  mon:\n  - {start: "15:20", end: "18:00", category: Learn, intent: something productive}\n')
+    saved = validate_config((tmp_path / "config.local.yaml").read_text())
+    assert saved.typical_week["mon"][0].intent == "something productive"

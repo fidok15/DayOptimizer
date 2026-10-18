@@ -18,6 +18,7 @@ interface Props {
 
 const W = 300;
 const M = 12;
+const INTENTS = ["Something productive", "Something relaxing", "Something active", "Time with people"];
 const endToInput = (end: string) => (end === "24:00" ? "00:00" : end);
 const endFromInput = (v: string) => (v === "00:00" ? DAY_MIN : toMin(v));
 
@@ -152,7 +153,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
           type="text"
           maxLength={60}
           value={block.title}
-          placeholder={block.category}
+          placeholder={block.intent || block.category}
           onChange={(ev) => onUpdate({ title: ev.target.value })}
           onKeyDown={(ev) => ev.key === "Enter" && onClose(true)}
           className={inputCls}
@@ -168,6 +169,44 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         />
         Protected: tasks can't take this time
       </label>
+
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={block.intent !== undefined}
+          onChange={(ev) => onUpdate({ intent: ev.target.checked ? "" : undefined })}
+          className="size-4 accent-[#f4b860]"
+        />
+        Open block: the planner fills it
+      </label>
+
+      {block.intent !== undefined && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${uidBase}-intent`} className={labelCls}>What should go here?</label>
+          <input
+            id={`${uidBase}-intent`}
+            type="text"
+            maxLength={60}
+            value={block.intent}
+            placeholder="e.g. a walk outside"
+            onChange={(ev) => onUpdate({ intent: ev.target.value })}
+            onKeyDown={(ev) => ev.key === "Enter" && onClose(true)}
+            className={inputCls}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {INTENTS.map((text) => (
+              <button
+                key={text}
+                type="button"
+                onClick={() => onUpdate({ intent: text })}
+                className="min-h-7 rounded-full border border-ink/20 px-2.5 py-1 text-[13px] text-ink transition hover:bg-ink/10 active:scale-[0.98]"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${uidBase}-day`} className={labelCls}>Day</label>

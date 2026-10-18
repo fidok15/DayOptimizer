@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Annotated, Literal
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator
 
 _VALID_WORK_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -30,6 +30,16 @@ class TemplateBlock(BaseModel):
     end: str = Field(pattern=r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$")
     category: str = Field(min_length=1, max_length=40)
     title: str = Field(default="", max_length=60)
+    protected: bool = False
+    # an open block: the planner fills it with something that fits this intent
+    intent: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)] | None = None
+
+    @field_validator("intent")
+    @classmethod
+    def _printable_intent(cls, value):
+        if value is not None and not value.isprintable():
+            raise ValueError("intent must be 1-60 printable characters")
+        return value
 
     @field_validator("end")
     @classmethod

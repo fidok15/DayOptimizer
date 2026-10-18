@@ -20,6 +20,8 @@ export interface Block {
   title: string;
   /** Tasks never take this block's time; it may still move when its category is flexible. */
   protected?: boolean;
+  /** An open block: the planner fills it with something that fits this intent. Set (even "") = open. */
+  intent?: string;
 }
 export type Week = Record<Weekday, Block[]>;
 
