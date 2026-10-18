@@ -146,7 +146,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
                                      reason="its task is done") for e in stale], calendar, storage, lambda c: True)
         events = [e for e in events if e not in stale]
     # suggestions for free time yield to everything: the planner doesn't see the ones still ahead (llm/fillers.py)
-    events = [e for e in events if not (e.suggested and e.start >= now)]
+    hidden = [e for e in events if e.suggested and e.start >= now]
+    events = [e for e in events if e not in hidden]
     if not rules.has_routine and not tasks:
         return None
     _, config = _load_config()
@@ -161,6 +162,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     task_blocks = calendar.list_events(now - timedelta(days=30), now + timedelta(days=60)) if tasks else []
     left = remaining(tasks, task_blocks, now, planned)
     routine_days, reserved = routine_spans(rules.typical_week, getattr(rules, "categories", {}), days)
+    from dayoptimizer.llm.fillers import open_left
+    routine_days = open_left(routine_days, hidden)  # an open block's placeholder never goes over what fills it
     history: dict[str, list[date]] = {}
     for e in events:
         if not e.all_day and (e.start.date() not in planned or e.start < now):

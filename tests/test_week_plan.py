@@ -1086,6 +1086,27 @@ def test_slot_mode_keeps_a_block_that_still_fits_on_a_rerun():
         events = _apply(events, changes)
 
 
+def test_slot_mode_leaves_a_task_on_the_later_day_the_last_plan_put_it():
+    # live: run 1 left IO for Monday, run 2 offered it on Sunday again and the model took it (churn)
+    class LaterOnce(Picker):
+        calls = 0
+
+        def choose(self, system, prompt, schema):
+            LaterOnce.calls += 1
+            pick = "later" if LaterOnce.calls == 1 else None
+            return {k: {"slot": pick if pick in v["properties"]["slot"]["enum"] else v["properties"]["slot"]["enum"][0],
+                        "why": "x"} for k, v in schema["properties"].items()}
+    from dayoptimizer.llm.task_rules import remaining
+    t = task(title="IO", duration_min=60, due=at(TUE + timedelta(days=1), "20:00"))
+    events = []
+    for run in range(3):
+        changes, *_ = plan_days(LaterOnce(), [MON, TUE], "# r", WCATS, events, NOTES, [], NOW, tasks=[t],
+                                left=remaining([t], events, NOW, {MON, TUE}), routine_days=sleep_only(MON, TUE))
+        assert run > 0 or [c.new_start.date() for c in changes if c.task_id] == [TUE]
+        assert run == 0 or changes == []
+        events = _apply(events, changes)
+
+
 def test_the_first_day_holds_back_only_what_later_days_can_take():
     # Tue and Wed have one free hour each: Monday takes the rest, nothing is lost
     wed = MON + timedelta(days=2)

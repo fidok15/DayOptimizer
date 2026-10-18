@@ -1121,11 +1121,17 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         # what stays is in the way of new picks; a routine block at its usual time already is
         stay = [replace(e, id=f"stay:{e.id}", managed=False) for e in fine
                 if e.task_id or (e.calendar, e.title, e.start) not in usual]
+        # a task the last plan put whole on a later day of this run keeps it there: asking again only moves it
+        ahead: dict[str, int] = {}
+        for e in shown:
+            if (e.managed and e.task_id and days[-1] < e.start.date() <= (fill_until or days[-1]) and e.start >= now
+                    and not covered(e) and not any(u.start < e.end and u.end > e.start for u in user)):
+                ahead[e.task_id] = ahead.get(e.task_id, 0) + minutes(e.start, e.end)
     for attempt in range(attempts):
         if slots:
             items = slot_items(days[0], shown + placed + stay, now, list(tasks), still, routine_days, rules, not good)
-            items = {k: v for k, v in items.items()
-                     if not any(k == e.task_id or k.startswith(f"{e.calendar}: {e.title} (") for e in fine)}
+            items = {k: v for k, v in items.items() if ahead.get(k, 0) < still.get(k, 1)
+                     and not any(k == e.task_id or k.startswith(f"{e.calendar}: {e.title} (") for e in fine)}
             answer = _choose(backend, days[0], items, routine, shown, now) if items else WeekPlan()
         else:
             answer = backend.plan_week(system_prompt(few_shot), request, schema)
