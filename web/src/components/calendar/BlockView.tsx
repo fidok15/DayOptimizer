@@ -23,7 +23,7 @@ interface Props {
 function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, onOpen }: Props) {
   const s = toMin(b.start);
   const dur = toMin(b.end) - s;
-  const label = `${emoji ? `${emoji} ` : ""}${b.title || b.category}`;
+  const label = `${emoji ? `${emoji} ` : ""}${b.title || b.intent || b.category}`;
   const compact = dur < 45;
   const time = `${b.start} - ${b.end}`;
   const ink = readableText(color, useTheme());
@@ -37,7 +37,7 @@ function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, o
       transition={SPRING}
       initial={fresh ? { opacity: 0, scale: 0.96 } : false}
       animate={{ opacity: 1, scale: 1 }}
-      aria-label={`${b.title ? `${b.title} (${b.category})` : b.category}, ${DAY_NAME[day]} ${b.start} to ${b.end}`}
+      aria-label={`${b.title || b.intent ? `${b.title || b.intent} (${b.category})` : b.category}, ${DAY_NAME[day]} ${b.start} to ${b.end}`}
       onPointerDown={(e) => drag.onBlockPointerDown(e, b, day)}
       onClick={() => {
         if (!drag.takeSuppressClick()) onOpen(b.id, day);

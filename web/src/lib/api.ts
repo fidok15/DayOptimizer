@@ -14,7 +14,9 @@ const toServerWeek = (week: Week) =>
   Object.fromEntries(
     Object.entries(week).map(([day, blocks]) => [
       day,
-      blocks.map(({ start, end, category, title, protected: keep }) => ({ start, end, category, title, ...(keep && { protected: true }) })),
+      blocks.map(({ start, end, category, title, protected: keep, intent }) => ({
+        start, end, category, title, ...(keep && { protected: true }), ...(intent?.trim() && { intent: intent.trim() }),
+      })),
     ]),
   );
 
