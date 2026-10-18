@@ -21,7 +21,8 @@ from pydantic import BaseModel
 from dayoptimizer.core.constraints import window_rule
 from dayoptimizer.core.models import Event, PlannedChange
 from dayoptimizer.llm.task_rules import minutes
-from dayoptimizer.llm.week_plan import Block, DAY_NAMES, _count_rules, _hhmm, _spans, free_gaps, routine_spans
+from dayoptimizer.llm.week_plan import (Block, DAY_NAMES, _count_rules, _hhmm, _intent, _minus, _spans, free_gaps,
+                                         routine_spans)
 
 SHORTEST, LONGEST = 30, 90
 TITLE_MAX, WHY_MAX = 40, 120
@@ -89,12 +90,6 @@ def bare(title: str) -> str:
     return " ".join(_SUFFIX.sub("", title).casefold().split())
 
 
-def _minus(spans: list, cuts: list) -> list:
-    for c0, c1 in cuts:
-        spans = [x for a, b in spans for x in ((a, min(b, c0)), (max(a, c1), b)) if x[1] > x[0]]
-    return spans
-
-
 def day_gaps(day: date, events: list[Event], now: datetime, awake: tuple[time, time]) -> list:
     """The day's free time from now on within its waking hours, around every
     event (the user's and the planner's blocks alike)."""
@@ -115,11 +110,12 @@ def routine_time(day: date, rules, events: list[Event]) -> list:
         if not e.all_day:
             history.setdefault(e.calendar, []).append(e.start.date())
     out = []
-    for s, e, cat, title, *_ in spans[day]:
+    for span in spans[day]:
+        s, e, cat, title = span[:4]
         same = [x for x in events if x.start.date() == day and x.calendar == cat
                 and x.title.strip().casefold() == title.strip().casefold()]
-        if same and not any(x.start < e and x.end > s for x in same):
-            continue  # moved: its usual time is free
+        if same and not any(x.start < e and x.end > s for x in same) and not _intent(span):
+            continue  # moved: its usual time is free (an open block never moves; it is filled later)
         mid = datetime.combine(day, time(0)).astimezone()
         block = Block(day=day.isoformat(), start=f"{s:%H:%M}", end=_spans(day, [(s, e)]).split("-")[1],
                       category=cat, title=title)
