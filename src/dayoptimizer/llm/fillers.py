@@ -29,7 +29,7 @@ from dayoptimizer.core.constraints import window_rule
 from dayoptimizer.core.models import Event, PlannedChange
 from dayoptimizer.llm.task_rules import minutes
 from dayoptimizer.llm.week_plan import (Block, DAY_NAMES, _count_rules, _hhmm, _intent, _minus, _spans, free_gaps,
-                                         routine_spans)
+                                         intent_kind, routine_spans)
 
 SHORTEST, LONGEST = 30, 90
 TITLE_MAX, WHY_MAX = 40, 120
@@ -59,12 +59,13 @@ SYSTEM = (
     "rest of the gap stays free. At most one suggestion per gap, and never more minutes in a day than "
     "that day allows. Leaving a gap free is fine.\n"
     "- An open block is time they set aside for what its intent says (their words). Fill each with one or "
-    "more activities that match the intent, each of its natural length (30 minutes or more) inside the "
+    "more activities that match the intent, each of its natural length (30 to 90 minutes) inside the "
     "block, e.g. reading a book 60 min, a break, then a walk in the park 90 min; a focused study session "
-    "45-90 min, a break, another topic. A break is just time without an activity. category: the block's "
-    "own unless another of theirs fits better.\n"
+    "45-90 min, a break, another topic. A block over 90 minutes rarely holds just one activity. A break "
+    "is just time without an activity. category: the block's own unless another of theirs fits better.\n"
     "- In a block meant for work or study, a topic may be one of their courses, exams or deadlines, with "
-    "what to do: \"Revision: <course>\", \"Project: <subject>\".\n"
+    "what to do: \"Revision: <course>\", \"Project: <subject>\"; spread the topics. Every other activity "
+    "has a title of its own, not repeated on another day either.\n"
     "- Fit the person: their notes, routine and own events show what they like and need. Mornings suit "
     "focus and learning, afternoons movement, practice or errands, evenings rest and people. Simple ideas "
     "work: a walk, reading a book, the cinema, stretching, calling a friend, cooking something new, a "
@@ -160,8 +161,9 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
           recent: list[tuple[date, str]], unwanted: set[str], budget: dict[date, int],
           own: frozenset[str] = frozenset()) -> tuple[list, list[str]]:
     """The suggestions that keep every rule as (start, end, filler), and why each other one was refused.
-    `asks`: each day's gaps (start, end) and open-block pieces (start, end, intent, category); in a
-    piece an activity may be longer than in a gap and doesn't spend the day's free time."""
+    `asks`: each day's gaps (start, end) and open-block pieces (start, end, intent, category); an
+    activity in a piece doesn't spend the day's free time, and in a productive one its topic may
+    come back the next day."""
     apart = VARIETY_DAYS.get(rules.variety, 3)
     history = {c: list(ds) for c, ds in history.items()}
     recent, budget = list(recent), dict(budget)
@@ -177,16 +179,17 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
         slot = next((x for x in asks[d] if x[0] <= midnight + timedelta(minutes=s_m) < x[1]), ()) \
             if d is not None and s_m is not None else ()  # the gap or piece it starts in
         piece = len(slot) > 2
+        study = piece and intent_kind(slot[2]) == "productive"  # a course may come back the next day
         if piece and f.category not in categories:
             f = f.model_copy(update={"category": slot[3]})
-        cap = 24 * 60 if piece else min(LONGEST, budget[d]) if d is not None else LONGEST
+        cap = min(LONGEST, budget[d]) if d is not None and not piece else LONGEST
         if s_m is not None and e_m is not None and e_m - s_m > cap >= SHORTEST:
             e_m = s_m + cap  # a small model takes the whole gap: cut it to what may be filled
             f = f.model_copy(update={"end": f"{e_m // 60:02d}:{e_m % 60:02d}"})
         if d is None:
             why = "not a day to fill"
-        elif s_m is None or e_m is None or not SHORTEST <= e_m - s_m <= (cap if piece else LONGEST):
-            why = f"under {SHORTEST} min" if piece else f"not {SHORTEST}-{LONGEST} min"
+        elif s_m is None or e_m is None or not SHORTEST <= e_m - s_m <= LONGEST:
+            why = f"not {SHORTEST}-{LONGEST} min"
         elif f.category not in categories:
             why = "not one of the categories"
         else:
@@ -203,7 +206,7 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
                 why = "you removed it lately"
             elif name in own:
                 why = "a copy of one of your own events"
-            elif any(n == name and abs((d - x).days) < apart for x, n in recent):
+            elif any(n == name and abs((d - x).days) < (1 if study else apart) for x, n in recent):
                 why = "suggested lately (variety)"
             elif not piece and e_m - s_m > budget[d]:
                 why = "would cut into the day's minimum free time"
@@ -338,8 +341,8 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
         unwanted = list(dict.fromkeys(_SUFFIX.sub("", r["title"]) for r in rows if r["status"] == "deleted"))
         routine = list(dict.fromkeys(b.label for bs in rules.typical_week.values() for b in bs))
         own = list(dict.fromkeys(e.title for e in others if not e.managed and e.start < now))[-30:]
-        upcoming = list(dict.fromkeys(e.title for e in events if not e.managed and not e.suggested
-                                      and today <= e.start.date() < today + timedelta(days=7)))[:30]
+        upcoming = list(dict.fromkeys(e.title for e in events if (not e.managed or e.task_id) and not e.suggested
+                                      and today <= e.start.date() < today + timedelta(days=7)))[:30]  # + tasks
         prompt = build_prompt(asks, budget, busy, notes, categories, routine, own,
                               list(dict.fromkeys(_SUFFIX.sub("", t) for _, t in recent)), unwanted, now, upcoming)
         answer, refused = None, ["no suggestions: the model's answer wasn't readable"]

@@ -378,7 +378,7 @@ def test_an_open_block_gets_activities_of_their_own_length_and_keeps_only_a_left
     assert [(c.kind, c.title, c.category, c.new_start) for c in changes] == [
         ("create", "Czytanie (sugestia)", "Free", at(SAT, "18:00")), ("create", "Spacer (sugestia)", "Free", at(SAT, "19:15")),
         ("delete", "coś relaksującego", "Free", None), ("create", "coś relaksującego", "Free", at(SAT, "20:15"))]
-    assert [r.rsplit(": ", 1)[1] for r in refused] == ["not inside a free gap", "under 30 min"]
+    assert [r.rsplit(": ", 1)[1] for r in refused] == ["not inside a free gap", "not 30-90 min"]
     again = Model(f("20:15", "21:00", "Kino"))
     assert run(again, cal, storage, open_rules(min_free_minutes=1000), days=(SAT,), now=NOW + timedelta(minutes=15))[0] == []
     assert again.calls == 0
@@ -393,6 +393,16 @@ def test_a_productive_block_may_take_a_course_as_its_topic_but_never_copies_a_me
     assert "study topics): Systemy operacyjne" in model.prompts[0]
     assert [c.title for c in changes if c.suggested] == ["Powtórka: Systemy operacyjne (sugestia)"]
     assert refused[0].endswith("a copy of one of your own events")
+
+
+def test_a_study_topic_may_come_back_the_next_day_and_a_whole_long_piece_is_cut_to_90_min():
+    study = (at(SUN, "15:00"), at(SUN, "18:00"), "coś produktywnego", "Free")
+    rest = (at(SUN, "21:00"), at(SUN, "22:00"), "coś relaksującego", "Free")
+    kept, refused = check([f("15:00", "18:00", "Powtórka: IO", day=SUN), f("21:00", "22:00", day=SUN)],
+                          {SUN: [study, rest]}, CATS, rules(), {}, recent=[(SAT, "powtórka: io"), (SAT, "czytanie")],
+                          unwanted=set(), budget={SUN: 0})  # no free time to spare: open blocks don't need it
+    assert [(x[2].title, x[2].end) for x in kept] == [("Powtórka: IO", "16:30")]
+    assert refused[0].endswith("suggested lately (variety)")
 
 
 def test_no_model_keeps_the_whole_placeholder_and_a_deleted_activity_leaves_it_a_placeholder_that_day():
