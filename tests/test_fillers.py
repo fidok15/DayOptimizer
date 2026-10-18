@@ -345,3 +345,13 @@ def test_the_model_is_told_outright_to_write_titles_in_the_notes_language():
     assert "in Polish" in model.system and "Spacer" in model.system
     changes, _ = suggest(model, [SAT], plan(SAT), Storage(":memory:"), rules(), "I like reading.", CATS, NOW)
     assert "in English" in model.system and "in Polish" not in model.system
+
+
+def test_an_open_blocks_usual_time_is_never_free_for_suggestions():
+    # its pieces may be anywhere in it (or a task took one): the time stays the open block's
+    from dayoptimizer.llm.fillers import routine_time
+    open_ = [RoutineBlock(600, 720, "Free", "coś produktywnego", intent="coś produktywnego"),
+             RoutineBlock(900, 1020, "Free", "coś produktywnego", intent="coś produktywnego")]
+    piece = [ev("p", "Free", "coś produktywnego", SAT, "16:00", "17:00", managed=True)]
+    assert routine_time(SAT, rules(typical_week={d: open_ for d in range(7)}), piece) == [
+        (at(SAT, "10:00"), at(SAT, "12:00")), (at(SAT, "15:00"), at(SAT, "17:00"))]

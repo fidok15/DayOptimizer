@@ -99,6 +99,7 @@ TASK_RULES = (
     "higher priority.\n"
     "- Spread a long task over days rather than one marathon: at most about 3 hours of one task a day "
     "when the deadline allows.\n"
+    "- A routine block marked (open: tasks may go here) takes a task of any category.\n"
     "- A task whose deadline falls on a day you plan must be placed in full. If it cannot fit, place "
     "what fits and list the task in unscheduled with a short reason (how many minutes are missing and "
     "why). Never invent free time.\n"
@@ -191,18 +192,54 @@ def free_time(day: date, events: list[Event], now: datetime) -> str:
 Reserved = dict  # date -> [(start, end, name, category)]: routine time tasks stay out of (category None: all tasks)
 
 
+_PRODUCTIVE = re.compile(r"\b(produkt|nauk|ucz|prac|skupi|focus|learn|work(?!out)|study|deep|projekt|project)", re.I)
+_RELAXING = re.compile(r"\b(relaks|odpocz|spacer|rest(ing)?\b|relax|chill|walk|people|ludz|ludź|towarzys|free|woln"
+                       r"|rozryw|zabaw|fun\b|hobby|sport|trening|workout|gym|ćwicz|exercise)", re.I)
+
+
+def intent_kind(intent: str) -> str:
+    """What an open block is for, read from its intent by keywords (Polish and
+    English): 'productive', 'relaxing', or 'neutral' when it doesn't say.
+    ponytail: keyword lists; ask the model once per intent if they miss too often."""
+    return "productive" if _PRODUCTIVE.search(intent) else "relaxing" if _RELAXING.search(intent) else "neutral"
+
+
+def _intent(span) -> str | None:
+    """The intent of an open routine span (start, end, category, title, fixed, protected, intent); None: not open."""
+    return span[6] if len(span) > 6 else None
+
+
+def _for_tasks(span) -> bool:
+    """An open span any task may take: not protected, not meant for rest."""
+    return bool(_intent(span)) and not _guarded(span) and intent_kind(_intent(span)) != "relaxing"
+
+
+def _may_take(names: list[str] | None, title: str) -> bool:
+    """Did the user let a task take the routine block `title` (may_take: [] or ["*"] = any)?"""
+    return names is not None and (not names or "*" in names or title.strip().casefold()
+                                  in {x.strip().casefold() for x in names})
+
+
+def _minus(spans: list, cuts: list) -> list:
+    """The spans with the cuts taken out."""
+    for c0, c1 in cuts:
+        spans = [x for a, b in spans for x in ((a, min(b, c0)), (max(a, c1), b)) if x[1] > x[0]]
+    return spans
+
+
 def routine_spans(typical_week: dict, categories: dict, days: list[date]) -> tuple[dict, Reserved]:
     """The routine of each day as spans (start, end, category, title, fixed,
-    protected), and the part of it tasks stay out of: fixed routine keeps out
-    tasks of other categories, a protected block (category None) every task."""
+    protected, intent), and the part of it tasks stay out of: fixed routine keeps out
+    tasks of other categories, a protected block (category None) every task. An open
+    block any task may take (`_for_tasks`) keeps out none, whatever its category."""
     routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
                          datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
                          b.category, b.title or b.category,
                          not getattr(categories.get(b.category), "movable", True),
-                         getattr(b, "protected", False))
+                         getattr(b, "protected", False), getattr(b, "intent", None))
                         for b in typical_week.get(d.weekday(), [])]
                     for d in days}
-    reserved = {d: [(s, e, title, None if kept else cat) for s, e, cat, title, fixed, kept in spans if fixed or kept]
+    reserved = {d: [(x[0], x[1], x[3], None if x[5] else x[2]) for x in spans if (x[4] and not _for_tasks(x)) or x[5]]
                 for d, spans in routine_days.items()}
     return routine_days, reserved
 
@@ -288,7 +325,7 @@ def build_prompt(days: list[date], routine: str, categories: list[str], events: 
             if routine_days and routine_days.get(d):
                 lines.append("- routine: " + ", ".join(
                     f"{_spans(d, [(s, e)])} {cat}: {title}" + (" (fixed)" if x[4] else "")
-                    + (" (protected)" if _guarded(x) else "")
+                    + (" (protected)" if _guarded(x) else "") + (" (open: tasks may go here)" if _for_tasks(x) else "")
                     for x in routine_days[d] for s, e, cat, title in [x[:4]]))
         for e in mine:
             where = f" @ {e.location}" if e.location else ""
@@ -376,6 +413,22 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     left = dict(left or {})
     running = dict(left)
     kept: list[tuple[datetime, datetime, Block]] = []
+    # an open routine block is code's: its whole usual time goes in first and yields at the end
+    # to whatever took part of it (it never moves); the model's copies of it are ignored
+    opens = {(d.isoformat(), x[2], x[3].strip().casefold()) for d, spans in (routine_days or {}).items()
+             for x in spans if _intent(x)}
+    seeds = {}
+    for d in days:
+        for x in (routine_days or {}).get(d, []):
+            if _intent(x) and x[0] >= now:
+                seed = Block(day=d.isoformat(), start=f"{x[0]:%H:%M}", end=_spans(d, [x[:2]]).split("-")[1],
+                             category=x[2], title=x[3])
+                seeds[id(seed)] = (seed, x)
+                kept.append((x[0], x[1], seed))
+
+    def open_span(b: Block):
+        found = seeds.get(id(b))
+        return found[1] if found and found[0] is b else None
     open_by_name = {(t.category, t.title.strip().casefold()): t.id for t in tasks if not t.done}
     fixed = [x for spans in (reserved or {}).values() for x in spans]
     counted = {r.category for r in rules if r.type in ("max_per_week", "min_gap_days")}
@@ -383,6 +436,8 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         if b.task_id is None and (b.category, b.title.strip().casefold()) in open_by_name:
             # a block named like an open task is that task's work, so it counts toward it
             b = b.model_copy(update={"task_id": open_by_name[(b.category, b.title.strip().casefold())]})
+        if b.task_id is None and (b.day, b.category, b.title.strip().casefold()) in opens:
+            continue
         label = f"{b.day} {b.start}-{b.end} {b.category}: {b.title}"
         day = wanted.get(b.day)
         start_m, end_m = _hhmm(b.start), _hhmm(b.end)
@@ -425,7 +480,12 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         if clash is not None:
             problems.append(f"{label}: overlaps '{clash.title}' ({_fmt(clash)}) [{clash.id}]")
             continue
-        twin = next((k for k in kept if k[0] < end and k[1] > start and not _shares_slot(k[2], b)), None)
+        def gives_way(k):  # an open block yields to anything but a task it is kept from (meant for rest)
+            x = open_span(k[2])
+            return x is not None and (b.task_id is None or _for_tasks(x) or x[2] == b.category
+                                      or _may_take(getattr(by_id.get(b.task_id), "may_take", None), x[3]))
+        twin = next((k for k in kept if k[0] < end and k[1] > start and not _shares_slot(k[2], b)
+                     and not gives_way(k)), None)
         if twin is not None:
             problems.append(f"{label}: overlaps your own block '{twin[2].title}' ({twin[2].start}-{twin[2].end})")
             continue
@@ -461,9 +521,13 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         # a flexible, unprotected routine block may move to open a gap for a task
         flexible = {(d.isoformat(), x[2], x[3].strip().casefold()) for d, spans in (routine_days or {}).items()
                     for x in spans if not x[4] and not _guarded(x)}
-        taken = blocking + [Event(id=f"kept:{i}" if b.task_id is None and (b.day, b.category, b.title.strip().casefold())
+        # an open block a task may take is free time to it; one meant for rest only goes for a task the
+        # user let take it (id "open:<n>": never moved, see _make_room)
+        taken = blocking + [Event(id=("kept" if _guarded(open_span(b)) else f"open:{i}") if open_span(b) else
+                                  f"kept:{i}" if b.task_id is None and (b.day, b.category, b.title.strip().casefold())
                                   in flexible else "kept", calendar=b.category, title=b.title, start=s, end=e,
-                                  task_id=b.task_id) for i, (s, e, b) in enumerate(kept)]
+                                  task_id=b.task_id) for i, (s, e, b) in enumerate(kept)
+                            if not (open_span(b) and _for_tasks(open_span(b)))]
         seen = {c: list(ds) for c, ds in (history or {}).items()}
         for s, _, b in kept:
             seen.setdefault(b.category, []).append(s.date())
@@ -484,12 +548,21 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
             b = kept[i][2]
             kept[i] = (s, e, b.model_copy(update={"start": f"{s:%H:%M}", "end": _spans(s.date(), [(s, e)]).split("-")[1],
                                                   "why": "moved to make room for a task"}))
-        kept = [k for i, k in enumerate(kept) if i not in moved or moved[i] is not None]  # gave way to a task
+        kept = [k for i, k in enumerate(kept) if i not in moved or moved[i] is not None  # gave way to a task
+                or open_span(k[2])]  # an open block keeps what the task left of it (below)
         # code's blocks keep the weekly notes too; one that breaks them is just not placed
         kept, _ = _count_rules(kept + filled, rules, history or {})
         after = leftover()
     else:
         ruled, would_take = {}, lambda t: ""
+    # what is left of each open block around everything else, in pieces of 30 minutes or more
+    # ponytail: an open block counts toward weekly notes of its category like any routine block
+    cuts = [(e.start, e.end) for e in blocking] + [(s, e) for s, e, b in kept if not open_span(b)]
+    kept = [k for k in kept if not open_span(k[2])] + [
+        (a, z, b if (a, z) == (s, e) else b.model_copy(update={"start": f"{a:%H:%M}",
+                                                                "end": _spans(a.date(), [(a, z)]).split("-")[1]}))
+        for s, e, b in kept if open_span(b) for a, z in _minus([(s, e)], cuts)
+        if (a, z) == (s, e) or minutes(a, z) >= 30]  # ponytail: fixed threshold, like _yield_to_tasks
     listed = {u.task_id for u in plan.unscheduled}
     problems += [f"unscheduled {u.task_id}: not one of the tasks" for u in plan.unscheduled if u.task_id not in by_id]
     if not report_unplaced:
@@ -533,7 +606,7 @@ def _without_orphans(kept: list[tuple[datetime, datetime, Block]], routine_days:
     drop = set()
     for d, spans in routine_days.items():
         for x in spans:
-            if x[0] < now or (d, x[2], x[3].strip().casefold()) in have or any(
+            if x[0] < now or _intent(x) or (d, x[2], x[3].strip().casefold()) in have or any(
                     b.task_id and b.category == x[2] and s < x[1] and x[0] < e for s, e, b in kept):
                 continue
             for a in (y for y in spans if y[1] == x[0]):
@@ -708,7 +781,8 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
         for _, i, j in pairs:
             if i not in found and j not in used:
                 found.add(i), used.add(j)
-        todo = [x for i, x in sorted(enumerate(spans), key=lambda ix: (not ix[1][4], ix[1][0] < now)) if i not in found]
+        todo = [x for i, x in sorted(enumerate(spans), key=lambda ix: (not ix[1][4], ix[1][0] < now))
+                if i not in found and not _intent(x)]  # an open block: validate places what is left of it
         noted = {id(x): _count_rules([(x[0], x[1], Block(day=d.isoformat(), start=f"{x[0]:%H:%M}", end=_spans(
             d, [x[:2]]).split("-")[1], category=x[2], title=x[3]))], list(rules), history or {})[1] for x in todo}
         ruled += [n[0] for x in todo if x[0] >= now for n in [noted[id(x)]] if n]
@@ -780,7 +854,7 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             return end
 
         def busy():
-            return [e for e in taken if not (e.id.startswith("kept") and e.task_id is None
+            return [e for e in taken if not (e.id.startswith(("kept", "open")) and e.task_id is None
                                              and e.calendar == t.category)] + _reserved_events(reserved, t.category)
 
         candidates = sorted(x for x in days if x <= last and routine_days.get(x))
@@ -810,10 +884,10 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             hold = min(hold, sum(min(share, r) for r in room))  # never hold back more than later days can take
             need -= hold
             # twice: the short last piece may fit a gap the full chunk skipped
-            for own_slot in (True, False, True, False):
+            for slot in ("own", "open", None) * 2:
                 gaps = free_gaps(d, busy(), now)
-                if own_slot:  # the day's routine time of the task's category first, then any free time
-                    spans = [(s, e) for s, e, cat, *_ in routine_days[d] if cat == t.category]
+                if slot:  # the day's routine time of the task's category first, then open blocks, then any free time
+                    spans = [x[:2] for x in routine_days[d] if (x[2] == t.category if slot == "own" else _for_tasks(x))]
                     gaps = [(max(a, s), min(b, e)) for a, b in gaps for s, e in spans if min(b, e) > max(a, s)]
                 for a, b in gaps:
                     a, b = max(a, lo), b if hi is None else min(b, hi)
@@ -834,6 +908,9 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
                                drop) for drop in (None, t.may_take)[:1 + (t.may_take is not None)])), None)):
                 a, shifts = room
                 for e, s, z in shifts:
+                    if e.id.startswith("open:"):  # stays in the way of others; what's left of it stays open
+                        moved[int(e.id.split(":")[1])] = None
+                        continue
                     taken = [x if x.id != e.id else replace(x, start=s, end=z) for x in taken if x.id != e.id or s is not None]
                     moved[int(e.id.split(":")[1])] = None if s is None else (s, z)
                 place(d, a, size())
@@ -850,26 +927,30 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
     that day, nearest its time (3 hours away at most) and clear of `everything`
     (all blocks and reserved time), keeping the notes: (start, [(event, new start, new end)]) or None.
     With `drop` (routine titles; [] or ["*"] = any), such a block that fits
-    nowhere else goes: (event, None, None)."""
+    nowhere else goes: (event, None, None); so does an open block (id "open:<n>"),
+    which never moves."""
     midnight = datetime.combine(d, time(0)).astimezone()
     day_end = midnight + timedelta(days=1)
     a = _next_quarter(max(lo, now, midnight))  # whole minutes: a replan must find the same start again
     while a + timedelta(minutes=n) <= (day_end if hi is None else min(hi, day_end)):
         b = a + timedelta(minutes=n)
         way = [e for e in busy if e.start < b and e.end > a]
-        if way and all(e.id.startswith("kept:") for e in way) and window_rule(
+        if way and all(e.id.startswith("kept:") or e.id.startswith("open:") and _may_take(drop, e.title)
+                       for e in way) and window_rule(
                 rules, category, minutes(midnight, a), minutes(midnight, b), d.weekday()) is None:
             rest = [e for e in everything if e not in way] + [Event(id="new", calendar=category, title="", start=a, end=b)]
             shifts = []
             for e in way:
+                if e.id.startswith("open:"):
+                    shifts.append((e, None, None))
+                    continue
                 # ponytail: 3h from its usual time at most (lunch at 19:00 is no lunch); per-category reach if it bites
                 far = timedelta(hours=3)
                 s = _nearest_start(rest, e.start, e.end - e.start, max(now, midnight, e.start - far),
                                    min(day_end, e.end + far))
                 if s is None or window_rule(rules, e.calendar, minutes(midnight, s),
                                             minutes(midnight, s + (e.end - e.start)), d.weekday()) is not None:
-                    if drop is not None and (not drop or "*" in drop or e.title.strip().casefold()
-                                             in {x.strip().casefold() for x in drop}):
+                    if _may_take(drop, e.title):
                         shifts.append((e, None, None))
                         continue
                     break
@@ -909,10 +990,12 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
             continue
         chunk = min(t.min_chunk_min or n, n)
         size = min(n, max(chunk, 180))  # one block of at most ~3 hours; _fill places the rest when it must
-        busy = blocking + [span_event(x) for x in spans if x[2] != t.category or _guarded(x)]
-        own = [(x[0], x[1]) for x in spans if x[2] == t.category]
+        busy = blocking + [span_event(x) for x in spans if (x[2] != t.category or _guarded(x)) and not _for_tasks(x)]
+        own = [(x[0], x[1]) for x in spans if x[2] == t.category or _for_tasks(x)]  # its routine slot, an open block
+        mine_first = [(x[0], x[1]) for x in spans if x[2] == t.category]
         gaps = sorted(((max(a, lo), b if hi is None else min(b, hi)) for a, b in free_gaps(day, busy, now)),
-                      key=lambda g: (not any(s < g[1] and e > g[0] for s, e in own), g[0]))
+                      key=lambda g: (not any(s < g[1] and e > g[0] for s, e in mine_first),
+                                     not any(s < g[1] and e > g[0] for s, e in own), g[0]))
         starts: list[list] = []
         for a, b in gaps:
             # in its routine slot a task starts with the slot (15:20, not 15:30): the rest stays one piece
@@ -945,7 +1028,7 @@ def slot_items(day: date, events: list[Event], now: datetime, tasks: list[Task],
             items[t.id] = (task_lines([t], left, now)[0], slots)
     for x in spans if with_routine else []:
         s, e, cat, title, fixed = x[:5]
-        if fixed or s < now or not any(b.start < e and b.end > s for b in blocking if not b.all_day
+        if fixed or _intent(x) or s < now or not any(b.start < e and b.end > s for b in blocking if not b.all_day
                                        and (not b.managed or b.start < now) and not b.id.startswith("stay:")):
             continue
         others = blocking + [span_event(y) for y in spans if y is not x]
@@ -1019,6 +1102,11 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     guard = [x[:3] for spans in routine_days.values() for x in spans if x[4] or _guarded(x)]
 
     by_id = {t.id: t for t in tasks}
+    opens = {(d, x[2], x[3]) for d, spans in routine_days.items() for x in spans if _intent(x)}
+
+    def is_open(e):  # an event or create of what was left of an open block: validate puts it back
+        start, cat = (e.start, e.calendar) if isinstance(e, Event) else (e.new_start, e.category)
+        return not e.task_id and (start.date(), cat, e.title) in opens
 
     def covered(e):  # an old block goes, silently: fixed or protected routine of another category is over it,
         return any(s < e.end and z > e.start and c != e.calendar for s, z, c in guard) or (  # or its task
@@ -1028,7 +1116,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
         usual = {(x[2], x[3], x[0]) for x in routine_days.get(days[0], [])}
         mid = datetime.combine(days[0], time(0)).astimezone()
-        fine = [e for e in previous if not covered(e) and not any(u.start < e.end and u.end > e.start for u in user)
+        fine = [e for e in previous if not covered(e) and not is_open(e) and not any(u.start < e.end and u.end > e.start for u in user)
                 and window_rule(rules, e.calendar, minutes(mid, e.start), minutes(mid, e.end), days[0].weekday()) is None]
         # what stays is in the way of new picks; a routine block at its usual time already is
         stay = [replace(e, id=f"stay:{e.id}", managed=False) for e in fine
@@ -1062,7 +1150,7 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
                       title=c.title, why=c.reason, task_id=c.task_id) for c in creates]
         over = [p for p in plan.plan_over if len(_norm(p.note)) >= 10 and _norm(p.note) in note_text]
         placed = [Event(id=f"placed-{i}", calendar=c.category, title=c.title, start=c.new_start, end=c.new_end)
-                  for i, c in enumerate(creates)]
+                  for i, c in enumerate(creates) if c.task_id or not is_open(c)]
         still = dict(left or {})
         for c in creates:
             if c.task_id in still:
