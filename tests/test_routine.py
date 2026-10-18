@@ -42,3 +42,12 @@ def test_a_protected_block_is_marked_and_parsed():
     week = {"mon": [dict(WORK[0], protected=True), WORK[1]]}
     assert "09:00-17:00 Work (protected: no tasks here)\n18:00-19:30 Gym: Push day\n" in render_routine(CATS, week)
     assert [b.protected for b in _parse_typical_week(week)[0]] == [True, False]
+
+
+def test_an_open_block_shows_its_intent_and_is_titled_by_it_until_filled():
+    from dayoptimizer.core.rules import _parse_typical_week
+    open_block = {"start": "15:20", "end": "18:00", "category": "Work", "title": "", "intent": "something productive"}
+    week = {"mon": [open_block, WORK[1]]}
+    assert "15:20-18:00 open: something productive (Work)\n18:00-19:30 Gym: Push day\n" in render_routine(CATS, week)
+    b, gym = _parse_typical_week(week)[0]
+    assert (b.intent, b.label, gym.intent) == ("something productive", "something productive", None)

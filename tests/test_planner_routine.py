@@ -250,3 +250,10 @@ def test_a_commute_already_in_the_calendar_is_never_moved_away_from_its_class():
     assert not [c for c in changes if c.event_id == "c"]
     assert [c.kind for c in changes if c.event_id == "d"] == ["move"]
     assert not [c for c in changes if c.kind == "create" and c.title == "Commute: Lecture - Maths"]
+
+
+def test_an_open_block_is_placed_like_a_normal_one_titled_by_its_intent():
+    week = _parse_typical_week({"fri": [{"start": "15:00", "end": "17:00", "category": "Work",
+                                         "intent": "something productive"}]})
+    changes = plan_day(DAY, [], None, dataclasses.replace(BASE, typical_week=week), now=EARLY)
+    assert _created(changes) == [("something productive", "15:00", "17:00")]
