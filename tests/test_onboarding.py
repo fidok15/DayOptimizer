@@ -170,3 +170,8 @@ def test_open_block_intent_accepted_stripped_and_bounded(tmp_path, monkeypatch):
     save_user_config('typical_week:\n  mon:\n  - {start: "15:20", end: "18:00", category: Learn, intent: something productive}\n')
     saved = validate_config((tmp_path / "config.local.yaml").read_text())
     assert saved.typical_week["mon"][0].intent == "something productive"
+
+
+def test_a_block_cannot_be_both_open_and_protected():
+    with pytest.raises(ConfigError, match="can't be both open and protected"):
+        validate_config('typical_week:\n  mon:\n  - {start: "09:00", end: "10:00", category: Work, protected: true, intent: study}\n')

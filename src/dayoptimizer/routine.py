@@ -29,7 +29,8 @@ def render_routine(categories: dict, week: dict, notes: str = "") -> str:
     groups: dict[tuple, list[str]] = {}
     for d in DAYS:
         blocks = sorted(week.get(d) or [], key=lambda b: b["start"])
-        key = tuple((b["start"], b["end"], b["category"], b.get("title", ""), bool(b.get("protected")),
+        key = tuple((b["start"], b["end"], b["category"], b.get("title", ""),
+                     bool(b.get("protected")) and not (b.get("intent") or "").strip(),
                      (b.get("intent") or "").strip())
                     for b in blocks)
         groups.setdefault(key, []).append(d)
