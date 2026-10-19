@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Annotated, Literal
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
 _VALID_WORK_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -48,6 +48,12 @@ class TemplateBlock(BaseModel):
         if start is not None and value <= start:
             raise ValueError(f"end ({value}) must be after start ({start})")
         return value
+
+    @model_validator(mode="after")
+    def _open_or_protected(self):
+        if self.intent is not None and self.protected:
+            raise ValueError("a block can't be both open and protected")
+        return self
 
 
 class MealWindowConfig(BaseModel):

@@ -126,7 +126,9 @@ def _parse_typical_week(week) -> dict[int, list[RoutineBlock]]:
         if name not in _WEEKDAY_NAMES or not isinstance(blocks, list):
             continue
         parsed = [RoutineBlock(_minutes(b["start"]), _minutes(b["end"]), b["category"],
-                               b.get("title") or (b.get("intent") or "").strip(), bool(b.get("protected")),
+                               b.get("title") or (b.get("intent") or "").strip(),
+                               # an old config may have both: open wins
+                               bool(b.get("protected")) and not (b.get("intent") or "").strip(),
                                (b.get("intent") or "").strip() or None)
                   for b in blocks if isinstance(b, dict) and {"start", "end", "category"} <= b.keys()]
         out[_WEEKDAY_NAMES.index(name)] = sorted((b for b in parsed if b.end > b.start), key=lambda b: b.start)
