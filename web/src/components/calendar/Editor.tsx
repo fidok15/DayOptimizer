@@ -164,7 +164,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         <input
           type="checkbox"
           checked={!!block.protected}
-          onChange={(ev) => onUpdate({ protected: ev.target.checked })}
+          onChange={(ev) => onUpdate(ev.target.checked ? { protected: true, intent: undefined } : { protected: false })}
           className="size-4 accent-[#f4b860]"
         />
         Protected: tasks can't take this time
@@ -174,7 +174,7 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         <input
           type="checkbox"
           checked={block.intent !== undefined}
-          onChange={(ev) => onUpdate({ intent: ev.target.checked ? "" : undefined })}
+          onChange={(ev) => onUpdate(ev.target.checked ? { intent: "", protected: false } : { intent: undefined })}
           className="size-4 accent-[#f4b860]"
         />
         Open block: the planner fills it
