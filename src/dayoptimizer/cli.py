@@ -123,10 +123,12 @@ def _run_plan(day: date, calendar, storage, rules, confirm=None):
     applied, errors = apply_changes(changes, calendar, storage, confirm)
     return changes, applied, errors
 
-def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
+def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: list = (), dry: bool = False):
     """Let a language model lay out the days (llm/week_plan.py checks its work).
     Anthropic first, then the local Ollama model; None when neither can plan,
-    so the caller falls back to placing the routine by rule."""
+    so the caller falls back to placing the routine by rule. `extra`: events
+    about to be added, planned around as if there. `dry`: nothing is written,
+    the changes come back for the user to OK (`accept` writes them)."""
     from dayoptimizer.llm import backend as llm
     from dayoptimizer.llm.week_plan import plan_days, routine_spans
     from dayoptimizer.routine import render_routine
@@ -136,14 +138,16 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
     week_start = days[0] - timedelta(days=days[0].weekday())
     lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
     hi = datetime.combine(max(days[-1], week_start + timedelta(days=6)) + timedelta(days=1), time(0)).astimezone()
-    events = calendar.list_events(lo, hi)
+    events = calendar.list_events(lo, hi) + list(extra)
     now = datetime.now().astimezone()
     # Blocks of a task that is done (or gone) are removed by code, with or without a model.
     open_ids = {t.id for t in tasks}
     stale = [e for e in events if e.managed and e.task_id and e.task_id not in open_ids and e.start >= now]
+    gone = [PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
+                          reason="its task is done") for e in stale]
     if stale:
-        apply_changes([PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
-                                     reason="its task is done") for e in stale], calendar, storage, lambda c: True)
+        if not dry:
+            apply_changes(gone, calendar, storage, lambda c: True)
         events = [e for e in events if e not in stale]
     # suggestions for free time yield to everything: the planner doesn't see the ones still ahead (llm/fillers.py)
     hidden = [e for e in events if e.suggested and e.start >= now]
@@ -187,6 +191,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None):
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
             continue
+        if dry:
+            return gone + changes, [], [], summary, dropped, unscheduled
         applied, errors = apply_changes(changes, calendar, storage, confirm or _confirm)
         more = _suggest(backend, days, calendar, storage, rules, config, hidden_since=now)
         if more:
@@ -265,6 +271,13 @@ def cmd_plan(args, rules, config):
     storage = Storage(paths.db_path())
     start_day = date.fromisoformat(args.date) if args.date else date.today()
     days = args.week if args.week else 1
+    if getattr(args, "propose", False):
+        from dayoptimizer.core.models import Event
+        added = _read_events(args.with_events) if args.with_events else []
+        days = [start_day + timedelta(days=i) for i in range(days)]
+        extra = [Event(id=f"new-{i}", calendar=c, title=t, start=s, end=e) for i, (c, t, s, e) in enumerate(added)]
+        _save_proposal(days, added, _llm_plan(days, calendar, storage, rules, extra=extra, dry=True))
+        return
     result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules)
     if result is not None:
         changes, applied, errors, summary, dropped, unscheduled = result
@@ -469,7 +482,6 @@ def cmd_ask(args, rules, config):
     clock time becomes a calendar event, what doesn't becomes a task the
     planner fits into free time. Show it, and on OK save the tasks and hand the
     events to `add`, which writes them inside the app bundle and replans."""
-    import json
     if not rules.categories:
         console.print("You have no categories yet, so there is nothing to file this under. "
                       "Add some in  dayoptimizer setup  first.", markup=False, style="yellow")
@@ -502,23 +514,40 @@ def cmd_ask(args, rules, config):
         console.print(f"  {start:%a %d.%m %H:%M}-{end:%H:%M}  {title}  ({category})", markup=False)
     for task, note in tasks:
         console.print(f"  task {_task_line(task)}{note}", markup=False)
+    tasks = [t for t, _ in tasks]
+    proposal = None
+    if sys.stdin.isatty() and tasks:
+        for task in tasks:
+            storage.save_task(task)  # the planner reads them from storage; dropped again on 'n'
+        proposal = _propose(tasks, to_create, rules, config)
+        if proposal is not None:
+            _show_proposal(proposal, tasks)
     if sys.stdin.isatty():
         try:
             answer = console.input("Add to your calendar and replan? [Y/n] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             answer = "n"
         if answer not in ("", "y", "yes", "t", "tak"):
+            for task in tasks:
+                if storage.get_task(task.id):
+                    storage.mark_task_done(task.id)
+            _proposal_file().unlink(missing_ok=True)
             console.print("Nothing changed.")
             return
-    tasks = [t for t, _ in tasks]
+    if proposal is not None:  # what was shown is what gets written
+        if _in_bundle() or sys.platform != "darwin":
+            cmd_accept(argparse.Namespace(), rules, config)
+        else:
+            console.print("Working on your calendar...", style="dim")
+            _calendar_run(["accept"])
+        return
     for task in tasks:
         storage.save_task(task)
     if not to_create:
         console.print("Placing in your calendar...", style="dim")
         _replan_for(tasks, rules, config)
         return
-    payload = json.dumps([{"category": c, "title": t, "start": s.isoformat(), "end": e.isoformat()}
-                          for c, t, s, e in to_create], ensure_ascii=False)
+    payload = _events_json(to_create)
     week = ["--week", str(_task_days(tasks))] if tasks else []
     if _in_bundle() or sys.platform != "darwin":
         cmd_add(argparse.Namespace(events=payload, week=int(week[1]) if week else None), rules, config)
@@ -526,21 +555,22 @@ def cmd_ask(args, rules, config):
         console.print("Working on your calendar...", style="dim")
         _calendar_run(["add", payload, *week])
 
-def cmd_add(args, rules, config):
-    """Internal: create the events `ask` confirmed, then replan their days."""
+def _events_json(events) -> str:
+    import json
+    return json.dumps([{"category": c, "title": t, "start": s.isoformat(), "end": e.isoformat()}
+                       for c, t, s, e in events], ensure_ascii=False)
+
+def _read_events(payload: str) -> list[tuple[str, str, datetime, datetime]]:
+    """`_events_json` back; ValueError when it can't be read."""
     import json
     try:
-        items = json.loads(args.events)
-        events = [(i["category"], str(i["title"])[:100], datetime.fromisoformat(i["start"]),
-                   datetime.fromisoformat(i["end"])) for i in items]
-    except (ValueError, KeyError, TypeError):
-        console.print("Couldn't read the events to add.", style="red")
-        return
-    calendar = CalendarClient()
-    if not calendar.request_access():
-        console.print(NO_ACCESS_HELP, markup=False, style="red")
-        return
-    storage = Storage(paths.db_path())
+        return [(i["category"], str(i["title"])[:100], datetime.fromisoformat(i["start"]),
+                 datetime.fromisoformat(i["end"])) for i in json.loads(payload)]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError("Couldn't read the events to add.") from exc
+
+def _create_events(events, calendar, storage, rules) -> set[date]:
+    """Write the events the user asked for; the days they are on."""
     days = set()
     for category, title, start, end in events:
         if category not in rules.categories or end <= start:
@@ -554,6 +584,21 @@ def cmd_add(args, rules, config):
         storage.log_change(f"[added] {category}: {title} {start:%Y-%m-%d %H:%M}", "requested in plain words")
         console.print(f"Added {title} ({category}) {start:%a %H:%M}-{end:%H:%M}", markup=False, style="green")
         days.add(start.date())
+    return days
+
+def cmd_add(args, rules, config):
+    """Internal: create the events `ask` confirmed, then replan their days."""
+    try:
+        events = _read_events(args.events)
+    except ValueError as exc:
+        console.print(str(exc), style="red")
+        return
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        return
+    storage = Storage(paths.db_path())
+    days = _create_events(events, calendar, storage, rules)
     if getattr(args, "week", None):
         # tasks came with the events: one run over the tasks' days, then the event days after them
         cmd_plan(argparse.Namespace(date=None, week=args.week), rules, config)
@@ -568,6 +613,99 @@ def cmd_add(args, rules, config):
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
         console.print(Markdown(summarize(changes)))
         _print_errors(errors)
+    _print_pending(storage)
+
+def _proposal_file() -> Path:
+    return paths.ensure_private_dir() / "proposal.json"
+
+def _save_proposal(days: list[date], added, result) -> None:
+    """The dry plan (`plan --propose`) for the terminal to show and `accept` to write."""
+    import json
+    from dataclasses import asdict
+    changes = None if result is None else [
+        {**asdict(c), **{k: getattr(c, k).isoformat() for k in ("new_start", "new_end") if getattr(c, k)}}
+        for c in result[0]]
+    _proposal_file().write_text(json.dumps({
+        "days": [d.isoformat() for d in days], "events": _events_json(added), "changes": changes,
+        "unscheduled": [] if result is None else result[5]}, ensure_ascii=False))
+
+def _load_proposal() -> dict | None:
+    """The saved proposal with PlannedChanges; None when there is none or no model could plan."""
+    import json
+    from dayoptimizer.core.models import PlannedChange
+    try:
+        p = json.loads(_proposal_file().read_text())
+    except (OSError, ValueError):
+        return None
+    if p.get("changes") is None:
+        return None
+    p["changes"] = [PlannedChange(**{**c, **{k: datetime.fromisoformat(c[k]) for k in ("new_start", "new_end")
+                                             if c.get(k)}}) for c in p["changes"]]
+    p["days"] = [date.fromisoformat(d) for d in p["days"]]
+    return p
+
+def _propose(tasks, to_create, rules, config) -> dict | None:
+    """Plan the tasks' days without writing anything (in the calendar bundle)
+    and read back where everything would go; None: no model could plan, so
+    nothing can be shown ahead."""
+    today = date.today()
+    days = min(7, max([_task_days(tasks)] + [(s.date() - today).days + 1 for _, _, s, _ in to_create]))
+    argv = ["plan", "--week", str(days), "--propose"] + (["--with", _events_json(to_create)] if to_create else [])
+    _proposal_file().unlink(missing_ok=True)
+    console.print("Working out where it goes...", style="dim")
+    if _in_bundle() or sys.platform != "darwin":
+        cmd_plan(argparse.Namespace(date=None, week=days, propose=True,
+                                    with_events=argv[-1] if to_create else None), rules, config)
+    else:
+        _calendar_run(argv, ask=False)
+    return _load_proposal()
+
+def _show_proposal(p: dict, tasks) -> None:
+    """Where each task would go, then what else the plan changes to make room."""
+    blocks = {}
+    for c in p["changes"]:
+        if c.kind == "create" and c.task_id:
+            blocks.setdefault(c.task_id, []).append(c)
+    console.print("I'd put them here:")
+    for t in tasks:
+        when = ", ".join(f"{c.new_start:%a %d.%m %H:%M}-{c.new_end:%H:%M}"
+                         for c in sorted(blocks.get(t.id, []), key=lambda c: c.new_start))
+        console.print(f"  [{t.id}] {t.title}  {when or 'no time found'}", markup=False)
+    other = [c for c in p["changes"] if c.kind != "note" and not (c.kind == "create" and c.task_id)]
+    if other:
+        console.print("To make room:")
+        console.print(format_changes(other), markup=False)
+    if p["unscheduled"]:
+        console.print("Doesn't fit:", style="yellow")
+        for line in p["unscheduled"]:
+            console.print(f"  {line}", markup=False)
+
+def cmd_accept(args, rules, config):
+    """Internal: write the plan `ask` showed (`plan --propose`) and the user OKed.
+    ponytail: a calendar edit made between showing and OK is not seen; replan if that matters."""
+    p = _load_proposal()
+    _proposal_file().unlink(missing_ok=True)
+    if p is None:
+        console.print("Nothing to add: the proposal is gone. Say it again.", style="yellow")
+        return
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        return
+    storage = Storage(paths.db_path())
+    _create_events(_read_events(p["events"]), calendar, storage, rules)
+    applied, errors = apply_changes(p["changes"], calendar, storage, _confirm)
+    from dayoptimizer.llm import backend as llm
+    backends = llm.planning_backends(config.get("llm", {}))
+    more = _suggest(backends[0], p["days"], calendar, storage, rules, config) if backends else []
+    if more:
+        from dayoptimizer.llm.fillers import record
+        done, failed = apply_changes(more, calendar, storage, lambda c: True)
+        record(done, storage)
+        applied, errors = applied + done, errors + failed
+    _note_unplaced(p["unscheduled"])
+    console.print(f"[green]Applied {len(applied)} changes.[/green]")
+    _print_errors(errors)
     _print_pending(storage)
 
 def _task_line(t) -> str:
@@ -895,7 +1033,7 @@ def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
     serve(port=args.port, open_browser=not args.no_open)
 
-CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "calendars"}
+CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "accept", "calendars"}
 
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
@@ -980,6 +1118,8 @@ def main(argv: list[str] | None = None):
     p_plan.add_argument("--date", default=None, type=_iso_date, help="start date (DD-MM-YYYY, defaults to today)")
     p_plan.add_argument("--week", nargs="?", const=7, type=_positive, default=None,
                         help="plan N days from the start date (default 7)")
+    p_plan.add_argument("--propose", action="store_true", help=argparse.SUPPRESS)  # dry run for `ask`
+    p_plan.add_argument("--with", dest="with_events", default=None, help=argparse.SUPPRESS)
     p_apply = sub.add_parser("apply", help="apply pending approval-required changes")
     p_apply.add_argument("--ids", required=True, type=_ids, help="comma-separated pending ids")
     sub.add_parser("chat", help="keep telling DayOptimizer about your day, one line at a time")
@@ -988,6 +1128,7 @@ def main(argv: list[str] | None = None):
     p_add = sub.add_parser("add")
     p_add.add_argument("events")
     p_add.add_argument("--week", type=_positive, default=None)
+    sub.add_parser("accept")
     p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
                                          'several at once: task "tomorrow: laundry and exam prep, 2h each"; '
                                          'task list; task done t3')
@@ -1033,7 +1174,7 @@ def main(argv: list[str] | None = None):
         _calendar_run(argv)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "task": cmd_task,
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "accept": cmd_accept, "task": cmd_task,
      "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":
