@@ -79,7 +79,8 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
                                _hhmm(req.due_time) or time(23, 59)).astimezone()
     not_before = None
     if req.not_before_day:
-        not_before = datetime.combine(resolve_day(req.not_before_day, today), time(0)).astimezone()
+        # from when the user's day starts: never in the night before it, while they sleep
+        not_before = datetime.combine(resolve_day(req.not_before_day, today), day_start).astimezone()
     low = (req.when or "").lower()
     part = next((hours for pattern, hours in _PARTS if re.search(pattern, low)), None)
     if part:

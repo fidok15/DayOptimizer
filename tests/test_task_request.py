@@ -19,9 +19,10 @@ def test_full_request_becomes_a_task():
 def test_deadline_without_time_is_end_of_day_and_not_before_is_morning():
     req = TaskRequest(title="taxes", category="Home", duration_minutes=60, due_day="tomorrow",
                       not_before_day="tomorrow")
-    task, _ = task_from_request(req, CATS, MON, "t1")
+    task, _ = task_from_request(req, CATS, MON, "t1", day_start=time(6))
     assert task.due == datetime.combine(date(2030, 10, 15), time(23, 59)).astimezone()
-    assert task.not_before == datetime.combine(date(2030, 10, 15), time(0, 0)).astimezone()
+    # 'jutro zrób X' starts when the user's day starts, never at midnight in their sleep
+    assert task.not_before == datetime.combine(date(2030, 10, 15), time(6, 0)).astimezone()
 
 
 def test_no_duration_is_an_hour():
