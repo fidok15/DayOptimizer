@@ -572,10 +572,14 @@ def cmd_add(args, rules, config):
 
 def _task_line(t) -> str:
     parts = [f"[{t.id}] {t.title} ({t.category}) {t.duration_min} min"]
-    if t.due is not None:
-        parts.append(f"due {t.due:%a %d.%m %H:%M}")
-    if t.not_before is not None:
-        parts.append(f"from {t.not_before:%a %d.%m %H:%M}")
+    # the window the minutes go somewhere in, not one block that long
+    if t.due is not None and t.not_before is not None:
+        end = f"-{t.due:%H:%M}" if t.due.date() == t.not_before.date() else f" - {t.due:%a %d.%m %H:%M}"
+        parts.append(f"some time {t.not_before:%a %d.%m %H:%M}{end}")
+    elif t.due is not None:
+        parts.append(f"by {t.due:%a %d.%m %H:%M}")
+    elif t.not_before is not None:
+        parts.append(f"after {t.not_before:%a %d.%m %H:%M}")
     if t.min_chunk_min:
         parts.append(f"chunks >= {t.min_chunk_min} min")
     if t.priority != "normal":
