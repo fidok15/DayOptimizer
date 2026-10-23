@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 import pytest
 from dayoptimizer import cli
 from dayoptimizer.llm.backend import DayRequest, NewEvent
@@ -67,7 +67,7 @@ class _LLM:
         return "summary"
 
 
-RULES = type("R", (), {"categories": {"Meeting": None, "Gym": None}})()
+RULES = type("R", (), {"categories": {"Meeting": None, "Gym": None}, "awake": staticmethod(lambda d: (time(5), time(23, 59)))})()
 
 
 def test_ask_shows_events_then_hands_them_to_the_bundle(routed, monkeypatch, capsys):

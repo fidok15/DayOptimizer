@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 from unittest.mock import patch
 import pytest
 from dayoptimizer.core.models import Event, GarminSummary
@@ -233,7 +233,7 @@ def test_task_tools_add_list_and_finish_without_touching_the_calendar(app_home, 
     from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
     reqs = [DayRequest(tasks=[TaskRequest(title="report", category="Work", duration_minutes=120)]),
             DayRequest(events=[NewEvent(title="gym", category="Work", start_time="18:00")])]
-    monkeypatch.setattr(mcp_server, "load_rules", lambda p: SimpleNamespace(categories={"Work": {}}))
+    monkeypatch.setattr(mcp_server, "load_rules", lambda p: SimpleNamespace(categories={"Work": {}}, awake=lambda d: (time(5), time(23, 59))))
     monkeypatch.setattr(mcp_server, "load_config_data", lambda p: {"llm": {}})
     monkeypatch.setattr(backend, "make_backend", lambda cfg: SimpleNamespace(parse_request=lambda *a, **k: reqs.pop(0)))
     monkeypatch.setattr(mcp_server, "_bundle_run", lambda *a, **k: pytest.fail("calendar touched"))

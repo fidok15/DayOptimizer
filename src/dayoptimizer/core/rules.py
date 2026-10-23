@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from datetime import time
+from datetime import date, time
 from pathlib import Path
 import yaml
 from dayoptimizer.core.constraints import parse_rules
@@ -76,6 +76,23 @@ class Rules:
     def priority(self, category: str) -> int:
         rule = self.categories.get(category)
         return rule.priority if rule else 5
+
+    def awake(self, day: date) -> tuple[time, time]:
+        """The user's waking hours on `day`: after the fixed or protected routine
+        running from midnight (their sleep, whatever they called it) and before
+        the one running to midnight. day_start / day_end where none is drawn."""
+        night = [b for b in self.typical_week.get(day.weekday(), []) if b.protected or not self.is_movable(b.category)]
+        start, end = 0, 1440
+        for b in night:  # sorted by start: a chain of blocks from midnight
+            if b.start <= start < b.end:
+                start = b.end
+        for b in sorted(night, key=lambda b: -b.end):
+            if b.start < end <= b.end:
+                end = b.start
+        if start >= end:
+            return self.day_start, self.day_end
+        return (time(start // 60, start % 60) if start else self.day_start,
+                time(end // 60, end % 60) if end < 1440 else self.day_end)
 
 def _parse_time(s: str) -> time:
     h, m = s.split(":")

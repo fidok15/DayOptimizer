@@ -191,6 +191,14 @@ def test_times_the_model_made_up_do_not_make_events():
     req = pin_day("spotkanie 18:00 i kino o 20", said)
     assert [e.title for e in req.events] == ["spotkanie", "kino"] and req.tasks == []
 
+    # the model's made-up times go, the part of the day said in its own clause stays (no Polish letters typed)
+    made_up = DayRequest(events=[NewEvent(title=t, category=c, day="tomorrow", start_time=s, duration_minutes=m)
+                                 for t, c, s, m in [("uczyć się ml", "Learn", "18:15", 120),
+                                                    ("aws", "Learn", "20:15", 120), ("siłownia", "Gym", "22:15", None)]])
+    req = pin_day("jutro chce uczyc sie ml przez 2h, oraz aws przez 2h, i pojsc wieczorem na silownie", made_up)
+    assert req.events == [] and [(t.title, t.when) for t in req.tasks] == [
+        ("uczyć się ml", None), ("aws", None), ("siłownia", "pojsc wieczorem na silownie")]
+
 
 def test_a_deadline_time_is_not_an_event():
     from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day

@@ -1,10 +1,11 @@
 import json
+from datetime import time
 from types import SimpleNamespace
 from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
 from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
 
-RULES = SimpleNamespace(categories={"Work": {}, "Learn": {}})
+RULES = SimpleNamespace(categories={"Work": {}, "Learn": {}}, awake=lambda d: (time(5), time(23, 59)))
 CONFIG = {"llm": {}}
 
 
@@ -152,7 +153,7 @@ def _unfit(monkeypatch, tty, replies):
     replans, asked = [], []
     monkeypatch.setattr(cli, "_in_bundle", lambda: False)
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: tty)
-    monkeypatch.setattr(cli, "_load_config", lambda: (SimpleNamespace(categories={"Work": {}}, typical_week={}), CONFIG))
+    monkeypatch.setattr(cli, "_load_config", lambda: (SimpleNamespace(categories={"Work": {}}, typical_week={}, awake=lambda d: (time(5), time(23, 59))), CONFIG))
     monkeypatch.setattr(cli.console, "input", lambda prompt, **kw: asked.append(prompt) or replies.pop(0))
     monkeypatch.setattr(cli, "_replan_for", lambda tasks, rules, config, ask=True: replans.append(([t.id for t in tasks], ask)))
     cli._note_unplaced(["t1: 'raport' doesn't fit before Thu 2030-10-17 23:59 - missing 180 min"])  # as the bundle does

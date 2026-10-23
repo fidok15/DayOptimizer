@@ -4,6 +4,7 @@ days as words and copies the time-of-day words ('po południu', 'za 2h',
 calendar arithmetic."""
 from __future__ import annotations
 import re
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from dayoptimizer.core.models import Task
 from dataclasses import replace
@@ -57,10 +58,13 @@ def _after_event(low: str, events: list[tuple[str, datetime]]) -> datetime | Non
 
 
 def task_from_request(req: TaskRequest, categories: list[str], now: datetime | date, task_id: str,
-                      events: list[tuple[str, datetime]] = (), day_start: time = time(5)
+                      events: list[tuple[str, datetime]] = (),
+                      awake: Callable[[date], tuple[time, time]] = lambda d: (time(5), time(23, 59))
                       ) -> tuple[Task | None, str | None]:
     """The task, or why there is none (said back to the user). `events` are
-    today's (title, end), for 'po <event>'. No length said = DEFAULT_MINUTES."""
+    today's (title, end), for 'po <event>'. `awake(day)` is the user's waking
+    hours (Rules.awake): a task's day never reaches into their sleep. No length
+    said = DEFAULT_MINUTES."""
     if not isinstance(now, datetime):
         now = datetime.combine(now, time(0))
     now = now.astimezone()
@@ -75,20 +79,22 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
         return None, f"'{req.category}' is not one of your categories ({', '.join(categories)})."
     due = None
     if req.due_day or _hhmm(req.due_time):
-        due = datetime.combine(resolve_day(req.due_day or "today", today),
-                               _hhmm(req.due_time) or time(23, 59)).astimezone()
+        day = resolve_day(req.due_day or "today", today)
+        due = datetime.combine(day, _hhmm(req.due_time) or awake(day)[1]).astimezone()
     not_before = None
     if req.not_before_day:
-        not_before = datetime.combine(resolve_day(req.not_before_day, today), time(0)).astimezone()
+        # from when the user's day starts: never in the night before it, while they sleep
+        day = resolve_day(req.not_before_day, today)
+        not_before = datetime.combine(day, awake(day)[0]).astimezone()
     low = (req.when or "").lower()
     part = next((hours for pattern, hours in _PARTS if re.search(pattern, low)), None)
     if part:
         day = resolve_day(req.due_day or req.not_before_day or "today", today)
         if not (req.due_day or req.not_before_day) and datetime.combine(day, time(part[1])).astimezone() <= now:
             day += timedelta(days=1)  # 'rano' said in the afternoon: tomorrow morning
-        not_before = datetime.combine(day, day_start if part[0] is None else time(part[0])).astimezone()
+        not_before = datetime.combine(day, awake(day)[0] if part[0] is None else time(part[0])).astimezone()
         if not _hhmm(req.due_time):
-            due = datetime.combine(day, time(part[1])).astimezone()
+            due = datetime.combine(day, min(time(part[1]), awake(day)[1])).astimezone()
     elif (minutes := _offset(low)) is not None:
         not_before = now + timedelta(minutes=minutes)
     elif (end := _after_event(low, list(events))) is not None:
