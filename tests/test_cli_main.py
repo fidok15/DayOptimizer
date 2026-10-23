@@ -212,3 +212,34 @@ def test_blocks_kept_out_by_the_notes_are_one_short_line():
                                  '2026-10-19 18:30-19:45 Gym: Gym: breaks the note "A rest day between"',
                                  "Tue 20:00-21:00 Food: Supper: no free time near its usual time"])
     assert noted == ["Sat Gym", "Mon Gym"] and rest == ["Tue 20:00-21:00 Food: Supper: no free time near its usual time"]
+
+
+def test_clear_lists_then_deletes_only_what_dayoptimizer_planned(monkeypatch, capsys):
+    from datetime import datetime, timedelta
+    from dayoptimizer.core.models import Event
+    now = datetime.now().astimezone()
+    mk = lambda id, h, managed: Event(id=id, calendar="Learn", title=id, start=now + timedelta(hours=h),
+                                      end=now + timedelta(hours=h + 1), managed=managed)
+    events = [mk("past", -5, True), mk("plan", 2, True), mk("mine", 3, False), mk("plan2", 30, True)]
+    deleted = []
+
+    class Cal:
+        def request_access(self):
+            return True
+
+        def list_events(self, lo, hi):
+            return [e for e in events if e.end > lo and e.start < hi]
+
+        def delete_event(self, event_id):
+            deleted.append(event_id)
+
+    cli.paths.ensure_private_dir()
+    monkeypatch.setattr(cli, "CalendarClient", Cal)
+    monkeypatch.setattr(cli, "_in_bundle", lambda: True)  # the bundle: no question, only the list
+    cli.cmd_clear(type("A", (), {"all": False, "yes": False})(), RULES, {})
+    assert deleted == [] and "2 blocks DayOptimizer planned" in capsys.readouterr().out
+    cli.cmd_clear(type("A", (), {"all": False, "yes": True})(), RULES, {})
+    assert deleted == ["plan", "plan2"]  # the user's own event and past blocks stay
+    deleted.clear()
+    cli.cmd_clear(type("A", (), {"all": True, "yes": True})(), RULES, {})
+    assert deleted == ["past", "plan", "plan2"]
