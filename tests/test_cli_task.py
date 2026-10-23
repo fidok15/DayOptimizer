@@ -172,3 +172,17 @@ def test_a_task_that_did_not_fit_is_asked_about_in_the_terminal_and_replanned_on
 def test_no_terminal_no_question(monkeypatch):
     task, asked, replans = _unfit(monkeypatch, False, ["make it 2h"])
     assert (task.duration_min, asked, replans) == (180, [], [])
+
+
+def test_task_line_says_the_length_fits_somewhere_in_the_window():
+    from datetime import datetime
+    from dayoptimizer.core.models import Task
+    at = lambda d, h, m=0: datetime(2030, 10, d, h, m).astimezone()
+    line = lambda **kw: cli._task_line(Task(id="t1", title="ml", category="Learn", duration_min=120, **kw))
+    # 120 min some time in the day, not a block from 06:30 to 22:30
+    assert line(not_before=at(19, 6, 30), due=at(19, 22, 30)) == \
+        "[t1] ml (Learn) 120 min, some time Sat 19.10 06:30-22:30"
+    assert line(not_before=at(19, 6, 30), due=at(21, 17)) == \
+        "[t1] ml (Learn) 120 min, some time Sat 19.10 06:30 - Mon 21.10 17:00"
+    assert line(due=at(21, 17)) == "[t1] ml (Learn) 120 min, by Mon 21.10 17:00"
+    assert line(not_before=at(19, 18)) == "[t1] ml (Learn) 120 min, after Sat 19.10 18:00"
