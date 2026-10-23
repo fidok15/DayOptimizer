@@ -1364,3 +1364,29 @@ def test_tasks_fill_the_routine_sessions_of_their_category_first():
     assert sum(1 for t, _ in got if t == "t2") == 3  # the last 30 min in free time
     assert ("t3", "18:30-19:30") in got
     assert "Already placed" in backend.prompts[0]
+
+
+def test_a_task_said_for_a_part_of_the_day_goes_first_and_the_flexible_routine_gives_way():
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+    from dayoptimizer.llm.week_plan import routine_spans
+    sat = date(2030, 10, 19)
+    m = lambda hhmm: int(hhmm[:2]) * 60 + int(hhmm[3:])
+    week = {sat.weekday(): [RoutineBlock(m(a), m(b), c, t, protected=p) for a, b, c, t, p in [
+        ("00:00", "06:30", "Sleep", "Sleep", True), ("06:30", "06:45", "Free time", "Wake up", False),
+        ("06:45", "07:30", "Food", "Breakfast", True), ("07:30", "08:00", "Free time", "Day planning", False),
+        ("08:00", "08:45", "Learn", "Deep work", False), ("08:45", "09:00", "Free time", "Break", False),
+        ("09:00", "10:30", "Learn", "Deep work", False), ("10:30", "11:00", "Food", "Lunch", True),
+        ("11:00", "14:00", "Learn", "Study", False)]]}
+    cats = {c: CategoryRule(movable=c != "Sleep", priority=5) for c in ("Sleep", "Free time", "Food", "Learn", "Commute")}
+    routine_days, reserved = routine_spans(week, cats, [sat])
+    tasks = [Task(id="t1", title="ML", category="Learn", duration_min=120, not_before=at(sat, "06:30"),
+                  due=at(sat, "22:30")),
+             Task(id="t2", title="dojazd", category="Commute", duration_min=45, not_before=at(sat, "06:30"),
+                  due=at(sat, "12:00"))]  # 'rano dojazd 45 min po śniadaniu'
+    changes, _, _, unscheduled = plan_days(Small(*[WeekPlan() for _ in range(3)]), [sat], "# r", list(cats), [],
+                                           "", [], NOW, tasks=tasks, left={"t1": 120, "t2": 45},
+                                           reserved=reserved, routine_days=routine_days)
+    got = sorted((c.task_id, f"{c.new_start:%H:%M}-{c.new_end:%H:%M}") for c in changes if c.task_id)
+    # the commute takes the first time after breakfast; ML still fills the Deep work after it
+    assert got == [("t1", "08:15-08:45"), ("t1", "09:00-10:30"), ("t2", "07:30-08:15")]
+    assert unscheduled == []
