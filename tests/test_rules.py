@@ -135,3 +135,16 @@ def test_inverted_day_window_falls_back_to_defaults(tmp_path, monkeypatch):
     rules = load_rules(CONFIG)
     assert rules.day_start == time(6, 0)
     assert rules.day_end == time(23, 0)
+
+def test_awake_is_between_the_nights_sleep_drawn_in_the_routine():
+    from dataclasses import replace
+    from datetime import date
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+    rules = load_rules(CONFIG)
+    rules = replace(rules, categories={**rules.categories, "Rest": CategoryRule(movable=False, priority=5)},
+                    typical_week={0: [RoutineBlock(0, 390, "Free time", "Sleep", protected=True),
+                                      RoutineBlock(1350, 1440, "Rest", "Sleep")]})
+    # the Monday sleep ends 06:30 (protected) and starts 22:30 (fixed category), whatever it is called
+    assert rules.awake(date(2030, 10, 14)) == (time(6, 30), time(22, 30))
+    # a day with no night drawn: the day window from the config
+    assert rules.awake(date(2030, 10, 15)) == (rules.day_start, rules.day_end)

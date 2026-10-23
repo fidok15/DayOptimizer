@@ -19,10 +19,12 @@ def test_full_request_becomes_a_task():
 def test_deadline_without_time_is_end_of_day_and_not_before_is_morning():
     req = TaskRequest(title="taxes", category="Home", duration_minutes=60, due_day="tomorrow",
                       not_before_day="tomorrow")
-    task, _ = task_from_request(req, CATS, MON, "t1", day_start=time(6))
+    task, _ = task_from_request(req, CATS, MON, "t1")
     assert task.due == datetime.combine(date(2030, 10, 15), time(23, 59)).astimezone()
-    # 'jutro zrób X' starts when the user's day starts, never at midnight in their sleep
-    assert task.not_before == datetime.combine(date(2030, 10, 15), time(6, 0)).astimezone()
+    # 'jutro zrób X' fits between the user's sleep, never at midnight or 23:59
+    task, _ = task_from_request(req, CATS, MON, "t1", awake=lambda d: (time(6, 30), time(22, 30)))
+    assert task.not_before == datetime.combine(date(2030, 10, 15), time(6, 30)).astimezone()
+    assert task.due == datetime.combine(date(2030, 10, 15), time(22, 30)).astimezone()
 
 
 def test_no_duration_is_an_hour():
@@ -37,6 +39,9 @@ def test_time_of_day_words_become_the_window():
         TaskRequest(title="x", category="Work", when=when, **kw), CATS, now, "t1", events)[0])
     assert win("po południu") == (at(14, 12), at(14, 18))
     assert win("wieczorem", due_day="tomorrow") == (at(15, 18), at(15, 22))
+    t, _ = task_from_request(TaskRequest(title="x", category="Work", when="wieczorem"), CATS, now, "t1",
+                             awake=lambda d: (time(6), time(21)))
+    assert t.due == at(14, 21)  # the evening ends when they go to sleep
     assert win("rano") == (at(14, 5), at(14, 12))  # the night is not morning
     assert win("za 2h") == (at(14, 11, 30), None)
     assert win("in 30 min") == (at(14, 10), None)
@@ -46,7 +51,7 @@ def test_time_of_day_words_become_the_window():
     t, _ = task_from_request(TaskRequest(title="x", category="Work", when="rano"), CATS, late, "t1")
     assert (t.not_before, t.due) == (at(15, 5), at(15, 12))
     t, _ = task_from_request(TaskRequest(title="x", category="Work", when="rano"), CATS, late, "t1",
-                             day_start=time(7, 30))
+                             awake=lambda d: (time(7, 30), time(21)))
     assert t.not_before == at(15, 7, 30)  # the user's day start  # morning already gone: tomorrow's
 
 
