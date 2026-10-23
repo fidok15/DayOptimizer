@@ -93,12 +93,13 @@ def test_no_tasks_says_the_models_reply(monkeypatch, capsys):
     assert calls == [] and "That's not a task." in capsys.readouterr().out
 
 
-def test_same_task_twice_is_skipped(monkeypatch, capsys):
+def test_an_open_task_said_again_is_planned_again_not_doubled(monkeypatch, capsys):
+    # its blocks were deleted from the calendar: saying it again must bring them back
     req = TaskRequest(title="Report ", category="Work", duration_minutes=60, due_day="tomorrow")
     run(monkeypatch, ["x"], req)
     calls = run(monkeypatch, ["x"], req.model_copy(update={"title": "report"}))
-    assert calls == [] and len(Storage(paths.db_path()).open_tasks()) == 1
-    assert "already there: t1" in capsys.readouterr().out
+    assert calls == [["plan", "--week", "2"]] and [t.id for t in Storage(paths.db_path()).open_tasks()] == ["t1"]
+    assert "your task t1, planned again" in " ".join(capsys.readouterr().out.split())
 
 
 def test_time_of_day_words_count_only_when_said(monkeypatch):

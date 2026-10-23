@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
@@ -444,7 +445,8 @@ def events_to_create(req, categories, today: date) -> tuple[list[tuple[str, str,
 
 def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list[tuple]:
     """The message's tasks (and events it gave no clock time) as (task, note):
-    checked, deduplicated against the open tasks, numbered. Says why for each
+    checked and numbered; one that is an open task already keeps its id and is
+    planned again (its blocks may be gone from the calendar). Says why for each
     one that isn't kept. The model's time-of-day words count only when they
     are in the message; a lone task reads them from the whole message."""
     from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, task_from_request
@@ -457,19 +459,21 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     today_events = [(e.title, e.end) for e in storage.events_on(now.date().isoformat())]
     today_events += [(t, e) for _, t, s, e in to_create if s.date() == now.date()]
     norm = lambda t: (" ".join(t.title.casefold().split()), t.due)
-    have = {norm(t): t.id for t in storage.open_tasks()}
+    old = {norm(t): t.id for t in storage.open_tasks()}
+    have = set()
     first = int(storage.next_task_id()[1:])
     out = []
     lone = len(reqs) == 1 and not to_create
     for r in reqs:
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
         r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
-        task, problem = task_from_request(r, list(rules.categories), now, f"t{first + len(out)}", today_events,
+        task, problem = task_from_request(r, list(rules.categories), now,
+                                          f"t{first + sum(1 for t, _ in out if norm(t) not in old)}", today_events,
                                           rules.awake)
         if task is None:
             console.print(problem, markup=False, style="yellow")
         elif norm(task) in have:
-            console.print(f"'{task.title}' already there: {have[norm(task)]}", markup=False, style="yellow")
+            console.print(f"'{task.title}' is in the message twice: added once", markup=False, style="yellow")
         else:
             no_length = not (r.duration_minutes and r.duration_minutes > 0)
             block = _usual_block(rules, task) if no_length else None
@@ -478,8 +482,13 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
                 console.print(f"'{task.title}' is already in your routine: {block.label} {day:%a %d.%m} "
                               f"{block.start // 60:02d}:{block.start % 60:02d}-{block.end // 60:02d}:{block.end % 60:02d}",
                               markup=False)
+                if norm(task) in old:
+                    storage.mark_task_done(old[norm(task)])  # an earlier copy of it as a task: it never fits there
                 continue
-            have[norm(task)] = task.id
+            have.add(norm(task))
+            if norm(task) in old:
+                out.append((replace(task, id=old[norm(task)]), f" (your task {old[norm(task)]}, planned again)"))
+                continue
             out.append((task, f" (no length said, assumed {DEFAULT_MINUTES} min)" if no_length else ""))
     return out
 
@@ -537,9 +546,10 @@ def cmd_ask(args, rules, config):
         console.print(f"  task {_task_line(task)}{note}", markup=False)
     tasks = [t for t, _ in tasks]
     proposal = None
+    before = {t.id: storage.get_task(t.id) for t in tasks}  # a task said again: as it was, for 'n'
     if sys.stdin.isatty() and tasks:
         for task in tasks:
-            storage.save_task(task)  # the planner reads them from storage; dropped again on 'n'
+            storage.save_task(task)  # the planner reads them from storage; undone again on 'n'
         proposal = _propose(tasks, to_create, rules, config)
         if proposal is not None:
             _show_proposal(proposal, tasks)
@@ -550,7 +560,9 @@ def cmd_ask(args, rules, config):
             answer = "n"
         if answer not in ("", "y", "yes", "t", "tak"):
             for task in tasks:
-                if storage.get_task(task.id):
+                if before[task.id] is not None:
+                    storage.save_task(before[task.id])
+                elif storage.get_task(task.id):
                     storage.mark_task_done(task.id)
             _proposal_file().unlink(missing_ok=True)
             console.print("Nothing changed.")
