@@ -1,7 +1,8 @@
 from datetime import date, time
 import pytest
 from dayoptimizer import cli
-from dayoptimizer.llm.backend import DayRequest, NewEvent
+from dayoptimizer.core.storage import Storage
+from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
 
 
 @pytest.fixture
@@ -11,7 +12,7 @@ def routed(monkeypatch):
     cli.paths.ensure_private_dir()  # main() does this before any command
     monkeypatch.setattr(cli, "_in_bundle", lambda: False)
     monkeypatch.setattr(cli.sys, "platform", "darwin")
-    monkeypatch.setattr(cli, "_calendar_run", lambda argv: calls.append(("bundle", argv)) or "")
+    monkeypatch.setattr(cli, "_calendar_run", lambda argv, ask=True: calls.append(("bundle", argv)) or "")
     monkeypatch.setattr(cli, "cmd_web", lambda *a: calls.append(("setup",)))
     return calls
 
@@ -86,7 +87,37 @@ def test_ask_cancel_changes_nothing(routed, monkeypatch):
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(cli.console, "input", lambda *a, **k: "n")
     cli.cmd_ask(type("A", (), {"text": "x"})(), RULES, {"llm": {}})
-    assert routed == []
+    # only the dry run that shows where things would go; nothing written, the tasks dropped
+    assert [argv[:4] for _, argv in routed] == [["plan", "--week", "2", "--propose"]]
+    assert Storage(cli.paths.db_path()).open_tasks() == []
+
+
+def test_ask_shows_where_tasks_go_and_ok_writes_that_plan(routed, monkeypatch, capsys):
+    from datetime import datetime, timedelta
+    from dayoptimizer.core.models import PlannedChange
+    day = date.today() + timedelta(days=1)
+    at = lambda h, m=0: datetime.combine(day, time(h, m)).astimezone()
+
+    class Tasks:
+        def parse_request(self, text, today, now, categories):
+            return DayRequest(tasks=[TaskRequest(title="ml", category="Gym", duration_minutes=120,
+                                                 due_day="tomorrow", not_before_day="tomorrow")])
+
+    def bundle(argv, ask=True):
+        routed.append(("bundle", argv))
+        if argv[0] == "plan":  # what the bundle's `plan --propose` leaves behind
+            cli._save_proposal([day], [], ([PlannedChange(kind="create", category="Gym", title="ml", reason="planned",
+                                                          new_start=at(9), new_end=at(11), task_id="t1")],
+                                           [], [], "", [], []))
+    monkeypatch.setattr(cli, "_calendar_run", bundle)
+    monkeypatch.setattr(cli, "make_backend", lambda cfg: Tasks())
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: "")
+    cli.cmd_ask(type("A", (), {"text": "jutro ml 2h"})(), RULES, {"llm": {}})
+    assert f"[t1] ml  {at(9):%a %d.%m} 09:00-11:00" in capsys.readouterr().out
+    assert [argv[0] for _, argv in routed] == ["plan", "accept"]
+    proposal = cli._load_proposal()
+    assert [(c.new_start, c.task_id) for c in proposal["changes"]] == [(at(9), "t1")]
 
 
 def test_add_creates_events_then_replans(monkeypatch, capsys):
