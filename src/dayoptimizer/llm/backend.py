@@ -215,6 +215,8 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     ('do piątku o 17': due Friday 17:00, 'przed' too). A task `when` that only names a day is dropped. No day found:
     the model decides."""
     import re
+    import unicodedata
+    from dayoptimizer.llm.task_request import _PARTS
     low = text.lower()
 
     def day_of(part):
@@ -226,9 +228,12 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         cur = day_of(c) if said else cur  # two days in one clause: the model decides
         clauses.append((c, cur))
 
+    def fold(w):  # 'siłownia' ~ 'silownie': people type without Polish letters
+        return unicodedata.normalize("NFKD", w.replace("ł", "l")).encode("ascii", "ignore").decode()[:4]
+
     def find(title):
-        stems = {w[:4] for w in re.findall(r"\w{4,}", title.lower())}
-        hits = [len(stems & {w[:4] for w in re.findall(r"\w+", c)}) for c, _ in clauses]
+        stems = {fold(w) for w in re.findall(r"\w{4,}", title.lower())}
+        hits = [len(stems & {fold(w) for w in re.findall(r"\w+", c)}) for c, _ in clauses]
         best = max(range(len(hits)), key=hits.__getitem__)  # the clause sharing most of the title; ties: the first
         return (clauses[best][0], clauses[best][1] or whole) if hits[best] else (None, whole)
 
@@ -246,6 +251,11 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     # no time of its own, or only 'za 2h': any time the model gave is made up, so it is a task
     untimed = [e for e in req.events if not clock(find(e.title)[0] or low)
                and (not said_time(find(e.title)[0] or low) or _offset(find(e.title)[0] or low) is not None)]
+    def when_of(title):  # 'za 2h', or the part of the day said in the task's own clause ('wieczorem')
+        c = find(title)[0]
+        if _offset(c or low):
+            return c or low
+        return c if c and any(re.search(p, c) for p, _ in _PARTS) else None
     for e in req.events:
         if e in untimed:
             continue
@@ -255,7 +265,7 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
     for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
-                                            when=(find(e.title)[0] or low) if _offset(find(e.title)[0] or low) else None,
+                                            when=when_of(e.title),
                                             **dict.fromkeys(("due_day", "not_before_day"),
                                                             None if e.day == "today" else e.day))
                                 for e in untimed]:
