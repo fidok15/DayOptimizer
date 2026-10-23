@@ -749,6 +749,64 @@ def cmd_accept(args, rules, config):
     _print_errors(errors)
     _print_pending(storage)
 
+def _clear_file() -> Path:
+    return paths.ensure_private_dir() / "clear.json"
+
+def cmd_clear(args, rules, config):
+    """`dayoptimizer clear`: delete every block DayOptimizer planned, from now
+    on (--all: past ones too). The user's own events stay, also the ones added
+    by saying them. Lists them first and asks; --yes deletes what was listed.
+    ponytail: looks a year back and ahead; widen if plans ever reach further."""
+    import json
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        return
+    storage = Storage(paths.db_path())
+    try:
+        listed = json.loads(_clear_file().read_text())
+    except (OSError, ValueError):
+        listed = {}
+    _clear_file().unlink(missing_ok=True)
+    now = datetime.now().astimezone()
+    if args.yes and listed.get("all") == args.all:
+        ids = listed["ids"]  # what the user saw
+    else:
+        lo = now - timedelta(days=365) if args.all else now
+        found = sorted((e for e in calendar.list_events(lo, now + timedelta(days=365)) if e.managed and e.end > lo),
+                       key=lambda e: e.start)
+        ids = [e.id for e in found]
+        if not args.yes:
+            if not found:
+                console.print("Nothing DayOptimizer planned is in your calendar"
+                              + (" from now on." if not args.all else "."), markup=False)
+                return
+            console.print(f"{len(found)} blocks DayOptimizer planned"
+                          + ("" if args.all else " from now on") + ":", markup=False)
+            for day in sorted({e.start.date() for e in found}):
+                n = sum(1 for e in found if e.start.date() == day)
+                console.print(f"  {day:%a %d.%m}: {n} block{'s' * (n > 1)}", markup=False)
+            console.print("Your own events stay.", style="dim")
+            _clear_file().write_text(json.dumps({"all": args.all, "ids": ids}))
+            if not _in_bundle() and sys.stdin.isatty() and _ask_clear():  # in the bundle, _calendar_run asks
+                cmd_clear(argparse.Namespace(all=args.all, yes=True), rules, config)
+            return
+    gone = 0
+    for event_id in ids:
+        try:
+            calendar.delete_event(event_id)  # refuses anything DayOptimizer didn't plan
+        except (KeyError, RuntimeError):
+            continue  # already gone, or not ours
+        gone += 1
+    storage.log_change(f"[clear] {gone} planned blocks", "dayoptimizer clear" + (" --all" if args.all else ""))
+    console.print(f"Deleted {gone} block{'s' * (gone != 1)} DayOptimizer planned.", style="green")
+
+def _ask_clear() -> bool:
+    try:
+        return console.input("Delete them? [y/N] ").strip().lower() in ("y", "yes", "t", "tak")
+    except (EOFError, KeyboardInterrupt):
+        return False
+
 def _task_line(t) -> str:
     parts = [f"[{t.id}] {t.title} ({t.category}) {t.duration_min} min"]
     # the window the minutes go somewhere in, not one block that long
@@ -1074,7 +1132,7 @@ def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
     serve(port=args.port, open_browser=not args.no_open)
 
-CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "accept", "calendars"}
+CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "accept", "clear", "calendars"}
 
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
@@ -1099,6 +1157,8 @@ def _calendar_run(argv: list[str], ask: bool = True) -> None:
         console.print(rest.rstrip(), markup=False)
     if ask and argv[:1] in (["plan"], ["add"]):
         _decide_unplaced(_take_unplaced())
+    if argv[:1] == ["clear"] and "--yes" not in argv and _clear_file().exists() and sys.stdin.isatty() and _ask_clear():
+        _calendar_run([*argv, "--yes"])
 
 def _first_run() -> bool:
     """No typical week drawn yet: the user hasn't done the setup."""
@@ -1170,6 +1230,9 @@ def main(argv: list[str] | None = None):
     p_add.add_argument("events")
     p_add.add_argument("--week", type=_positive, default=None)
     sub.add_parser("accept")
+    p_clear = sub.add_parser("clear", help="delete every block DayOptimizer planned (your own events stay)")
+    p_clear.add_argument("--all", action="store_true", help="past blocks too, not only from now on")
+    p_clear.add_argument("--yes", action="store_true", help="don't ask")
     p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
                                          'several at once: task "tomorrow: laundry and exam prep, 2h each"; '
                                          'task list; task done t3')
@@ -1215,7 +1278,7 @@ def main(argv: list[str] | None = None):
         _calendar_run(argv)
         return
     {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "accept": cmd_accept, "task": cmd_task,
+     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "accept": cmd_accept, "clear": cmd_clear, "task": cmd_task,
      "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
 
 if __name__ == "__main__":
