@@ -20,6 +20,11 @@ _PARTS = [
 ]
 
 
+# 'między 14 a 16' / 'od 14 do 16' / 'between 2 and 4 pm' is not: 24h clock only
+_BETWEEN = re.compile(r"\b(?:pomi[eę]dzy|mi[eę]dzy|od|between|from)\s+([01]?\d|2[0-3])(?::([0-5]\d))?\s*"
+                      r"(?:a|i|do|and|to|-)\s*([01]?\d|2[0-4])(?::([0-5]\d))?\b")
+
+
 # the message asks to split the work: only then may a task get min chunks (models invent them)
 _SPLIT = re.compile(r"\bpo\s+\d+\s*(?:min|h\b|godz)|kawał|częściach|\bczęści\b|podziel|rozbij|\bna raty|w blokach"
                     r"|chunk|\bsplit|\bpieces\b|\bin parts\b|\d+\s*(?:min|h)\w*\s+(?:each|at a time)", re.I)
@@ -88,7 +93,13 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
         not_before = datetime.combine(day, awake(day)[0]).astimezone()
     low = (req.when or "").lower()
     part = next((hours for pattern, hours in _PARTS if re.search(pattern, low)), None)
-    if part:
+    if (m := _BETWEEN.search(low)) and (int(m[1]), int(m[2] or 0)) < (int(m[3]), int(m[4] or 0)):
+        day = resolve_day(req.due_day or req.not_before_day or "today", today)
+        midnight = datetime.combine(day, time(0)).astimezone()
+        not_before = midnight + timedelta(hours=int(m[1]), minutes=int(m[2] or 0))
+        if not _hhmm(req.due_time):
+            due = midnight + timedelta(hours=int(m[3]), minutes=int(m[4] or 0))
+    elif part:
         day = resolve_day(req.due_day or req.not_before_day or "today", today)
         if not (req.due_day or req.not_before_day) and datetime.combine(day, time(part[1])).astimezone() <= now:
             day += timedelta(days=1)  # 'rano' said in the afternoon: tomorrow morning

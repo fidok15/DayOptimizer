@@ -851,6 +851,35 @@ def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], rou
     return out
 
 
+SAID_WINDOW = timedelta(hours=12)  # ponytail: a window this narrow was said ('rano', 'między 14 a 16'), not defaulted
+
+
+def said_first(tasks: list[Task], left: dict[str, int], days: list[date], routine_days: dict,
+               busy: list[Event], reserved: Reserved | None, now: datetime) -> list[tuple[datetime, datetime, Block]]:
+    """Tasks the user tied to a part of a day ('rano dojazd 45 min', 'obiad
+    między 14 a 16') go before anything else: into a routine session of their
+    category in that window, else whole at the earliest time in it that is
+    free of events and of fixed or protected routine. The flexible routine
+    gives way to them (it moves or goes, see _forgotten_routine)."""
+    out = []
+    for t in sorted((t for t in tasks if not t.done and left.get(t.id, 0) > 0 and t.not_before and t.due
+                     and t.due.date() == t.not_before.date() in days and t.due - t.not_before < SAID_WINDOW),
+                    key=lambda t: t.due):
+        taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in out]
+        mine = into_sessions([t], left, days, routine_days, taken, now)
+        if sum(minutes(s, e) for s, e, _ in mine) < left[t.id]:
+            lo, hi = window(t, now)
+            gaps = _minus([(lo, hi)], [(e.start, e.end) for e in taken + _reserved_events(reserved, t.category)])
+            a = next((a for a, z in gaps if minutes(a, z) >= left[t.id]), None)
+            if a is None:
+                continue  # the model and _fill try, and say why it doesn't fit
+            z = a + timedelta(minutes=left[t.id])
+            mine = [(a, z, Block(day=a.date().isoformat(), start=f"{a:%H:%M}", end=_spans(a.date(), [(a, z)]).split("-")[1],
+                                 category=t.category, title=t.title, task_id=t.id, why="when you said"))]
+        out += mine
+    return out
+
+
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
           rules: list[NoteRule], now: datetime, routine_days: dict, pushed: dict[str, int],
           reserved: Reserved | None = None, seen: dict[str, list[date]] | None = None
@@ -1126,7 +1155,12 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     all_routine = routine_days or {}  # code filling a task looks at the later days too
     routine_days = {d: v for d, v in all_routine.items() if d in planned}
     user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
-    sessions = into_sessions(list(tasks), left or {}, days, routine_days, user, now)
+    said = said_first(list(tasks), left or {}, days, routine_days, user, reserved, now)
+    rest = dict(left or {})
+    for s, e, b in said:
+        rest[b.task_id] -= minutes(s, e)
+    sessions = said + into_sessions(list(tasks), rest, days, routine_days, user + [
+        Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in said], now)
     split = {b.task_id for _, _, b in sessions}
     tasks = [replace(t, min_chunk_min=t.min_chunk_min or SESSION_PIECE) if t.id in split else t for t in tasks]
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,

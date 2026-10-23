@@ -116,3 +116,12 @@ def test_each_fix_changes_the_task():
     assert fix(action="take_routine")[0].may_take == ["*"]
     assert fix(action="unclear") == (None, "")
     assert fix(action="new_deadline") == (None, "")
+
+
+def test_between_two_hours_is_the_window():
+    now = datetime(2030, 10, 14, 9, 30).astimezone()
+    at = lambda d, h: datetime(2030, 10, d, h).astimezone()
+    win = lambda when, **kw: (lambda t: (t.not_before, t.due))(task_from_request(
+        TaskRequest(title="obiad", category="Home", when=when, **kw), CATS, now, "t1")[0])
+    assert win("gdzieś między 14 a 16", due_day="tomorrow") == (at(15, 14), at(15, 16))
+    assert win("between 14 and 16") == (at(14, 14), at(14, 16))
