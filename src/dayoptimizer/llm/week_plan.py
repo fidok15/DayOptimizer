@@ -812,6 +812,45 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
         for d in dict.fromkeys(days) if days.count(d) >= 3] + ruled
 
 
+SESSION_PIECE = 30  # a task split over routine sessions: no piece shorter, unless it finishes the task
+
+
+def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], routine_days: dict,
+                  busy: list[Event], now: datetime) -> list[tuple[datetime, datetime, Block]]:
+    """Task minutes put into the routine sessions of the task's category before
+    the model plans: 'ML 2h' is the Learn time the user drew (split over the
+    sessions when it must), 'gym tonight' is their gym block. A task may split
+    here even when it was to be one piece: the sessions are how the user splits
+    that work. Nearer deadlines and higher priority get the earlier sessions;
+    the model plans what is left."""
+    order = sorted((t for t in tasks if not t.done and left.get(t.id, 0) > 0),
+                   key=lambda t: (t.due is None, t.due or now, ("high", "normal", "low").index(t.priority)))
+    still = {t.id: left[t.id] for t in order}
+    out = []
+    for d in days:
+        for x in sorted(routine_days.get(d, []), key=lambda x: x[0]):
+            if _guarded(x):
+                continue
+            for a, z in _minus([(max(x[0], now), x[1])], [(e.start, e.end) for e in busy]):
+                for t in order:
+                    lo, hi = window(t, now)
+                    s, e = max(a, lo), min(z, hi) if hi else z
+                    piece = t.min_chunk_min or SESSION_PIECE
+                    n = min(still[t.id], minutes(s, e))
+                    if 0 < still[t.id] - n < piece:
+                        n = still[t.id] - piece  # what is left must still make a piece
+                    if t.category != x[2] or n <= 0 or n < min(piece, still[t.id]):
+                        continue
+                    if s > a and minutes(a, s) < SESSION_PIECE:
+                        continue  # ponytail: a session is filled from its start; no stub before a task
+                    a = s + timedelta(minutes=n)
+                    out.append((s, a, Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, a)]).split("-")[1],
+                                            category=t.category, title=t.title, task_id=t.id,
+                                            why=f"in your {x[3]} time")))
+                    still[t.id] -= n
+    return out
+
+
 def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until: date, taken: list[Event],
           rules: list[NoteRule], now: datetime, routine_days: dict, pushed: dict[str, int],
           reserved: Reserved | None = None, seen: dict[str, list[date]] | None = None
@@ -1086,6 +1125,10 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     small = getattr(backend, "one_day_at_a_time", False)
     all_routine = routine_days or {}  # code filling a task looks at the later days too
     routine_days = {d: v for d, v in all_routine.items() if d in planned}
+    user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
+    sessions = into_sessions(list(tasks), left or {}, days, routine_days, user, now)
+    split = {b.task_id for _, _, b in sessions}
+    tasks = [replace(t, min_chunk_min=t.min_chunk_min or SESSION_PIECE) if t.id in split else t for t in tasks]
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,
                           routine_days=routine_days, rules=rules)
     open_ids = [t.id for t in _shown(list(tasks), days, [e for e in shown if not skippable(rules, e)], now,
@@ -1112,8 +1155,18 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
         return any(s < e.end and z > e.start and c != e.calendar for s, z, c in guard) or (  # or its task
             e.task_id is not None and block_problem(by_id.get(e.task_id), e.calendar, e.start, e.end,
                                                     minutes(e.start, e.end), now) is not None)  # no longer wants it
+    pre = [b for _, _, b in sessions]
+    if sessions:  # placed by code in the routine's time: the model plans the rest around them
+        good = list(pre)
+        placed = [Event(id=f"placed-{i}", calendar=b.category, title=b.title, start=s, end=e)
+                  for i, (s, e, b) in enumerate(sessions)]
+        for s, e, b in sessions:
+            still[b.task_id] -= minutes(s, e)
+        request = (build_prompt(days, routine, categories, shown, previous, now, health, tasks, still, placed,
+                                reserved, routine_days, rules)
+                   + "\n\n# Already placed in the routine's own time - they stay, do not return them again\n"
+                   + "\n".join(f"- {b.day} {b.start}-{b.end} {b.category}: {b.title}" for b in good))
     if slots:  # a task block or moved routine block from the last plan that still fits stays: no churn
-        user = [e for e in shown if not e.all_day and (not e.managed or e.start < now) and not skippable(rules, e)]
         usual = {(x[2], x[3], x[0]) for x in routine_days.get(days[0], [])}
         mid = datetime.combine(days[0], time(0)).astimezone()
         fine = [e for e in previous if not covered(e) and not is_open(e) and not any(u.start < e.end and u.end > e.start for u in user)
@@ -1129,14 +1182,14 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
                 ahead[e.task_id] = ahead.get(e.task_id, 0) + minutes(e.start, e.end)
     for attempt in range(attempts):
         if slots:
-            items = slot_items(days[0], shown + placed + stay, now, list(tasks), still, routine_days, rules, not good)
+            items = slot_items(days[0], shown + placed + stay, now, list(tasks), still, routine_days, rules, good == pre)
             items = {k: v for k, v in items.items() if ahead.get(k, 0) < still.get(k, 1)
                      and not any(k == e.task_id or k.startswith(f"{e.calendar}: {e.title} (") for e in fine)}
             answer = _choose(backend, days[0], items, routine, shown, now) if items else WeekPlan()
         else:
             answer = backend.plan_week(system_prompt(few_shot), request, schema)
         blocks = good + answer.blocks
-        if small and not good:
+        if small and good == pre:  # nothing of the model's has passed yet
             solid = [e for e in events if not skippable(rules, e)]
             blocks += _unmentioned(answer.blocks, [e for e in previous if not covered(e)], solid, now, routine_days)
             back, lost = _forgotten_routine(blocks, routine_days, solid, now, rules, history)

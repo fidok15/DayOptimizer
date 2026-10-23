@@ -1019,8 +1019,9 @@ def test_slot_mode_turns_the_picks_into_the_plan():
     changes, _, dropped, unscheduled = plan_days(
         Picker(), [MON], "# routine", WCATS + ["Food"], [LECTURE, LAB], NOTES, SKIP, NOW,
         tasks=[task()], left={"t1": 120}, routine_days=SLOT_ROUTINE)
+    # the task goes into the routine's own Work time by code; the model picks the rest
     assert [(c.new_start, c.new_end, c.reason) for c in changes if c.task_id] == [
-        (at(MON, "17:00"), at(MON, "19:00"), "last")]
+        (at(MON, "08:00"), at(MON, "10:00"), "in your Deep work time")]
     assert ("Snack", at(MON, "15:30")) in [(c.title, c.new_start) for c in changes]
     assert unscheduled == []
 
@@ -1334,3 +1335,32 @@ def test_replanning_a_day_with_open_blocks_twice_changes_nothing():
         mine = sorted((e.start, e.end) for e in events if e.start.date() == MON)
         assert all(a[1] <= b[0] for a, b in zip(mine, mine[1:])), mine  # nothing double-booked
         assert sum((e.end - e.start).seconds // 60 for e in events if e.task_id) == 240
+
+
+def test_tasks_fill_the_routine_sessions_of_their_category_first():
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+    from dayoptimizer.llm.week_plan import routine_spans
+    sat = date(2030, 10, 19)
+    m = lambda hhmm: int(hhmm[:2]) * 60 + int(hhmm[3:])
+    week = {sat.weekday(): [RoutineBlock(m(a), m(b), c, t) for a, b, c, t in [
+        ("08:00", "08:45", "Learn", "Deep work"), ("09:00", "10:30", "Learn", "Deep work"),
+        ("13:00", "14:00", "Learn", "Study"), ("17:00", "17:40", "Learn", "Study"),
+        ("18:30", "19:45", "Gym", "Gym")]]}
+    cats = {c: CategoryRule(movable=True, priority=5) for c in ("Learn", "Gym")}
+    routine_days, reserved = routine_spans(week, cats, [sat])
+    whole = lambda tid, title, cat, n, lo="06:30", hi="22:30": Task(
+        id=tid, title=title, category=cat, duration_min=n, not_before=at(sat, lo), due=at(sat, hi))
+    tasks = [whole("t1", "ML", "Learn", 120), whole("t2", "AWS", "Learn", 120),
+             whole("t3", "siłownia", "Gym", 60, "18:00", "22:00")]
+    backend = Fake(WeekPlan(), WeekPlan(), WeekPlan())
+    changes, _, _, _ = plan_days(backend, [sat], "# routine", ["Learn", "Gym"], [], "", [], NOW,
+                                 tasks=tasks, left={t.id: t.duration_min for t in tasks},
+                                 reserved=reserved, routine_days=routine_days)
+    got = sorted((c.task_id, f"{c.new_start:%H:%M}-{c.new_end:%H:%M}") for c in changes if c.task_id)
+    # 'ML 2h' is the user's two morning sessions, not a new 2h block next to them;
+    # the gym is the user's own gym block; only what the sessions can't hold goes elsewhere
+    assert got[:2] == [("t1", "08:00-08:45"), ("t1", "09:00-10:15")]
+    assert ("t2", "13:00-14:00") in got and ("t2", "17:00-17:30") in got
+    assert sum(1 for t, _ in got if t == "t2") == 3  # the last 30 min in free time
+    assert ("t3", "18:30-19:30") in got
+    assert "Already placed" in backend.prompts[0]

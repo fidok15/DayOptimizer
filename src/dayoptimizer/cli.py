@@ -471,10 +471,31 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         elif norm(task) in have:
             console.print(f"'{task.title}' already there: {have[norm(task)]}", markup=False, style="yellow")
         else:
-            have[norm(task)] = task.id
             no_length = not (r.duration_minutes and r.duration_minutes > 0)
+            block = _usual_block(rules, task) if no_length else None
+            if block is not None:  # 'gym tonight' with no length: the user's own gym block, not more work
+                day = task.not_before or task.due
+                console.print(f"'{task.title}' is already in your routine: {block.label} {day:%a %d.%m} "
+                              f"{block.start // 60:02d}:{block.start % 60:02d}-{block.end // 60:02d}:{block.end % 60:02d}",
+                              markup=False)
+                continue
+            have[norm(task)] = task.id
             out.append((task, f" (no length said, assumed {DEFAULT_MINUTES} min)" if no_length else ""))
     return out
+
+def _usual_block(rules, task):
+    """The protected or fixed routine block of the task's category on its day, inside its window
+    (a task can't go into it, so the task is that block); None if there isn't one, or the task has no day."""
+    if not (task.not_before or task.due):
+        return None
+    day = (task.not_before or task.due).date()
+    midnight = datetime.combine(day, time(0)).astimezone()
+    lo = task.not_before or midnight
+    hi = task.due or midnight + timedelta(days=1)
+    return next((b for b in getattr(rules, "typical_week", {}).get(day.weekday(), [])
+                 if b.category == task.category and lo <= midnight + timedelta(minutes=b.start)
+                 and (b.protected or not getattr(rules.categories.get(b.category), "movable", True))
+                 and midnight + timedelta(minutes=b.end) <= hi), None)
 
 def cmd_ask(args, rules, config):
     """`dayoptimizer "meeting at 14 for an hour, then do the laundry"`:
@@ -661,20 +682,28 @@ def _propose(tasks, to_create, rules, config) -> dict | None:
     return _load_proposal()
 
 def _show_proposal(p: dict, tasks) -> None:
-    """Where each task would go, then what else the plan changes to make room."""
+    """Where each task would go; the routine laid out around them is one line,
+    only moves of what is already there are listed."""
     blocks = {}
     for c in p["changes"]:
         if c.kind == "create" and c.task_id:
             blocks.setdefault(c.task_id, []).append(c)
     console.print("I'd put them here:")
     for t in tasks:
-        when = ", ".join(f"{c.new_start:%a %d.%m %H:%M}-{c.new_end:%H:%M}"
-                         for c in sorted(blocks.get(t.id, []), key=lambda c: c.new_start))
-        console.print(f"  [{t.id}] {t.title}  {when or 'no time found'}", markup=False)
-    other = [c for c in p["changes"] if c.kind != "note" and not (c.kind == "create" and c.task_id)]
-    if other:
-        console.print("To make room:")
-        console.print(format_changes(other), markup=False)
+        mine = sorted(blocks.get(t.id, []), key=lambda c: c.new_start)
+        days = {c.new_start.date() for c in mine}
+        when = ", ".join(f"{c.new_start:%a %d.%m %H:%M}-{c.new_end:%H:%M}" if len(days) > 1 else
+                         f"{c.new_start:%H:%M}-{c.new_end:%H:%M}" for c in mine)
+        where = next((f"  ({c.reason[3:]})" for c in mine if c.reason.startswith("in your ")), "")
+        console.print(f"  [{t.id}] {t.title}  " + (f"{mine[0].new_start:%a %d.%m} " * (len(days) == 1)
+                                                    + when + where if mine else "no time found"), markup=False)
+    routine = [c for c in p["changes"] if c.kind == "create" and not c.task_id]
+    if routine:
+        console.print(f"Around them: your usual routine ({len(routine)} blocks).", style="dim")
+    moves = [c for c in p["changes"] if c.kind == "move"]
+    if moves:
+        console.print("Moves:")
+        console.print(format_changes(moves), markup=False)
     if p["unscheduled"]:
         console.print("Doesn't fit:", style="yellow")
         for line in p["unscheduled"]:

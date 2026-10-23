@@ -186,3 +186,31 @@ def test_task_line_says_the_length_fits_somewhere_in_the_window():
         "[t1] ml (Learn) 120 min, some time Sat 19.10 06:30 - Mon 21.10 17:00"
     assert line(due=at(21, 17)) == "[t1] ml (Learn) 120 min, by Mon 21.10 17:00"
     assert line(not_before=at(19, 18)) == "[t1] ml (Learn) 120 min, after Sat 19.10 18:00"
+
+
+def test_no_length_said_and_a_routine_block_of_that_category_is_that_block(monkeypatch, capsys):
+    from datetime import date, timedelta
+    from dayoptimizer.core.rules import RoutineBlock
+    tomorrow = date.today() + timedelta(days=1)
+    rules = SimpleNamespace(categories={"Work": {}, "Learn": {}}, awake=RULES.awake,
+                            typical_week={tomorrow.weekday(): [RoutineBlock(1110, 1185, "Learn", "Gym", protected=True),
+                                                         RoutineBlock(600, 700, "Work", "Chores")]})
+    monkeypatch.setattr(cli, "_in_bundle", lambda: False)
+    monkeypatch.setattr(cli, "_calendar_run", lambda argv, ask=True: None)
+    monkeypatch.setattr(cli, "make_backend", lambda cfg: Parser(TaskRequest(
+        title="siłownia", category="Learn", due_day="tomorrow", not_before_day="tomorrow", when="wieczorem")))
+    paths.ensure_private_dir()
+    cli.cmd_task(SimpleNamespace(words=["jutro wieczorem siłownia"]), rules, CONFIG)
+    # 'gym tonight' is the user's own 18:30-19:45 gym block, not one more hour of work next to it
+    assert Storage(paths.db_path()).open_tasks() == []
+    assert f"'siłownia' is already in your routine: Gym {tomorrow:%a %d.%m} 18:30-19:45" in capsys.readouterr().out
+
+
+def test_a_plain_routine_block_still_takes_a_task_without_a_length():
+    from datetime import datetime
+    from dayoptimizer.core.models import Task
+    from dayoptimizer.core.rules import RoutineBlock
+    mon = datetime(2030, 10, 14, 6, 0).astimezone()
+    rules = SimpleNamespace(categories={"Home": {}}, typical_week={0: [RoutineBlock(600, 700, "Home", "Chores")]})
+    laundry = Task(id="t1", title="pranie", category="Home", duration_min=60, not_before=mon)
+    assert cli._usual_block(rules, laundry) is None  # 'pranie' goes into the Chores time as a task
