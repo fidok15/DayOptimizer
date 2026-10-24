@@ -51,15 +51,20 @@ def _offset(low: str) -> int | None:
     return None
 
 
-def _after_event(low: str, events: list[tuple[str, datetime]]) -> datetime | None:
-    """'po pracy' / 'after the lecture' -> the end of today's event of that name."""
+# Polish words for routine blocks drawn in English ('po śniadaniu' = after Breakfast)
+_ALIASES = {"śnia": ("brea",), "obia": ("dinn", "lunc"), "kola": ("supp", "dinn"), "prac": ("work",),
+            "siło": ("gym",), "tren": ("gym",), "nauk": ("stud", "lear"), "zaję": ("stud", "lect")}
+
+
+def _after_event(low: str, events: list[tuple[str, datetime]], day: date) -> datetime | None:
+    """'po pracy' / 'after the lecture' -> the end of that day's event or routine block of that name."""
     m = re.search(r"\b(?:po|after)\s+(?:the\s+)?(\w+)", low)
     if not m:
         return None
     # ponytail: 4-letter stem match for Polish cases (pracy ~ Praca); a lemmatizer if it misfires
-    stem = m.group(1)[:4]
+    stems = (m.group(1)[:4], *_ALIASES.get(m.group(1)[:4], ()))
     return next((end for title, end in events
-                 if any(w[:4] == stem for w in re.findall(r"\w+", title.lower()))), None)
+                 if end.date() == day and any(w[:4] in stems for w in re.findall(r"\w+", title.lower()))), None)
 
 
 def task_from_request(req: TaskRequest, categories: list[str], now: datetime | date, task_id: str,
@@ -67,7 +72,8 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
                       awake: Callable[[date], tuple[time, time]] = lambda d: (time(5), time(23, 59))
                       ) -> tuple[Task | None, str | None]:
     """The task, or why there is none (said back to the user). `events` are
-    today's (title, end), for 'po <event>'. `awake(day)` is the user's waking
+    (title, end) of today's calendar and the routine's coming days, for 'po <event>'
+    (also with a part of the day: 'rano po śniadaniu'). `awake(day)` is the user's waking
     hours (Rules.awake): a task's day never reaches into their sleep. No length
     said = DEFAULT_MINUTES."""
     if not isinstance(now, datetime):
@@ -108,7 +114,8 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
             due = datetime.combine(day, min(time(part[1]), awake(day)[1])).astimezone()
     elif (minutes := _offset(low)) is not None:
         not_before = now + timedelta(minutes=minutes)
-    elif (end := _after_event(low, list(events))) is not None:
+    end = _after_event(low, list(events), (not_before or due or now).date())
+    if end is not None and (due is None or end < due) and (not_before is None or end > not_before):
         not_before = end
     chunk = req.min_chunk_minutes
     if not chunk or chunk <= 0 or chunk >= duration:

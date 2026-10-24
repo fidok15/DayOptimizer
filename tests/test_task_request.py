@@ -47,6 +47,10 @@ def test_time_of_day_words_become_the_window():
     assert win("in 30 min") == (at(14, 10), None)
     assert win("po pracy", [("Praca", at(14, 16))]) == (at(14, 16), None)
     assert win("po kinie", [("Praca", at(14, 16))]) == (None, None)
+    # a routine block of the task's day, named in English, with a part of the day
+    breakfast = [("Breakfast", at(14, 7, 30)), ("Breakfast", at(15, 8))]
+    assert win("rano po śniadaniu", breakfast, due_day="tomorrow") == (at(15, 8), at(15, 12))
+    assert win("po śniadaniu", breakfast, due_day="tomorrow") == (at(15, 8), at(15, 23, 59))
     late = datetime(2030, 10, 14, 15, 0).astimezone()
     t, _ = task_from_request(TaskRequest(title="x", category="Work", when="rano"), CATS, late, "t1")
     assert (t.not_before, t.due) == (at(15, 5), at(15, 12))

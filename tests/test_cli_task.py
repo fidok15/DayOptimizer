@@ -5,7 +5,7 @@ from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
 from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
 
-RULES = SimpleNamespace(categories={"Work": {}, "Learn": {}}, awake=lambda d: (time(5), time(23, 59)))
+RULES = SimpleNamespace(categories={"Work": {}, "Learn": {}}, typical_week={}, awake=lambda d: (time(5), time(23, 59)))
 CONFIG = {"llm": {}}
 
 
