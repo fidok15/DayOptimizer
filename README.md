@@ -1,18 +1,67 @@
 # DayOptimizer
 
 DayOptimizer plans and replans your day against your real Apple Calendar. A
-deterministic Python engine decides *where things go* — it has no API key and
-burns no tokens for the automatic cases (background checks, new-event
-reactions, sleep-data reactions). Claude is the language brain on top: it runs
-the onboarding interview, turns "move gym to tomorrow" into a tool call,
-and explains what changed and why. Optional Garmin data (sleep, Body Battery,
-HRV, stress) feeds the engine so recovery — not just free calendar slots —
-decides when workouts and deep-work blocks land.
+language model (a local Ollama model, or Claude with an API key) lays out the
+days from the routine you drew and what is already in your calendar; code
+checks every block (no overlaps, your categories, the rules from your notes)
+and sends back what breaks a rule. With no model at all, a rule engine places
+your routine. Optional Garmin data (sleep, Body Battery, HRV, stress) feeds
+the planner so recovery, not just free calendar slots, decides when workouts
+and deep-work blocks land.
 
 Fixed events (meetings, work, anything you mark non-movable) are never
 touched without your explicit approval. Flexible categories (sleep, food,
 gym, learning, free time, transport) are rescheduled automatically, with a
 notification-style summary of what moved and why.
+
+## Status
+
+What has been run by the author on a real Mac and Apple Calendar, and what so
+far only passes the automated tests (567 tests; calendar and model are faked,
+so they check the logic, not macOS or a real model).
+
+**Used live** (macOS, Apple Calendar through the app bundle, local Ollama
+`qwen3:8b`):
+
+- Setup page: drawing the typical week, own categories, Fixed / Flexible; a
+  calendar per category created on save.
+- `dayoptimizer` and `plan --week N`: the model lays out the days, code checks
+  them, and a replan replaces only blocks marked "Planned by DayOptimizer"
+  (full live test on 2026-10-16).
+- Plain-words requests with events and tasks: the preview shows the proposed
+  hours, then "Add to your calendar and replan? [Y/n]" writes them.
+- Tasks: they go into their category's routine time first and may split across
+  sessions; "rano" / "wieczorem" narrow the day; a task said again after its
+  blocks were deleted from the calendar is planned again; the "doesn't fit"
+  dialog.
+- macOS calendar permission through `~/.dayoptimizer/DayOptimizer.app`.
+- `dayoptimizer clear`: the list of blocks it would delete (the delete step
+  itself has only been run in tests).
+
+**Tests only, needs a live run:**
+
+- Garmin: login, sleep, Body Battery, HRV, recovery-aware training (no Garmin
+  data has been synced yet).
+- Background agent: `agent install`, `check`, macOS notifications.
+- Claude as the planner (`ANTHROPIC_API_KEY`): the live runs used Ollama.
+- Claude Code plugin commands and MCP tools.
+- Importing calendars (.ics file, Calendar app) on the setup page.
+- Commute blocks from `transport_routes` and event locations.
+- `scripts/install.sh` on a fresh clone on another Mac.
+- Added in the last days, checked offline on the author's routine only: "po
+  śniadaniu" (after a routine block of that day), "między 14 a 16" as a
+  window, a task said for a part of the day going before flexible routine, and
+  the day the clocks change (routine times on 2026-10-25).
+
+**Known gaps:**
+
+- "po X" matches a block or event by its first four letters, plus a short list
+  of Polish words for English block names (śniadanie = Breakfast, obiad =
+  Dinner / Lunch, kolacja = Supper, ...).
+- No commute is added for an event without a location ("obiad w Panda Ramen").
+- The local model sometimes gives a clock time to something said without one,
+  which then becomes a fixed event instead of a task.
+- The preview does not say which flexible routine blocks give way to a task.
 
 ## Requirements
 
@@ -229,7 +278,7 @@ directory" before running any of these.
 | Command | What it does |
 |---|---|
 | `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
-| `dayoptimizer "<your day in plain words>"` | Shows the events it understood, adds them on your OK, then replans (local Ollama or `ANTHROPIC_API_KEY`). Things without a clock time ("do the laundry", "report for Friday, 3h") become tasks placed in the day: in your routine time of their category first, else in the earliest free time; "rano"/"morning", "po południu"/"afternoon", "wieczorem"/"evening" narrow it, "przed piątkiem"/"before Friday" means done by Thursday night |
+| `dayoptimizer "<your day in plain words>"` | Shows what it understood and the hours it would use, writes them on your OK and replans (local Ollama or `ANTHROPIC_API_KEY`). Things without a clock time ("do the laundry", "report for Friday, 3h") become tasks: in your routine time of their category first, else in the earliest free time. "rano"/"morning", "po południu"/"afternoon", "wieczorem"/"evening", "między 14 a 16", "po pracy" / "po śniadaniu" (after that event or routine block) narrow it; "przed piątkiem"/"before Friday" means done by Thursday night. "gym tonight" with no length is your routine gym block |
 | `dayoptimizer task "<work, how long, by when>"` | Saves one or more tasks ("tomorrow: laundry and exam prep, 2h each") and places them into free time before their deadline; `task list`, `task done t3` |
 | `uv run dayoptimizer plan [--date DD-MM-YYYY] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |
@@ -238,18 +287,18 @@ directory" before running any of these.
 | `uv run dayoptimizer agent status` | Shows whether the agent is installed/running |
 | `uv run dayoptimizer garmin login` | Logs into Garmin Connect once and stores OAuth tokens (password is never persisted) |
 | `uv run dayoptimizer stats` | 14-day Garmin trends and suggested rule adjustments |
+| `dayoptimizer clear [--all]` | Lists every block DayOptimizer planned from now on (`--all`: also past ones) and deletes them on your OK; your own events are never touched |
 | `uv run dayoptimizer apply --ids 3,4` | Applies pending fixed-event changes by id, after you've reviewed them |
 | `uv run dayoptimizer setup [--port N] [--no-open]` | Opens the typical-week setup page in the browser (see [Web planner](#web-planner)) |
 | `uv run dayoptimizer chat` | Several plain-words requests in a row, one per line |
 
 Because EventKit needs the TCC bundle (see below), the calendar commands
-(`plan`, `apply`, `check`, `sync` and plain-words requests) hand themselves to
+(`plan`, `apply`, `check`, `sync`, `clear` and plain-words requests) hand themselves to
 the bundle when started from a terminal, and print its output when done.
 
-Plain-words requests and `chat` call the Anthropic API directly (not a local model): they
-requires `ANTHROPIC_API_KEY` set in your environment (or in a `.env` file in
-the plugin directory, which `dayoptimizer` loads automatically). It does not
-work offline.
+Plain-words requests and `chat` need a language model: a running local Ollama
+model (works offline), or `ANTHROPIC_API_KEY` in your environment or in a `.env`
+file in the DayOptimizer folder, which `dayoptimizer` loads automatically.
 
 `/dayoptimizer:today` and `/dayoptimizer:stats` only read DayOptimizer's
 local cache (`~/.dayoptimizer/data.db`) — they show nothing, or stale data,
