@@ -154,7 +154,7 @@ _REQUEST_SYSTEM = (
     "be done by ('na piątek' / 'by Friday' = friday); not_before_day: also that day when the work "
     "is FOR that day ('jutro zrób X', 'tomorrow do X'), never for a deadline; due_time: HH:MM only "
     "for a deadline hour ('do 17'); when: the words saying when in the day, copied from the "
-    "message ('po południu', 'wieczorem', 'rano', 'za 2h', 'po pracy'), else empty; "
+    "message ('po południu', 'wieczorem', 'rano', 'za 2h', 'po pracy', 'rano po śniadaniu'), else empty; "
     "min_chunk_minutes only when the message asks to split it ('w kawałkach po godzinę' = 60), else empty; "
     "priority high for "
     "'ważne'/'pilne'/'urgent', low for 'kiedyś'/'when there's time', else normal.\n"

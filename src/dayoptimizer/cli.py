@@ -456,8 +456,11 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         for e in req.events if not (e.start_time and _HHMM.match(e.start_time))]
     if not reqs:
         return []
-    today_events = [(e.title, e.end) for e in storage.events_on(now.date().isoformat())]
-    today_events += [(t, e) for _, t, s, e in to_create if s.date() == now.date()]
+    events = [(e.title, e.end) for e in storage.events_on(now.date().isoformat())]
+    events += [(t, e) for _, t, s, e in to_create if s.date() == now.date()]
+    events += [(b.label, (datetime.combine(d, time()) + timedelta(minutes=b.end)).astimezone())
+               for d in (now.date() + timedelta(days=i) for i in range(8))
+               for b in rules.typical_week.get(d.weekday(), [])]
     norm = lambda t: (" ".join(t.title.casefold().split()), t.due)
     old = {norm(t): t.id for t in storage.open_tasks()}
     have = set()
@@ -468,7 +471,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
         r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
         task, problem = task_from_request(r, list(rules.categories), now,
-                                          f"t{first + sum(1 for t, _ in out if norm(t) not in old)}", today_events,
+                                          f"t{first + sum(1 for t, _ in out if norm(t) not in old)}", events,
                                           rules.awake)
         if task is None:
             console.print(problem, markup=False, style="yellow")
