@@ -148,3 +148,21 @@ def test_awake_is_between_the_nights_sleep_drawn_in_the_routine():
     assert rules.awake(date(2030, 10, 14)) == (time(6, 30), time(22, 30))
     # a day with no night drawn: the day window from the config
     assert rules.awake(date(2030, 10, 15)) == (rules.day_start, rules.day_end)
+
+
+def test_routine_times_keep_the_clock_on_the_day_the_clocks_change(monkeypatch):
+    import time as clock
+    from datetime import date, datetime, timedelta
+    from dayoptimizer.core.models import at, minutes
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    clock.tzset()
+    try:
+        midnight = datetime.combine(date(2026, 10, 25), time(0)).astimezone()  # 03:00 back to 02:00
+        gym = at(midnight, 18 * 60 + 30)
+        assert gym.strftime("%H:%M %z") == "18:30 +0100"
+        assert minutes(midnight, gym) == 18 * 60 + 30
+        assert at(midnight, 1440) == datetime.combine(date(2026, 10, 26), time(0)).astimezone()
+        assert gym - midnight == timedelta(hours=19, minutes=30)  # elapsed time is an hour more
+    finally:
+        monkeypatch.undo()
+        clock.tzset()

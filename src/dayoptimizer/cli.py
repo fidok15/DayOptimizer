@@ -13,6 +13,7 @@ from dayoptimizer.apply import _missing, apply_changes
 from dayoptimizer.core.allday import conversion, timed_all_day
 from dayoptimizer.core.calendar import CalendarClient
 from dayoptimizer.core.garmin import summarize
+from dayoptimizer.core.models import at
 from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import load_config_data, load_rules
 from dayoptimizer.core.storage import Storage
@@ -458,7 +459,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         return []
     events = [(e.title, e.end) for e in storage.events_on(now.date().isoformat())]
     events += [(t, e) for _, t, s, e in to_create if s.date() == now.date()]
-    events += [(b.label, (datetime.combine(d, time()) + timedelta(minutes=b.end)).astimezone())
+    events += [(b.label, at(datetime.combine(d, time()), b.end))
                for d in (now.date() + timedelta(days=i) for i in range(8))
                for b in rules.typical_week.get(d.weekday(), [])]
     norm = lambda t: (" ".join(t.title.casefold().split()), t.due)
@@ -503,11 +504,11 @@ def _usual_block(rules, task):
     day = (task.not_before or task.due).date()
     midnight = datetime.combine(day, time(0)).astimezone()
     lo = task.not_before or midnight
-    hi = task.due or midnight + timedelta(days=1)
+    hi = task.due or at(midnight, 1440)
     return next((b for b in getattr(rules, "typical_week", {}).get(day.weekday(), [])
-                 if b.category == task.category and lo <= midnight + timedelta(minutes=b.start)
+                 if b.category == task.category and lo <= at(midnight, b.start)
                  and (b.protected or not getattr(rules.categories.get(b.category), "movable", True))
-                 and midnight + timedelta(minutes=b.end) <= hi), None)
+                 and at(midnight, b.end) <= hi), None)
 
 def cmd_ask(args, rules, config):
     """`dayoptimizer "meeting at 14 for an hour, then do the laundry"`:

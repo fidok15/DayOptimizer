@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
-from dayoptimizer.core.models import Task
+from dayoptimizer.core.models import Task, at
 from dataclasses import replace
 from dayoptimizer.llm.backend import _DAY_WORDS, TaskFix, TaskRequest, resolve_day  # noqa: F401  (TaskRequest re-exported)
 
@@ -102,9 +102,9 @@ def task_from_request(req: TaskRequest, categories: list[str], now: datetime | d
     if (m := _BETWEEN.search(low)) and (int(m[1]), int(m[2] or 0)) < (int(m[3]), int(m[4] or 0)):
         day = resolve_day(req.due_day or req.not_before_day or "today", today)
         midnight = datetime.combine(day, time(0)).astimezone()
-        not_before = midnight + timedelta(hours=int(m[1]), minutes=int(m[2] or 0))
+        not_before = at(midnight, int(m[1]) * 60 + int(m[2] or 0))
         if not _hhmm(req.due_time):
-            due = midnight + timedelta(hours=int(m[3]), minutes=int(m[4] or 0))
+            due = at(midnight, int(m[3]) * 60 + int(m[4] or 0))
     elif part:
         day = resolve_day(req.due_day or req.not_before_day or "today", today)
         if not (req.due_day or req.not_before_day) and datetime.combine(day, time(part[1])).astimezone() <= now:

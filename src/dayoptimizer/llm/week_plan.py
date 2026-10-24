@@ -14,7 +14,7 @@ from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
 from dayoptimizer.core.constraints import NoteRule, skippable, window_rule
-from dayoptimizer.core.models import Event, PlannedChange, Task
+from dayoptimizer.core.models import Event, PlannedChange, Task, at
 from dayoptimizer.core.planner import _nearest_start
 from dayoptimizer.llm.backend import LLMTimeout
 from dayoptimizer.llm.task_rules import block_problem, minutes, overdue, task_lines, unplaced, window
@@ -156,7 +156,7 @@ def free_gaps(day: date, events: list[Event], now: datetime) -> list[tuple[datet
     works the gaps out from the event list itself. The gap under way starts at
     the next quarter hour: 15:15, not 15:07:13 (a block there would start before now)."""
     midnight = datetime.combine(day, time(0)).astimezone()
-    end = midnight + timedelta(days=1)
+    end = at(midnight, 1440)
     cur = max(midnight, _next_quarter(now))
     busy = sorted((max(e.start, midnight), min(e.end, end)) for e in events
                   if not e.all_day and (not e.managed or e.start < now) and e.start < end and e.end > midnight)
@@ -232,8 +232,8 @@ def routine_spans(typical_week: dict, categories: dict, days: list[date]) -> tup
     protected, intent), and the part of it tasks stay out of: fixed routine keeps out
     tasks of other categories, a protected block (category None) every task. An open
     block any task may take (`_for_tasks`) keeps out none, whatever its category."""
-    routine_days = {d: [(datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.start),
-                         datetime.combine(d, time(0)).astimezone() + timedelta(minutes=b.end),
+    routine_days = {d: [(at(datetime.combine(d, time(0)), b.start),
+                         at(datetime.combine(d, time(0)), b.end),
                          b.category, b.title or b.category,
                          not getattr(categories.get(b.category), "movable", True),
                          getattr(b, "protected", False), getattr(b, "intent", None))
@@ -453,7 +453,7 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
             problems.append(f"{label}: '{b.category}' is not one of the categories")
             continue
         midnight = datetime.combine(day, time(0)).astimezone()
-        start, end = midnight + timedelta(minutes=start_m), midnight + timedelta(minutes=end_m)
+        start, end = at(midnight, start_m), at(midnight, end_m)
         if start < now:
             problems.append(f"{label}: starts before now ({now:%Y-%m-%d %H:%M})")
             continue
@@ -701,7 +701,7 @@ def _unmentioned(blocks: list[Block], previous: list[Event], events: list[Event]
         s, e = _hhmm(b.start), _hhmm(b.end)
         if s is not None and e is not None:
             midnight = datetime.combine(date.fromisoformat(b.day), time(0)).astimezone()
-            when[id(b)] = (midnight + timedelta(minutes=s), midnight + timedelta(minutes=e if e else 1440))
+            when[id(b)] = (at(midnight, s), at(midnight, e if e else 1440))
     names = {(b.day, b.task_id or (b.category, b.title)) for b in blocks}
     taken = [w for w in when.values()] + [(e.start, e.end) for e in events
                                           if not e.all_day and (not e.managed or e.start < now)]
@@ -752,7 +752,7 @@ def _times(b: Block) -> tuple[datetime, datetime] | None:
     if s is None or e is None:
         return None
     midnight = datetime.combine(date.fromisoformat(b.day), time(0)).astimezone()
-    return midnight + timedelta(minutes=s), midnight + timedelta(minutes=e if e else 1440)
+    return at(midnight, s), at(midnight, e if e else 1440)
 
 
 def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime,
@@ -998,7 +998,7 @@ def _make_room(d: date, n: int, category: str, lo: datetime, hi: datetime | None
     nowhere else goes: (event, None, None); so does an open block (id "open:<n>"),
     which never moves."""
     midnight = datetime.combine(d, time(0)).astimezone()
-    day_end = midnight + timedelta(days=1)
+    day_end = at(midnight, 1440)
     a = _next_quarter(max(lo, now, midnight))  # whole minutes: a replan must find the same start again
     while a + timedelta(minutes=n) <= (day_end if hi is None else min(hi, day_end)):
         b = a + timedelta(minutes=n)
