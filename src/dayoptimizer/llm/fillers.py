@@ -26,7 +26,7 @@ from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pydantic import BaseModel
 from dayoptimizer.core.constraints import window_rule
-from dayoptimizer.core.models import Event, PlannedChange
+from dayoptimizer.core.models import Event, PlannedChange, at
 from dayoptimizer.llm.task_rules import minutes
 from dayoptimizer.llm.week_plan import (Block, DAY_NAMES, _count_rules, _hhmm, _intent, _minus, _spans, free_gaps,
                                          intent_kind, routine_spans)
@@ -176,7 +176,7 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
         s_m, e_m = _hhmm(f.start), _hhmm(f.end)
         name, why = bare(f.title), None
         midnight = datetime.combine(d or date.today(), time(0)).astimezone()
-        slot = next((x for x in asks[d] if x[0] <= midnight + timedelta(minutes=s_m) < x[1]), ()) \
+        slot = next((x for x in asks[d] if x[0] <= at(midnight, s_m) < x[1]), ()) \
             if d is not None and s_m is not None else ()  # the gap or piece it starts in
         piece = len(slot) > 2
         study = piece and intent_kind(slot[2]) == "productive"  # a course may come back the next day
@@ -193,7 +193,7 @@ def check(fillers: list[Filler], asks: dict, categories: list[str], rules, histo
         elif f.category not in categories:
             why = "not one of the categories"
         else:
-            s, e = midnight + timedelta(minutes=s_m), midnight + timedelta(minutes=e_m)
+            s, e = at(midnight, s_m), at(midnight, e_m)
             if not slot or e > slot[1]:
                 why = "not inside a free gap"
             elif any(ks < e and s < ke for ks, ke, _ in kept):

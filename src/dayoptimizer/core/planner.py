@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime, date, time, timedelta
-from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
+from dayoptimizer.core.models import Event, GarminSummary, PlannedChange, at, minutes
 from dayoptimizer.core.constraints import (allowed_window, explain, free_windows, gap_rule, skippable,
                                             week_rule, window_rule)
 from dayoptimizer.core.recovery import learn_region, training_advice
@@ -417,13 +417,13 @@ def _blocked_events(rules, day, midnight, category):
     out = []
     if earliest > 0:
         out.append(Event(id="rule:early", calendar="(your notes)", title="not before",
-                         start=midnight, end=midnight + timedelta(minutes=earliest)))
+                         start=midnight, end=at(midnight, earliest)))
     if latest < 1440:
         out.append(Event(id="rule:late", calendar="(your notes)", title="not after",
-                         start=midnight + timedelta(minutes=latest), end=midnight + timedelta(days=1)))
+                         start=at(midnight, latest), end=at(midnight, 1440)))
     for i, (start, end) in enumerate(free_windows(rules.note_rules, day.weekday(), category)):
         out.append(Event(id=f"rule:free{i}", calendar="(your notes)", title="keep free",
-                         start=midnight + timedelta(minutes=start), end=midnight + timedelta(minutes=end)))
+                         start=at(midnight, start), end=at(midnight, end)))
     return out
 
 def enforce_notes(day, events, rules, now, day_start, day_end):
@@ -436,8 +436,8 @@ def enforce_notes(day, events, rules, now, day_start, day_end):
     for ev in sorted(events, key=lambda e: e.start):
         if ev.start < now or not (rules.is_movable(ev.calendar) and _is_planner_managed(ev.title, rules)):
             continue
-        broken = window_rule(rules.note_rules, ev.calendar, int((ev.start - midnight).total_seconds() // 60),
-                             int((ev.end - midnight).total_seconds() // 60), day.weekday())
+        broken = window_rule(rules.note_rules, ev.calendar, minutes(midnight, ev.start),
+                             minutes(midnight, ev.end), day.weekday())
         if broken is None:
             continue
         others = [e for e in working if e.id != ev.id] + _blocked_events(rules, day, midnight, ev.calendar)
@@ -470,10 +470,10 @@ def place_routine(day, events, rules, now, day_start, day_end, garmin=None, acti
     seen_labels: dict[tuple[str, str], int] = {}
     routine = rules.typical_week.get(day.weekday(), [])
     upcoming = [Event(id=f"routine-slot:{i}", calendar=o.category, title=o.label,
-                      start=midnight + timedelta(minutes=o.start), end=midnight + timedelta(minutes=o.end))
-                for i, o in enumerate(routine) if midnight + timedelta(minutes=o.start) >= now]
+                      start=at(midnight, o.start), end=at(midnight, o.end))
+                for i, o in enumerate(routine) if at(midnight, o.start) >= now]
     for b in routine:
-        start, end = midnight + timedelta(minutes=b.start), midnight + timedelta(minutes=b.end)
+        start, end = at(midnight, b.start), at(midnight, b.end)
         nth = seen_labels[(b.category, b.label)] = seen_labels.get((b.category, b.label), 0) + 1
         if start < now:
             continue

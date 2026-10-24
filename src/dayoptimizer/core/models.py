@@ -1,7 +1,15 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
+
+def at(midnight: datetime, m: float) -> datetime:
+    """`m` minutes after `midnight` by the clock: 18:30 stays 18:30 on the day the clocks change."""
+    return (midnight.replace(tzinfo=None) + timedelta(minutes=m)).astimezone()
+
+def minutes(start: datetime, end: datetime) -> int:
+    """Minutes from `start` to `end` by the clock (an hour off elapsed time across a clock change)."""
+    return int((end.astimezone().replace(tzinfo=None) - start.astimezone().replace(tzinfo=None)).total_seconds() // 60)
 
 @dataclass
 class Event:
