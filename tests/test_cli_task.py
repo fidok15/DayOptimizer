@@ -1,6 +1,7 @@
 import json
-from datetime import time
+from datetime import date, time, timedelta
 from types import SimpleNamespace
+
 from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
 from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
@@ -33,7 +34,8 @@ def test_task_is_saved_and_its_days_replanned(monkeypatch):
     calls = run(monkeypatch, ["report", "tomorrow", "2h"], req)
     tasks = Storage(paths.db_path()).open_tasks()
     assert [(t.id, t.title, t.duration_min) for t in tasks] == [("t1", "report", 120)]
-    assert calls == [["plan", "--week", "2"]]
+    tomorrow = date.today() + timedelta(days=1)
+    assert calls == [["plan", "--date", f"{tomorrow:%d-%m-%Y}", "--week", "1"]]  # for tomorrow: only tomorrow
 
 
 def test_task_without_deadline_plans_today_and_tomorrow(monkeypatch):
@@ -112,6 +114,7 @@ def test_time_of_day_words_count_only_when_said(monkeypatch):
 
 def test_a_task_placed_whole_on_a_later_day_is_reported():
     from datetime import date, datetime
+
     from dayoptimizer.core.models import PlannedChange, Task
 
     def create(task_id, day, h):
@@ -146,6 +149,7 @@ def test_chunks_only_when_the_message_asks_to_split(monkeypatch):
 
 def _unfit(monkeypatch, tty, replies):
     from datetime import datetime, timedelta
+
     from dayoptimizer.core.models import Task
     paths.ensure_private_dir()
     storage = Storage(paths.db_path())
@@ -177,6 +181,7 @@ def test_no_terminal_no_question(monkeypatch):
 
 def test_task_line_says_the_length_fits_somewhere_in_the_window():
     from datetime import datetime
+
     from dayoptimizer.core.models import Task
     at = lambda d, h, m=0: datetime(2030, 10, d, h, m).astimezone()
     line = lambda **kw: cli._task_line(Task(id="t1", title="ml", category="Learn", duration_min=120, **kw))
@@ -191,6 +196,7 @@ def test_task_line_says_the_length_fits_somewhere_in_the_window():
 
 def test_no_length_said_and_a_routine_block_of_that_category_is_that_block(monkeypatch, capsys):
     from datetime import date, timedelta
+
     from dayoptimizer.core.rules import RoutineBlock
     tomorrow = date.today() + timedelta(days=1)
     rules = SimpleNamespace(categories={"Work": {}, "Learn": {}}, awake=RULES.awake,
@@ -209,9 +215,21 @@ def test_no_length_said_and_a_routine_block_of_that_category_is_that_block(monke
 
 def test_a_plain_routine_block_still_takes_a_task_without_a_length():
     from datetime import datetime
+
     from dayoptimizer.core.models import Task
     from dayoptimizer.core.rules import RoutineBlock
     mon = datetime(2030, 10, 14, 6, 0).astimezone()
     rules = SimpleNamespace(categories={"Home": {}}, typical_week={0: [RoutineBlock(600, 700, "Home", "Chores")]})
     laundry = Task(id="t1", title="pranie", category="Home", duration_min=60, not_before=mon)
     assert cli._usual_block(rules, laundry) is None  # 'pranie' goes into the Chores time as a task
+
+
+def test_a_task_next_week_plans_from_its_day():
+    from datetime import datetime
+
+    from dayoptimizer.core.models import Task
+    day = date.today() + timedelta(days=11)
+    at = lambda h: datetime.combine(day, time(h)).astimezone()
+    task = Task(id="t1", title="raport", category="Work", duration_min=120, not_before=at(6), due=at(22))
+    assert cli._task_span([task]) == (day, 1)  # not the week from today, which never reaches it
+    assert cli._span_argv(day, 1) == ["--date", f"{day:%d-%m-%Y}", "--week", "1"]

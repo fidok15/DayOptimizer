@@ -1,10 +1,13 @@
 from datetime import datetime
 from unittest.mock import MagicMock
+
 import anthropic
 import httpx
+
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import DayRequest, NewEvent, format_changes
 from dayoptimizer.llm.anthropic_backend import AnthropicBackend
+from dayoptimizer.llm.backend import DayRequest, NewEvent, format_changes
+
 
 def test_day_request_model_validates():
     r = DayRequest(events=[NewEvent(title="Standup", category="Work")])
@@ -13,6 +16,7 @@ def test_day_request_model_validates():
 
 def test_resolve_day_words():
     from datetime import date
+
     from dayoptimizer.llm.backend import resolve_day
     tue = date(2026, 9, 22)
     assert resolve_day("tomorrow", tue) == date(2026, 9, 23)
@@ -223,6 +227,7 @@ def test_an_item_goes_with_the_clause_sharing_most_of_its_title():
 
 def test_day_words_in_every_form():
     import re
+
     from dayoptimizer.llm.backend import _DAY_WORDS
     said = {
         "today": ["dziś", "dzis", "dzisiaj", "dzisiejszy dzień", "today", "tonight"],
@@ -241,3 +246,45 @@ def test_day_words_in_every_form():
         for w in words:
             found = [d for p, d in _DAY_WORDS if re.search(p, w)]
             assert found == ([day] if day else []), w
+
+
+def test_the_model_picks_a_date_and_the_message_checks_it():
+    from datetime import date
+
+    import pytest
+    from pydantic import ValidationError
+
+    from dayoptimizer.llm.backend import (
+        DayRequest,
+        NewEvent,
+        TaskRequest,
+        pin_day,
+        resolve_day,
+    )
+    mon = date(2026, 10, 26)
+    assert resolve_day("2026-11-06", mon) == date(2026, 11, 6) and resolve_day("friday", mon) == date(2026, 10, 30)
+    with pytest.raises(ValidationError):
+        NewEvent(title="x", category="Work", day="next friday")
+    task = lambda **kw: DayRequest(tasks=[TaskRequest(title="raport", category="Work", **kw)])
+    # 'przyszły piątek': the model's Friday of next week stands, as a deadline too
+    t = pin_day("w przyszły piątek raport 2h", task(due_day="2026-11-06", not_before_day="2026-11-06"), mon).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("2026-11-06", "2026-11-06")
+    t = pin_day("na przyszły piątek raport 2h", task(due_day="2026-11-06"), mon).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "2026-11-06")
+    t = pin_day("przed przyszłym piątkiem raport 2h", task(due_day="2026-11-06"), mon).tasks[0]
+    assert t.due_day == "2026-11-05"
+    t = pin_day("w przyszły piątek raport 2h", task(due_day="2026-10-30"), mon).tasks[0]  # the model's slip
+    assert t.due_day == "2026-11-06"
+    # a date that isn't the day said: the message wins
+    t = pin_day("w piątek raport 2h", task(due_day="2026-10-29", not_before_day="2026-10-29"), mon).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("friday", "friday")
+    e = pin_day("jutro o 10 dentysta", DayRequest(events=[NewEvent(title="dentysta", category="Work",
+                                                                  day="2026-10-27", start_time="10:00")]), mon)
+    assert e.events[0].day == "2026-10-27"
+    e = pin_day("jutro o 10 dentysta", DayRequest(events=[NewEvent(title="dentysta", category="Work",
+                                                                  day="2026-10-26", start_time="10:00")]), mon)
+    assert e.events[0].day == "tomorrow"
+    # a date with no day word in the message: the model's
+    e = pin_day("27.10 o 18 kino", DayRequest(events=[NewEvent(title="kino", category="Work",
+                                                             day="2026-10-27", start_time="18:00")]), mon)
+    assert e.events[0].day == "2026-10-27"

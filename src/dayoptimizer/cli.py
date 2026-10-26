@@ -453,7 +453,8 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, task_from_request
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
-                    due_day=None if e.day == "today" else e.day, not_before_day=None if e.day == "today" else e.day)
+                    **dict.fromkeys(("due_day", "not_before_day"),
+                                    None if resolve_day(e.day, now.date()) == now.date() else e.day))
         for e in req.events if not (e.start_time and _HHMM.match(e.start_time))]
     if not reqs:
         return []
@@ -532,7 +533,7 @@ def cmd_ask(args, rules, config):
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    req = pin_day(args.text, req)
+    req = pin_day(args.text, req, now.date())
     timed = req.model_copy(update={"events": [e for e in req.events if e.start_time and _HHMM.match(e.start_time)]})
     to_create, problems = events_to_create(timed, rules.categories, now.date())
     for p in problems:
@@ -685,13 +686,12 @@ def _propose(tasks, to_create, rules, config) -> dict | None:
     """Plan the tasks' days without writing anything (in the calendar bundle)
     and read back where everything would go; None: no model could plan, so
     nothing can be shown ahead."""
-    today = date.today()
-    days = min(7, max([_task_days(tasks)] + [(s.date() - today).days + 1 for _, _, s, _ in to_create]))
-    argv = ["plan", "--week", str(days), "--propose"] + (["--with", _events_json(to_create)] if to_create else [])
+    start, days = _task_span(tasks, [s.date() for _, _, s, _ in to_create])
+    argv = ["plan", *_span_argv(start, days), "--propose"] + (["--with", _events_json(to_create)] if to_create else [])
     _proposal_file().unlink(missing_ok=True)
     console.print("Working out where it goes...", style="dim")
     if _in_bundle() or sys.platform != "darwin":
-        cmd_plan(argparse.Namespace(date=None, week=days, propose=True,
+        cmd_plan(argparse.Namespace(date=start.isoformat(), week=days, propose=True,
                                     with_events=argv[-1] if to_create else None), rules, config)
     else:
         _calendar_run(argv, ask=False)
@@ -849,23 +849,33 @@ def cmd_task(args, rules, config):
         return
     cmd_ask(argparse.Namespace(text=" ".join(words)), rules, config)
 
-def _task_days(tasks) -> int:
-    """Days to replan for these tasks, from today: up to the latest deadline; a
-    task without one goes as soon as possible, so today and tomorrow (from
-    its first day). A week at most."""
+def _task_span(tasks, event_days=()) -> tuple[date, int]:
+    """The first day and the number of days to replan for these tasks (and new
+    events on `event_days`): from the first day one may go on to the latest
+    deadline; a task without one goes as soon as possible, so its first day and
+    the next. A week at most, so 'w przyszły piątek' plans next week, not this one."""
     today = date.today()
-    last = [t.due.date() if t.due is not None else
-            max(today, t.not_before.date() if t.not_before else today) + timedelta(days=1) for t in tasks]
-    return max(1, min(7, (max(last) - today).days + 1))
+    first = [max(today, t.not_before.date()) if t.not_before else today for t in tasks]
+    last = [t.due.date() if t.due is not None else f + timedelta(days=1) for t, f in zip(tasks, first)]
+    start = min(first + list(event_days))
+    return start, max(1, min(7, (max(last + list(event_days)) - start).days + 1))
+
+def _task_days(tasks) -> int:
+    """Days to replan for these tasks, counted from today (`_task_span`)."""
+    start, days = _task_span(tasks)
+    return min(7, (start - date.today()).days + days)
+
+def _span_argv(start: date, days: int) -> list[str]:
+    return (["--date", f"{start:%d-%m-%Y}"] if start != date.today() else []) + ["--week", str(days)]
 
 def _replan_for(tasks, rules, config, ask=True):
     """Replan the tasks' days in the calendar bundle: that places new tasks and
     removes a finished one's blocks."""
-    days = _task_days(tasks)
+    start, days = _task_span(tasks)
     if _in_bundle() or sys.platform != "darwin":
-        cmd_plan(argparse.Namespace(date=None, week=days, ask=ask), rules, config)
+        cmd_plan(argparse.Namespace(date=start.isoformat(), week=days, ask=ask), rules, config)
     else:
-        _calendar_run(["plan", "--week", str(days)], ask=ask)
+        _calendar_run(["plan", *_span_argv(start, days)], ask=ask)
 
 def _unplaced_file() -> Path:
     return paths.ensure_private_dir() / "unplaced.json"
