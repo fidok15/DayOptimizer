@@ -231,7 +231,7 @@ def add_task(text: str) -> str:
         return str(exc)
     except Exception as exc:
         return f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment."
-    req = pin_day(text, req)
+    req = pin_day(text, req, now.date())
     timed = [e for e in req.events if e.start_time and cli._HHMM.match(e.start_time)]
     if timed:
         return ("That has calendar events at a clock time (" + ", ".join(f"{e.title} {e.start_time}" for e in timed)

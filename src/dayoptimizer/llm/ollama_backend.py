@@ -6,13 +6,14 @@ import os
 import shutil
 import subprocess
 import time
+from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from dayoptimizer import paths
 from dayoptimizer.core.models import PlannedChange
 from dayoptimizer.llm.backend import (_FIX_SYSTEM, _NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, LLMTimeout, LLMUnavailable, TaskFix, compile_prompt, fix_prompt,
-                                      format_changes, request_prompt)
+                                      DayRequest, LLMTimeout, LLMUnavailable, TaskFix, compile_prompt, day_choices,
+                                      fix_prompt, format_changes, request_prompt)
 
 
 def _host() -> str:
@@ -121,6 +122,10 @@ class OllamaBackend:
         schema = DayRequest.model_json_schema()
         schema["$defs"]["NewEvent"]["properties"]["category"]["enum"] = list(categories)
         schema["$defs"]["TaskRequest"]["properties"]["category"]["enum"] = list(categories)
+        days = day_choices(date.fromisoformat(today))  # a small model copies one, it never counts days
+        schema["$defs"]["NewEvent"]["properties"]["day"]["enum"] = days
+        for field in ("due_day", "not_before_day"):
+            schema["$defs"]["TaskRequest"]["properties"][field]["anyOf"][0]["enum"] = days
         raw = self._chat(_REQUEST_SYSTEM, request_prompt(text, today, now, categories), schema)
         return DayRequest.model_validate_json(raw)
 
@@ -144,6 +149,7 @@ class OllamaBackend:
         schema = TaskFix.model_json_schema()
         if blocks:
             schema["properties"]["blocks"]["items"]["enum"] = list(blocks)
+        schema["properties"]["day"]["anyOf"][0]["enum"] = day_choices(date.today())
         return TaskFix.model_validate_json(self._chat(_FIX_SYSTEM, fix_prompt(reply, task_line, blocks), schema))
 
     def compile_notes(self, notes: str, categories: list[str]) -> CompiledNotes:

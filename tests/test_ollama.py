@@ -27,6 +27,9 @@ def test_parse_request_uses_schema_and_no_thinking(monkeypatch):
     req = ob.OllamaBackend("qwen3:8b").parse_request("spotkanie o 14", "2026-09-22", "Tuesday 09:00", ["Meeting"])
     assert req.events[0].start_time == "14:00"
     assert sent["think"] is False and sent["format"]["title"] == "DayRequest" and sent["model"] == "qwen3:8b"
+    days = sent["format"]["$defs"]["NewEvent"]["properties"]["day"]["enum"]
+    assert days[0] == "2026-09-22" and days[-1] == "2026-10-05"  # it copies a date, it never counts days
+    assert sent["format"]["$defs"]["TaskRequest"]["properties"]["due_day"]["anyOf"][0]["enum"] == days
 
 
 def test_missing_model_says_how_to_pull(monkeypatch):
@@ -62,6 +65,8 @@ def test_make_backend_prefers_local_then_api(monkeypatch):
 def test_request_prompt_has_now_and_categories():
     p = request_prompt("x", "2026-09-22", "Tuesday 09:00", ["Work"])
     assert "now: Tuesday 09:00" in p and "categories: Work" in p
+    assert "2026-09-22 Tuesday (today)" in p and "2026-09-23 Wednesday (tomorrow)" in p
+    assert "2026-09-27 Sunday\n" in p and "2026-09-28 Monday (next week)" in p  # the next calendar week
 
 
 def test_ensure_running_starts_ollama_for_the_run_and_stops_it_after(monkeypatch):

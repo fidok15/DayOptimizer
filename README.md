@@ -55,6 +55,12 @@ so they check the logic, not macOS or a real model).
 
 **Known gaps:**
 
+- Days: the model copies a date from a list of the next 14 days it is given,
+  and code checks it against the day words in the message. That check knows
+  Polish and English only; in other languages the model alone decides, and
+  the local `qwen3:8b` gets them wrong more often (German "morgen" came back as
+  the day after tomorrow in a test).
+
 - "po X" matches a block or event by its first four letters, plus a short list
   of Polish words for English block names (śniadanie = Breakfast, obiad =
   Dinner / Lunch, kolacja = Supper, ...).
@@ -278,7 +284,7 @@ directory" before running any of these.
 | Command | What it does |
 |---|---|
 | `dayoptimizer` | Optimize today around the calendar (first run: opens `setup`) |
-| `dayoptimizer "<your day in plain words>"` | Shows what it understood and the hours it would use, writes them on your OK and replans (local Ollama or `ANTHROPIC_API_KEY`). Things without a clock time ("do the laundry", "report for Friday, 3h") become tasks: in your routine time of their category first, else in the earliest free time. "rano"/"morning", "po południu"/"afternoon", "wieczorem"/"evening", "między 14 a 16", "po pracy" / "po śniadaniu" (after that event or routine block) narrow it; "przed piątkiem"/"before Friday" means done by Thursday night. "gym tonight" with no length is your routine gym block |
+| `dayoptimizer "<your day in plain words>"` | Shows what it understood and the hours it would use, writes them on your OK and replans (local Ollama or `ANTHROPIC_API_KEY`). Things without a clock time ("do the laundry", "report for Friday, 3h") become tasks: in your routine time of their category first, else in the earliest free time. "rano"/"morning", "po południu"/"afternoon", "wieczorem"/"evening", "między 14 a 16", "po pracy" / "po śniadaniu" (after that event or routine block) narrow it; "przed piątkiem"/"before Friday" means done by Thursday night; "w przyszły piątek"/"next Friday" is the Friday of next week, "27.10" that date. "gym tonight" with no length is your routine gym block |
 | `dayoptimizer task "<work, how long, by when>"` | Saves one or more tasks ("tomorrow: laundry and exam prep, 2h each") and places them into free time before their deadline; `task list`, `task done t3` |
 | `uv run dayoptimizer plan [--date DD-MM-YYYY] [--week [N]]` | Plan today (default), a specific date, or `N` days starting there (`--week` alone = 7) |
 | `uv run dayoptimizer check` | Stateless background cycle: picks up new sleep data, new calendar events, and stress/Body Battery shifts, replans if needed |

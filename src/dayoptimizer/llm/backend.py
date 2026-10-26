@@ -1,24 +1,58 @@
 from __future__ import annotations
 import os
 from datetime import date, timedelta
-from typing import Literal, Protocol
-from pydantic import BaseModel
+from typing import Annotated, Literal, Protocol
+from pydantic import AfterValidator, BaseModel
 from dayoptimizer.core.models import PlannedChange
 
-DayWord = Literal["today", "tomorrow", "day_after_tomorrow",
-                  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+DAY_WORDS = ("today", "tomorrow", "day_after_tomorrow", *WEEKDAYS)
+DAYS_AHEAD = 14  # the days the model picks a date from
 
-def resolve_day(word: str, today: date) -> date:
-    """'thursday' = the next Thursday from today (today itself if it is Thursday)."""
-    if word in ("today", "tomorrow", "day_after_tomorrow"):
-        return today + timedelta(days=("today", "tomorrow", "day_after_tomorrow").index(word))
-    names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    return today + timedelta(days=(names.index(word) - today.weekday()) % 7)
+
+def _day(value: str) -> str:
+    if value not in DAY_WORDS:
+        date.fromisoformat(value)  # anything else is not a day: the answer is rejected
+    return value
+
+# A date the model copied from the days list ('2026-10-30'), or a day word, which is
+# what code reads from the message itself ('thursday' = the next Thursday).
+Day = Annotated[str, AfterValidator(_day)]
+
+
+def resolve_day(day: str, today: date) -> date:
+    """The date of a Day: '2026-10-30' as it is; 'thursday' = the next Thursday from
+    today (today itself if it is Thursday)."""
+    if day not in DAY_WORDS:
+        return date.fromisoformat(day)
+    if day in DAY_WORDS[:3]:
+        return today + timedelta(days=DAY_WORDS.index(day))
+    return today + timedelta(days=(WEEKDAYS.index(day) - today.weekday()) % 7)
+
+
+def next_week(weekday: str, today: date) -> date:
+    """'przyszły piątek' / 'next Friday': that day of the next calendar week."""
+    return today + timedelta(days=7 - today.weekday() + WEEKDAYS.index(weekday))
+
+
+def days_list(today: date) -> str:
+    """The dates the model copies a day from, named, so it never counts days itself;
+    'next week' is the next calendar week, as `next_week` reads it."""
+    def name(i, d):
+        weeks = (d - timedelta(days=d.weekday()) - (today - timedelta(days=today.weekday()))).days // 7
+        return {0: " (today)", 1: " (tomorrow)", 2: " (day after tomorrow)"}.get(i, "") + \
+            {1: " (next week)", 2: " (in two weeks)"}.get(weeks, "")
+    return "\n".join(f"{d:%Y-%m-%d} {d:%A}{name(i, d)}" for i, d in ((i, today + timedelta(days=i)) for i in range(DAYS_AHEAD)))
+
+
+def day_choices(today: date) -> list[str]:
+    """The days list as the closed choice for a small model's day fields."""
+    return [(today + timedelta(days=i)).isoformat() for i in range(DAYS_AHEAD)]
 
 class NewEvent(BaseModel):
     title: str
     category: str
-    day: DayWord = "today"
+    day: Day = "today"
     start_time: str | None = None
     end_time: str | None = None
     duration_minutes: int | None = None
@@ -28,9 +62,9 @@ class TaskRequest(BaseModel):
     title: str = ""
     category: str = ""
     duration_minutes: int | None = None
-    due_day: DayWord | None = None
+    due_day: Day | None = None
     due_time: str | None = None
-    not_before_day: DayWord | None = None
+    not_before_day: Day | None = None
     when: str | None = None
     min_chunk_minutes: int | None = None
     priority: Literal["low", "normal", "high"] = "normal"
@@ -45,7 +79,7 @@ class DayRequest(BaseModel):
 class TaskFix(BaseModel):
     """What the user said to do with a task that didn't fit."""
     action: Literal["take_routine", "new_deadline", "new_duration", "allow_split", "drop_task", "unclear"]
-    day: DayWord | None = None
+    day: Day | None = None
     time: str | None = None
     minutes: int | None = None
     chunk_minutes: int | None = None
@@ -54,13 +88,14 @@ class TaskFix(BaseModel):
 _FIX_SYSTEM = (
     "A task didn't fit in the user's calendar and they said what to do (in any language). Turn the reply into "
     "one action: take_routine = the task may take the place of routine blocks (blocks: the ones named, copied "
-    "from the listed routine blocks; empty when none is named); new_deadline = a new deadline (day, and time "
-    "HH:MM only if said); new_duration = a new length (minutes); allow_split = it may be done in pieces "
+    "from the listed routine blocks; empty when none is named); new_deadline = a new deadline (day: the date "
+    "copied from the listed days, and time HH:MM only if said); new_duration = a new length (minutes); allow_split = it may be done in pieces "
     "(chunk_minutes = one piece); drop_task = don't do it at all; unclear = anything else, or the user doesn't know."
 )
 
 def fix_prompt(reply: str, task_line: str, blocks: list[str]) -> str:
-    return f"task: {task_line}\nroutine blocks: {', '.join(blocks) or 'none'}\nreply: {reply}"
+    return (f"days:\n{days_list(date.today())}\ntask: {task_line}\nroutine blocks: {', '.join(blocks) or 'none'}\n"
+            f"reply: {reply}")
 
 Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -139,7 +174,9 @@ _REQUEST_SYSTEM = (
     "dentist ends until 17:00.\n"
     "- category must be exactly one of the listed categories: pick the closest fit for what the "
     "activity IS. A doctor's or dentist's visit, an errand or meeting a friend is not Work.\n"
-    "- day is a word: today, tomorrow, day_after_tomorrow or a weekday name. A day said once "
+    "- day is a date (YYYY-MM-DD) copied from the listed days, never worked out yourself: 'jutro' / "
+    "'tomorrow' = the one marked tomorrow, 'w piątek' = the first Friday listed, 'w przyszły piątek' / "
+    "'next Friday' = the Friday marked next week, '27.10' = that date. No day said = today. A day said once "
     "('tomorrow dentist at 10, then work') applies to the events after it until another day is said. "
     "'morning'/'evening' alone do not change the day.\n"
     "- start_time is HH:MM, 24h. 'then'/'after that' starts when the previous event ends. "
@@ -150,8 +187,8 @@ _REQUEST_SYSTEM = (
     "- title is the activity alone, without its time or day.\n"
     "- Something to do WITHOUT a clock time (a chore or work to fit in somewhere: 'zrób pranie', "
     "'odpisz na maile po południu', 'raport na piątek, 3h') is a task, not an event. Each task: "
-    "title; category; duration_minutes (total, empty if not said); due_day: the day word it must "
-    "be done by ('na piątek' / 'by Friday' = friday); not_before_day: also that day when the work "
+    "title; category; duration_minutes (total, empty if not said); due_day: the date it must "
+    "be done by ('na piątek' / 'by Friday' = that Friday); not_before_day: also that date when the work "
     "is FOR that day ('jutro zrób X', 'tomorrow do X'), never for a deadline; due_time: HH:MM only "
     "for a deadline hour ('do 17'); when: the words saying when in the day, copied from the "
     "message ('po południu', 'wieczorem', 'rano', 'za 2h', 'po pracy', 'rano po śniadaniu'), else empty; "
@@ -159,15 +196,15 @@ _REQUEST_SYSTEM = (
     "priority high for "
     "'ważne'/'pilne'/'urgent', low for 'kiedyś'/'when there's time', else normal.\n"
     "- If the message isn't about the schedule or work to do, return nothing and a short reply.\n"
-    "Example, with categories Important, Meeting, Work, Food, Gym:\n"
+    "Example, with categories Important, Meeting, Work, Food, Gym, today being 2030-01-07:\n"
     "'tomorrow dentist at 10 for half an hour, then work until 17, coffee with Tom at 18' -> "
-    '{"events":[{"title":"dentist","category":"Important","day":"tomorrow","start_time":"10:00",'
-    '"duration_minutes":30},{"title":"work","category":"Work","day":"tomorrow","start_time":"10:30",'
-    '"end_time":"17:00"},{"title":"coffee with Tom","category":"Meeting","day":"tomorrow",'
+    '{"events":[{"title":"dentist","category":"Important","day":"2030-01-08","start_time":"10:00",'
+    '"duration_minutes":30},{"title":"work","category":"Work","day":"2030-01-08","start_time":"10:30",'
+    '"end_time":"17:00"},{"title":"coffee with Tom","category":"Meeting","day":"2030-01-08",'
     '"start_time":"18:00"}]}  (appointments and seeing people go to a category for such things, '
     "not to Work or Food)\n"
     "With categories Meeting, Home: 'spotkanie o 14, potem po południu zrób pranie, 1h' -> "
-    '{"events":[{"title":"spotkanie","category":"Meeting","day":"today","start_time":"14:00"}],'
+    '{"events":[{"title":"spotkanie","category":"Meeting","day":"2030-01-07","start_time":"14:00"}],'
     '"tasks":[{"title":"pranie","category":"Home","duration_minutes":60,"when":"po południu"}]}'
 )
 
@@ -181,12 +218,13 @@ _SUMMARY_SYSTEM = (
 
 
 def request_prompt(text: str, today: str, now: str, categories: list[str]) -> str:
-    """User turn for parse_request (`today` is unused: days come back as words).
-    Includes the user's routine brief, when saved, for typical durations and habits."""
+    """User turn for parse_request: the days to copy a date from, and the user's
+    routine brief, when saved, for typical durations and habits."""
     from dayoptimizer.routine import load_routine
     routine = load_routine()
     context = f"the user's routine (use it for usual durations, don't copy it into events):\n{routine}\n" if routine else ""
-    return f"{context}now: {now}\ncategories: {', '.join(categories)}\nmessage: {text}"
+    return (f"{context}now: {now}\ndays:\n{days_list(date.fromisoformat(today))}\n"
+            f"categories: {', '.join(categories)}\nmessage: {text}")
 
 
 _DAY_WORDS = [  # each day word in every form people type: cases, adjectives, no Polish letters, short forms
@@ -205,7 +243,7 @@ _DAY_WORDS = [  # each day word in every form people type: cases, adjectives, no
 ]
 
 
-def pin_day(text: str, req: "DayRequest") -> "DayRequest":
+def pin_day(text: str, req: "DayRequest", today: date | None = None) -> "DayRequest":
     """Trust the message's day words over the model, clause by clause (split at
     ',', ';', 'i', 'a', 'oraz', 'and'): an event or task gets the one day its own
     clause names (the clause holding a word of its title), else the day of an
@@ -215,15 +253,27 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
     it goes on. A task whose clause has a clock time ('o 12', 'at 10') is an event
     at that time, unless the model gave it a due time or the day is a deadline
     ('do piątku o 17': due Friday 17:00, 'przed' too). A task `when` that only names a day is dropped. No day found:
-    the model decides."""
+    the model decides; so does it when its date is that day, or that weekday later on ('w przyszły piątek')."""
     import re
     import unicodedata
     from dayoptimizer.llm.task_request import _PARTS
     low = text.lower()
+    today = today or date.today()
+
+    def agrees(word, value):  # the model's date is the day the message names
+        if not value:
+            return False
+        said, got = resolve_day(word, today), resolve_day(value, today)
+        return said == got or (word in WEEKDAYS and got.weekday() == said.weekday() and got > said)
 
     def day_of(part):
         said = [(m, day) for pattern, day in _DAY_WORDS if (m := re.search(pattern, part))]
-        return (part, *said[0]) if len(said) == 1 else None
+        if len(said) != 1:
+            return None
+        m, day = said[0]
+        if day in WEEKDAYS and re.search(r"\b(?:przysz\w*|nast[eę]pn\w*|next)\s+$", part[:m.start()]):
+            day = next_week(day, today).isoformat()  # 'w przyszły piątek': not this week's
+        return part, m, day
     whole, clauses, cur = day_of(low), [], None
     for c in re.split(r"[,;]|\s(?:i|a|oraz|and)\s", low):
         said = [d for pattern, d in _DAY_WORDS if re.search(pattern, c)]
@@ -262,26 +312,29 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
         if e in untimed:
             continue
         c, said = find(e.title)
-        update = {"day": said[2]} if said else {}
+        update = {"day": said[2]} if said and not agrees(said[2], e.day) else {}
         if not e.start_time and clock(c):
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
     for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
                                             when=when_of(e.title),
                                             **dict.fromkeys(("due_day", "not_before_day"),
-                                                            None if e.day == "today" else e.day))
+                                                            None if resolve_day(e.day, today) == today else e.day))
                                 for e in untimed]:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
         part, m, day = said or ("", None, None)
         own = c is None or part == c  # no clause matched: the whole message is its clause
-        if said and not own and (t.due_day or t.not_before_day) and day not in (t.due_day, t.not_before_day):
+        model = next((v for v in (t.due_day, t.not_before_day) if day and agrees(day, v)), None)
+        if said and not own and (t.due_day or t.not_before_day) and model is None:
             said, part, m, day = None, "", None, None  # its clause names no day: the model's other day stands
-        word = m and own and re.search(r"\b(na|do|przed|by|until|before|po|after)\s+$", part[:m.start()])
+        value = model or day  # the model's date when it is the day said: 'przyszły piątek' stays next week's
+        word = m and own and re.search(r"\b(na|do|przed|by|until|before|po|after)\s+"
+                                    r"(?:(?:przysz\w*|nast[eę]pn\w*|next|this|the|ten|t[eę]|tym)\s+)?$", part[:m.start()])
         word = word and word.group(1)
         deadline = word in ("na", "do", "przed", "by", "until", "before")
         if clock(c) and not deadline and not t.due_time:  # a clock time makes it an event, unless it is a deadline
-            events.append(NewEvent(title=t.title, category=t.category, day=day or "today",
+            events.append(NewEvent(title=t.title, category=t.category, day=value or "today",
                                    start_time=clock(c), duration_minutes=t.duration_minutes))
             continue
         if clock(c) and deadline:  # 'do/przed piątku o 17': due Friday 17:00
@@ -293,22 +346,23 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
             t = t.model_copy(update={"due_day": "today", "not_before_day": None})
         elif said and day != "today":
             # the clause's one day is all it says: a model's other day for the task goes
-            t = t.model_copy(update={"due_day": _shift(day, 0 if clock(c) else -1), "not_before_day": None}
+            t = t.model_copy(update={"due_day": _shift(value, 0 if clock(c) else -1), "not_before_day": None}
                              if word in ("przed", "before")
-                             else {"not_before_day": _shift(day, 1), "due_day": None} if word in ("po", "after")
-                             else {"due_day": day, "not_before_day": None} if word
-                             else {"due_day": day, "not_before_day": day})
+                             else {"not_before_day": _shift(value, 1), "due_day": None} if word in ("po", "after")
+                             else {"due_day": value, "not_before_day": None} if word
+                             else {"due_day": value, "not_before_day": value})
         tasks.append(t)
     return req.model_copy(update={"events": events, "tasks": tasks})
 
 
 def _shift(day: str, k: int) -> str:
-    """The day word k days from `day` ('friday', -1 -> 'thursday')."""
+    """The day k days from `day` ('friday', -1 -> 'thursday'; '2026-11-06', -1 -> '2026-11-05')."""
+    if day not in DAY_WORDS:
+        return (date.fromisoformat(day) + timedelta(days=k)).isoformat()
     near = ["today", "tomorrow", "day_after_tomorrow"]
     if day in near:
         return near[min(near.index(day) + k, 2)]  # ponytail: 'after the day after tomorrow' stays that day
-    names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    return names[(names.index(day) + k) % 7]
+    return WEEKDAYS[(WEEKDAYS.index(day) + k) % 7]
 
 
 def _only_day(when: str) -> bool:
@@ -317,7 +371,7 @@ def _only_day(when: str) -> bool:
     low = when.lower()
     for pattern, _ in _DAY_WORDS:
         low = re.sub(rf"(?:{pattern})\w*", " ", low)
-    return low != when.lower() and not re.sub(r"\b(na|do|przed|w|we|on|by|until|before|the)\b|\W", "", low)
+    return low != when.lower() and not re.sub(r"\b(na|do|przed|w|we|on|by|until|before|the|next|przysz\w*|nast[eę]pn\w*)\b|\W", "", low)
 
 
 class LLMUnavailable(RuntimeError):
