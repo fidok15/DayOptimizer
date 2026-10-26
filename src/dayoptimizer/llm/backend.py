@@ -192,7 +192,7 @@ def request_prompt(text: str, today: str, now: str, categories: list[str]) -> st
 _DAY_WORDS = [
     (r"\bpojutrz|\bday after tomorrow\b", "day_after_tomorrow"),
     (r"\bjutr|\btomorrow\b", "tomorrow"),
-    (r"\bdziś\b|\bdzis\b|\bdzisiaj|\btoday\b|\btonight\b", "today"),
+    (r"\bdziś\b|\bdzis\b|\bdzisiaj|\bdzisiejsz|\btoday\b|\btonight\b", "today"),
     (r"\bponiedzia|\bmonday", "monday"),
     (r"\bwtor|\btuesday", "tuesday"),
     (r"\b[sś]rod(?:a|y|ę|e|ą|zie)\b|\bwednesday", "wednesday"),  # not "w środku" (in the middle)
@@ -284,7 +284,12 @@ def pin_day(text: str, req: "DayRequest") -> "DayRequest":
             continue
         if clock(c) and deadline:  # 'do/przed piątku o 17': due Friday 17:00
             t = t.model_copy(update={"due_time": clock(c)})
-        if said and day != "today":  # today is the default; pinning it would stop a late 'rano' rolling to tomorrow
+        if said and day == "today" and word not in ("po", "after") \
+                and not any(re.search(p, f"{part} {t.when or ''}") for p, _ in _PARTS):
+            # 'dziś' / 'zaplanuj dzisiejszy dzień': done today, so only today is planned; with a
+            # part of the day it isn't pinned, so a late 'rano' still rolls to tomorrow
+            t = t.model_copy(update={"due_day": "today", "not_before_day": None})
+        elif said and day != "today":
             # the clause's one day is all it says: a model's other day for the task goes
             t = t.model_copy(update={"due_day": _shift(day, 0 if clock(c) else -1), "not_before_day": None}
                              if word in ("przed", "before")

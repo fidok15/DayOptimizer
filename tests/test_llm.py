@@ -132,6 +132,9 @@ def test_one_named_day_pins_tasks():
     t = pin_day("jutro rano zrób pranie", rano).tasks[0]
     assert (t.not_before_day, t.due_day, t.when) == ("tomorrow", "tomorrow", "jutro rano")
     assert pin_day("dziś zrób pranie", req).tasks[0].not_before_day is None
+    t = pin_day("zaplanuj mi dzisiejszy dzien, nauka aws 1h", DayRequest(tasks=[TaskRequest(title="nauka aws")])).tasks[0]
+    assert (t.not_before_day, t.due_day) == (None, "today")  # only today gets planned
+    assert pin_day("dziś rano zrób pranie", req).tasks[0].due_day is None  # late in the day: tomorrow morning
 
 
 def test_each_clause_pins_its_own_items():
