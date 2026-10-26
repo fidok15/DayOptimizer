@@ -4,8 +4,9 @@ vacation marker) previously made suggest_sleep anchor on 00:00 (a bogus late
 night/early morning "Sleep" block) and free_slots see zero free time for the
 whole day ("day overloaded")."""
 from datetime import date, datetime, time, timedelta
-from unittest.mock import MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock
+
 from dayoptimizer import cli, paths
 from dayoptimizer.core.models import Event
 from dayoptimizer.core.planner import plan_day as real_plan_day

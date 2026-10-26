@@ -1,8 +1,9 @@
-from datetime import datetime, date, timedelta
-from dayoptimizer.core.models import Event, GarminSummary
-from dayoptimizer.core.planner import free_slots, suggest_sleep, resolve_conflicts
-from dayoptimizer.core.rules import load_rules
+from datetime import date, datetime, timedelta
 from pathlib import Path
+
+from dayoptimizer.core.models import Event, GarminSummary
+from dayoptimizer.core.planner import free_slots, resolve_conflicts, suggest_sleep
+from dayoptimizer.core.rules import load_rules
 
 RULES = load_rules(Path(__file__).parent / "fixtures" / "config.yaml")
 D = datetime(2026, 7, 3, 0, 0).astimezone()

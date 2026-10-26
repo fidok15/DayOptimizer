@@ -1,12 +1,14 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
 from dayoptimizer.core.storage import Storage
 
+
 def _event(eid: str) -> Event:
     return Event(id=eid, calendar="Gym", title="Workout",
-                 start=datetime(2026, 7, 3, 17, tzinfo=timezone.utc),
-                 end=datetime(2026, 7, 3, 18, tzinfo=timezone.utc))
+                 start=datetime(2026, 7, 3, 17, tzinfo=UTC),
+                 end=datetime(2026, 7, 3, 18, tzinfo=UTC))
 
 def test_garmin_roundtrip(tmp_path):
     s = Storage(tmp_path / "t.db")
@@ -194,7 +196,7 @@ from dayoptimizer.core.models import Task
 
 def _task(tid="t1", **kw):
     return Task(id=tid, title="Report", category="Work", duration_min=180,
-                due=datetime(2030, 10, 18, 17, tzinfo=timezone.utc), **kw)
+                due=datetime(2030, 10, 18, 17, tzinfo=UTC), **kw)
 
 
 def test_task_roundtrip_and_ids(tmp_path):

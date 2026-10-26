@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from datetime import datetime, time, timedelta
+
 from dayoptimizer.core.allday import time_in_title
 from dayoptimizer.core.models import Event, GarminSummary
 from dayoptimizer.core.notify import notify

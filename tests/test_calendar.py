@@ -1,10 +1,12 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from dayoptimizer.core.calendar import ek_to_event, normalize_calendar
+
 
 def test_ek_to_event_maps_fields():
     e = ek_to_event("ABC-123", "Gym", "Leg day",
-                    datetime(2026, 7, 3, 17, tzinfo=timezone.utc),
-                    datetime(2026, 7, 3, 18, tzinfo=timezone.utc), None)
+                    datetime(2026, 7, 3, 17, tzinfo=UTC),
+                    datetime(2026, 7, 3, 18, tzinfo=UTC), None)
     assert e.id == "ABC-123" and e.calendar == "Gym" and e.location is None
 
 def test_normalize_calendar_strips_emoji_and_spaces():
@@ -16,20 +18,20 @@ def test_normalize_calendar_strips_emoji_and_spaces():
 
 def test_ek_to_event_normalizes_calendar():
     e = ek_to_event("X", "💪 Gym", "Workout",
-                    datetime(2026, 7, 3, 17, tzinfo=timezone.utc),
-                    datetime(2026, 7, 3, 18, tzinfo=timezone.utc), None)
+                    datetime(2026, 7, 3, 17, tzinfo=UTC),
+                    datetime(2026, 7, 3, 18, tzinfo=UTC), None)
     assert e.calendar == "Gym"
 
 def test_ek_to_event_defaults_all_day_false():
     e = ek_to_event("ABC-123", "Gym", "Leg day",
-                    datetime(2026, 7, 3, 17, tzinfo=timezone.utc),
-                    datetime(2026, 7, 3, 18, tzinfo=timezone.utc), None)
+                    datetime(2026, 7, 3, 17, tzinfo=UTC),
+                    datetime(2026, 7, 3, 18, tzinfo=UTC), None)
     assert e.all_day is False
 
 def test_ek_to_event_maps_all_day_true():
     e = ek_to_event("VAC-1", "Work", "Vacation",
-                    datetime(2026, 7, 13, 0, tzinfo=timezone.utc),
-                    datetime(2026, 8, 24, 23, 59, tzinfo=timezone.utc), None,
+                    datetime(2026, 7, 13, 0, tzinfo=UTC),
+                    datetime(2026, 8, 24, 23, 59, tzinfo=UTC), None,
                     all_day=True)
     assert e.all_day is True
 
@@ -88,6 +90,7 @@ class _Store:
 
 def _client(store):
     from types import SimpleNamespace
+
     from dayoptimizer.core.calendar import CalendarClient
     c = CalendarClient.__new__(CalendarClient)
     c._store = store
@@ -141,6 +144,7 @@ def test_ek_to_event_carries_task_id():
 def test_access_already_given_is_not_asked_again_and_the_store_is_shared(monkeypatch):
     import sys
     from types import SimpleNamespace
+
     from dayoptimizer.core.calendar import CalendarClient
     made, asked = [], []
     store = SimpleNamespace(requestFullAccessToEventsWithCompletion_=lambda h: asked.append(h))
@@ -156,6 +160,7 @@ def test_access_already_given_is_not_asked_again_and_the_store_is_shared(monkeyp
 def test_every_write_is_journaled_and_taken_back_and_redone(monkeypatch):
     from datetime import datetime
     from types import SimpleNamespace
+
     from dayoptimizer.core import calendar as cal_mod
 
     class Date:

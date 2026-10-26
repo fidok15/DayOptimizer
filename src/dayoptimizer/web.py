@@ -23,6 +23,7 @@ API
   Garmin's sign-in; only the returned session tokens are stored.
 """
 from __future__ import annotations
+
 import errno
 import json
 import os
@@ -34,7 +35,9 @@ from datetime import date, datetime, time, timedelta
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
 import yaml
+
 from dayoptimizer import paths
 from dayoptimizer.core.models import Event
 from dayoptimizer.core.rules import load_config_data
@@ -177,7 +180,7 @@ def import_week(payload: object) -> dict:
     try:
         week_start = date.fromisoformat(payload["week_start"])  # type: ignore[index]
     except (TypeError, KeyError, ValueError):
-        raise ConfigError("week_start must be a YYYY-MM-DD date.")
+        raise ConfigError("week_start must be a YYYY-MM-DD date.") from None
     from dayoptimizer.mcp_server import _bundle_run
     bundle = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     if not os.access(bundle, os.X_OK):
@@ -223,6 +226,7 @@ def ics_events(text: str, week_start: date) -> tuple[list[Event], str, str, list
     of its events (so the page can point to weeks that have some)."""
     import icalendar
     import recurring_ical_events
+
     from dayoptimizer.core.calendar import normalize_calendar
     try:
         cal = icalendar.Calendar.from_ical(text)
@@ -264,7 +268,7 @@ def import_file(payload: object) -> dict:
         week_start = date.fromisoformat(payload["week_start"])  # type: ignore[index]
         files = payload["files"]  # type: ignore[index]
     except (TypeError, KeyError, ValueError):
-        raise ConfigError("week_start must be a YYYY-MM-DD date and files a list.")
+        raise ConfigError("week_start must be a YYYY-MM-DD date and files a list.") from None
     if not isinstance(files, list) or not 0 < len(files) <= 20 or not all(isinstance(f, str) for f in files):
         raise ConfigError("Choose 1-20 calendar files (.ics).")
     events, calendars, starts = [], {}, []
@@ -667,7 +671,7 @@ def serve(port: int = 8765, open_browser: bool = True) -> None:
         url = f"http://127.0.0.1:{port}/"
         running = _running_planner(url)
         if running is None:
-            raise SystemExit(f"Port {port} is used by another program. Try: dayoptimizer web --port {port + 1}")
+            raise SystemExit(f"Port {port} is used by another program. Try: dayoptimizer web --port {port + 1}") from None
         server_header, pid = running
         if server_header.split()[0] == Handler.server_version:
             print(f"DayOptimizer planner is already running at {url}")
@@ -676,7 +680,7 @@ def serve(port: int = 8765, open_browser: bool = True) -> None:
             return
         if not pid or not _stop_stale(pid, port):
             raise SystemExit(f"An older DayOptimizer planner is running at {url}. Close it "
-                             f"(or restart your Mac) and run this again.")
+                             f"(or restart your Mac) and run this again.") from None
         print("Restarted the planner with the updated code.")
         server = make_server(port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"

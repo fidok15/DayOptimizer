@@ -2,6 +2,7 @@
 import dataclasses
 from datetime import date, datetime
 from pathlib import Path
+
 from dayoptimizer.core.models import Event
 from dayoptimizer.core.planner import plan_day
 from dayoptimizer.core.rules import RoutineBlock, _parse_typical_week, load_rules
@@ -72,8 +73,8 @@ def test_parse_typical_week_from_config():
 
 
 def test_routine_training_reacts_to_recovery():
+
     from dayoptimizer.core.models import Activity, GarminSummary
-    from datetime import timedelta
     history = [Activity(id=str(d), type_key="running", name="Evening run",
                         start=D.replace(month=6, day=d, hour=18, minute=5),
                         end=D.replace(month=6, day=d, hour=19),
@@ -207,6 +208,7 @@ def test_a_displaced_block_may_take_the_slot_of_a_lower_priority_one():
 
 def test_one_typical_day_with_gym_daily_still_obeys_the_weekly_notes():
     from datetime import timedelta
+
     from dayoptimizer.core.constraints import parse_rules
     gym = [RoutineBlock(18 * 60, 19 * 60, "Gym", "Push day")]
     rules = dataclasses.replace(

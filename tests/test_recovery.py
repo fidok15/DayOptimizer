@@ -1,9 +1,16 @@
 """Shapes and thresholds here mirror real Garmin data (half marathon Sunday,
 94h recovery, readiness POOR score 1, recoveryTime in MINUTES)."""
 from datetime import datetime, timedelta
+
 from dayoptimizer.core.models import Activity, GarminSummary
-from dayoptimizer.core.recovery import (block_region, learn_region, recovery_minutes_left,
-                                        region_of, tired_regions, training_advice)
+from dayoptimizer.core.recovery import (
+    block_region,
+    learn_region,
+    recovery_minutes_left,
+    region_of,
+    tired_regions,
+    training_advice,
+)
 
 NOW = datetime(2026, 9, 22, 7, 0).astimezone()
 

@@ -1,5 +1,6 @@
 import os
 import tempfile
+
 import pytest
 
 os.environ["DAYOPTIMIZER_HOME"] = tempfile.mkdtemp(prefix="dayoptimizer-tests-")

@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
+
 
 def at(midnight: datetime, m: float) -> datetime:
     """`m` minutes after `midnight` by the clock: 18:30 stays 18:30 on the day the clocks change."""

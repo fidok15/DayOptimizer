@@ -1,8 +1,10 @@
 import argparse
 from datetime import datetime
 from unittest.mock import MagicMock
-from dayoptimizer.core.models import PlannedChange
+
 from dayoptimizer.apply import apply_changes
+from dayoptimizer.core.models import PlannedChange
+
 
 def _move(approval=False):
     return PlannedChange(kind="move", category="Gym", title="Workout", reason="test",
@@ -123,6 +125,7 @@ def test_fixed_conflict_approval_pipeline_end_to_end(monkeypatch):
     it in real Storage; cmd_apply then applies it and clears pending."""
     from datetime import date
     from pathlib import Path
+
     from dayoptimizer import cli
     from dayoptimizer.core.models import Event
     from dayoptimizer.core.planner import plan_day

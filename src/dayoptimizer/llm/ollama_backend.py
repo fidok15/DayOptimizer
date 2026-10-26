@@ -1,5 +1,6 @@
 """Local LLM through Ollama's HTTP API (stdlib only). Calendar text never leaves the Mac."""
 from __future__ import annotations
+
 import atexit
 import json
 import os
@@ -9,11 +10,25 @@ import time
 from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
 from dayoptimizer import paths
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import (_FIX_SYSTEM, _NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, LLMTimeout, LLMUnavailable, TaskFix, compile_prompt, day_choices,
-                                      fix_prompt, format_changes, request_prompt)
+from dayoptimizer.llm.backend import (
+    _FIX_SYSTEM,
+    _NOTES_SYSTEM,
+    _REQUEST_SYSTEM,
+    _SUMMARY_SYSTEM,
+    CompiledNotes,
+    DayRequest,
+    LLMTimeout,
+    LLMUnavailable,
+    TaskFix,
+    compile_prompt,
+    day_choices,
+    fix_prompt,
+    format_changes,
+    request_prompt,
+)
 
 
 def _host() -> str:

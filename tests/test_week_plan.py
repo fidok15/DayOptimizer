@@ -1,4 +1,6 @@
 from datetime import date, datetime, time, timedelta
+from itertools import pairwise
+
 from dayoptimizer.core.constraints import parse_rules
 from dayoptimizer.core.models import Event
 from dayoptimizer.llm.week_plan import Block, PlanOver, WeekPlan, build_prompt, diff, plan_days, validate
@@ -356,7 +358,6 @@ def test_cli_removes_future_blocks_of_finished_tasks_without_a_model(monkeypatch
 
 
 from dayoptimizer.llm.week_plan import plan_schema
-
 
 SKIP = parse_rules([{"type": "skippable", "category": "Uni", "prefix": "W -",
                      "source": 'Lectures starting with "W -" may be planned over.'}])
@@ -955,7 +956,7 @@ def test_a_second_move_for_a_task_does_not_lose_where_the_other_blocks_are():
     creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[task(due=at(MON, "23:00"))], left={"t1": 120},
                           report_unplaced=True, routine_days={MON: sleep_only(MON)[MON] + free}, fill_until=MON)
     spans = sorted((c.new_start, c.new_end, c.title) for c in creates)
-    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), spans  # nothing on top of anything
+    assert all(a[1] <= b[0] for a, b in pairwise(spans)), spans  # nothing on top of anything
     assert sum((e - s).seconds // 60 for s, e, t in spans if t == "Report") == 120
 
 
@@ -969,7 +970,7 @@ def test_a_moved_block_does_not_land_on_the_tasks_own_routine_block():
     creates, _ = validate(plan, [MON], WCATS, busy, NOTES, [], NOW, tasks=[t], left={"t1": 240},
                           report_unplaced=True, routine_days=routine, fill_until=MON)
     spans = sorted((c.new_start, c.new_end) for c in creates)
-    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:]))
+    assert all(a[1] <= b[0] for a, b in pairwise(spans))
 
 
 def test_code_places_an_overdue_task_the_model_left_out():
@@ -1041,7 +1042,6 @@ def _apply(events, changes):
 
 def test_replanning_the_same_day_twice_changes_nothing():
     # the model re-places the task block it placed before; code must not add the pushed minutes on top
-    from dataclasses import replace
     from dayoptimizer.llm.task_rules import remaining
     t = task(title="Thesis", category="Learn", duration_min=600, due=at(MON + timedelta(days=2), "18:00"))
     pick = WeekPlan(blocks=[Block(day=MON.isoformat(), start="13:00", end="16:00", category="Learn",
@@ -1076,7 +1076,6 @@ def test_slot_mode_keeps_a_block_that_still_fits_on_a_rerun():
             Fickle.calls += 1
             return {k: {"slot": v["properties"]["slot"]["enum"][Fickle.calls % len(v["properties"]["slot"]["enum"])],
                         "why": "fickle"} for k, v in schema["properties"].items()}
-    from dataclasses import replace
     from dayoptimizer.llm.task_rules import remaining
     t = task(due=at(MON, "23:00"))
     events = [LECTURE, LAB]
@@ -1126,6 +1125,7 @@ def test_the_first_day_holds_back_only_what_later_days_can_take():
 
 def test_an_old_task_block_yields_to_fixed_routine_of_another_category():
     from dataclasses import replace
+
     from dayoptimizer.llm.task_rules import remaining
     old = Event(id="o1", calendar="Work", title="Essay", start=at(MON, "14:00"), end=at(MON, "17:00"),
                 managed=True, task_id="t1")
@@ -1333,7 +1333,7 @@ def test_replanning_a_day_with_open_blocks_twice_changes_nothing():
             assert run == 0 or changes == [], changes
             events = _apply(events, changes)
         mine = sorted((e.start, e.end) for e in events if e.start.date() == MON)
-        assert all(a[1] <= b[0] for a, b in zip(mine, mine[1:])), mine  # nothing double-booked
+        assert all(a[1] <= b[0] for a, b in pairwise(mine)), mine  # nothing double-booked
         assert sum((e.end - e.start).seconds // 60 for e in events if e.task_id) == 240
 
 

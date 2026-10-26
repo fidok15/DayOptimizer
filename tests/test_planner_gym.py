@@ -1,7 +1,8 @@
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+
 from dayoptimizer.core.models import Event, GarminSummary
-from dayoptimizer.core.planner import schedule_gym, plan_day
+from dayoptimizer.core.planner import plan_day, schedule_gym
 from dayoptimizer.core.rules import load_rules
 
 RULES = load_rules(Path(__file__).parent / "fixtures" / "config.yaml")

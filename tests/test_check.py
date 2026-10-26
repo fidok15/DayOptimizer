@@ -1,8 +1,9 @@
 from datetime import datetime, time
-from unittest.mock import MagicMock, ANY
+from unittest.mock import MagicMock
+
+from dayoptimizer import check
 from dayoptimizer.core.models import Event, GarminSummary, PlannedChange
 from dayoptimizer.core.storage import Storage
-from dayoptimizer import check
 
 TODAY = "2026-07-03"
 NOW_MORNING = datetime(2026, 7, 3, 7, 0).astimezone()

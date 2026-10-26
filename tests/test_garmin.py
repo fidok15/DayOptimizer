@@ -1,10 +1,8 @@
-import pytest
 import stat
-from unittest.mock import MagicMock, patch
-from dayoptimizer.core import garmin as garmin_mod
-from dayoptimizer.core.garmin import build_summary, summarize
-from dayoptimizer.core.garmin import (GarminClient, GarminNotConfigured,
-                                      garmin_configured)
+
+import pytest
+
+from dayoptimizer.core.garmin import GarminClient, GarminNotConfigured, build_summary, garmin_configured, summarize
 from dayoptimizer.core.models import GarminSummary
 
 SLEEP = {"dailySleepDTO": {"sleepTimeSeconds": 23400, "sleepScores": {"overall": {"value": 71}}}}
@@ -51,7 +49,7 @@ def test_client_raises_not_configured_without_tokens(tmp_path, monkeypatch):
     monkeypatch.setenv("DAYOPTIMIZER_HOME", str(tmp_path))
     try:
         GarminClient()
-        assert False, "expected GarminNotConfigured"
+        raise AssertionError("expected GarminNotConfigured")
     except GarminNotConfigured as exc:
         assert "dayoptimizer garmin login" in str(exc)
 
@@ -90,9 +88,7 @@ def fake_garmin(monkeypatch):
 
 
 def test_two_step_login_saves_only_private_tokens(fake_garmin):
-    import stat
-    from dayoptimizer.core.garmin import (garmin_configured, garmin_disconnect,
-                                          garmin_finish_mfa, garmin_start_login)
+    from dayoptimizer.core.garmin import garmin_configured, garmin_disconnect, garmin_finish_mfa, garmin_start_login
     from dayoptimizer.paths import garmin_token_dir
     fake_garmin.mfa = True
     needs_mfa, api = garmin_start_login("a@b.c", "secret-pw")
@@ -109,6 +105,7 @@ def test_two_step_login_saves_only_private_tokens(fake_garmin):
 
 def test_login_errors_have_codes(fake_garmin):
     import garminconnect
+
     from dayoptimizer.core.garmin import GarminLoginError, garmin_finish_mfa, garmin_start_login
     fake_garmin.fail = garminconnect.GarminConnectAuthenticationError("401 for a@b.c")
     with pytest.raises(GarminLoginError) as e:

@@ -1,6 +1,8 @@
 from datetime import time
 from pathlib import Path
+
 import pytest
+
 from dayoptimizer.core.rules import load_rules
 
 CONFIG = Path(__file__).parent / "fixtures" / "config.yaml"
@@ -139,6 +141,7 @@ def test_inverted_day_window_falls_back_to_defaults(tmp_path, monkeypatch):
 def test_awake_is_between_the_nights_sleep_drawn_in_the_routine():
     from dataclasses import replace
     from datetime import date
+
     from dayoptimizer.core.rules import CategoryRule, RoutineBlock
     rules = load_rules(CONFIG)
     rules = replace(rules, categories={**rules.categories, "Rest": CategoryRule(movable=False, priority=5)},
@@ -153,6 +156,7 @@ def test_awake_is_between_the_nights_sleep_drawn_in_the_routine():
 def test_routine_times_keep_the_clock_on_the_day_the_clocks_change(monkeypatch):
     import time as clock
     from datetime import date, datetime, timedelta
+
     from dayoptimizer.core.models import at, minutes
     monkeypatch.setenv("TZ", "Europe/Warsaw")
     clock.tzset()

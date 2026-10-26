@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timedelta
+
 from dayoptimizer.core.models import Event, Task
-from dayoptimizer.llm.task_rules import (block_problem, overdue, remaining, task_lines, unplaced, window)
+from dayoptimizer.llm.task_rules import block_problem, overdue, remaining, task_lines, unplaced, window
 
 MON = date(2030, 10, 14)
 NOW = datetime.combine(MON, time(10, 0)).astimezone()

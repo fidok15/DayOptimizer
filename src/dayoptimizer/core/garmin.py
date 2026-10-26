@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import os
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
+
 from dayoptimizer.core.models import Activity, GarminSummary
+
 
 def build_summary(date, sleep_data, battery_data, stress_data, hrv_data, rhr,
                   readiness=None) -> GarminSummary:
@@ -88,6 +91,7 @@ def garmin_start_login(email: str, password: str, token_dir: str | Path | None =
     are saved right away; with MFA pass `api` to `garmin_finish_mfa`. The
     password lives only for this call."""
     from garminconnect import Garmin
+
     from dayoptimizer.paths import ensure_private_dir, garmin_token_dir
     ensure_private_dir()
     api = Garmin(email=email, password=password, return_on_mfa=True)
@@ -113,6 +117,7 @@ def garmin_finish_mfa(api, code: str, token_dir: str | Path | None = None) -> No
 def garmin_disconnect(token_dir: str | Path | None = None) -> None:
     """Forget the Garmin session: delete the stored tokens."""
     import shutil
+
     from dayoptimizer.paths import garmin_token_dir
     shutil.rmtree(Path(token_dir) if token_dir else garmin_token_dir(), ignore_errors=True)
 
@@ -129,6 +134,7 @@ class GarminClient:
 
     def __init__(self, token_dir: str | Path | None = None):
         from garminconnect import Garmin
+
         from dayoptimizer.paths import garmin_token_dir
         token_dir = Path(token_dir) if token_dir else garmin_token_dir()
         if not garmin_configured(token_dir):

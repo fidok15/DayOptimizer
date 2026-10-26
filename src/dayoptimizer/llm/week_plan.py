@@ -9,10 +9,13 @@ notes. A plan that breaks something goes back to the model with the problems
 listed; what is still wrong after the last try is dropped, not written.
 """
 from __future__ import annotations
+
 import re
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
+
 from pydantic import BaseModel
+
 from dayoptimizer.core.constraints import NoteRule, skippable, window_rule
 from dayoptimizer.core.models import Event, PlannedChange, Task, at
 from dayoptimizer.core.planner import _nearest_start

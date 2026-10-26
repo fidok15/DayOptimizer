@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import os
 import sqlite3
@@ -6,6 +7,7 @@ import sys
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+
 from dayoptimizer.core.models import Activity, Event, GarminSummary, PlannedChange, Task
 
 _SCHEMA = """
@@ -269,7 +271,7 @@ class Storage:
         (placed; moved: by the user, stays; deleted: by the user; removed: by a replan)."""
         cur = self._conn.execute("SELECT * FROM fillers WHERE day >= ? ORDER BY id", (day,))
         names = [c[0] for c in cur.description]
-        return [dict(zip(names, row)) for row in cur.fetchall()]
+        return [dict(zip(names, row, strict=True)) for row in cur.fetchall()]
 
     def update_filler(self, filler_id: int, **fields: str) -> None:
         """Change a suggestion's columns (status, event_id, day, start, end); the names come from code only."""

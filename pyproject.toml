@@ -20,7 +20,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.17.2",
+]
 
 [project.scripts]
 dayoptimizer = "dayoptimizer.cli:main"
@@ -34,3 +37,14 @@ packages = ["src/dayoptimizer"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+# real bugs and dead code first; style is the code's own (one-line helpers, long docstrings)
+select = ["F", "E9", "B", "I", "UP", "RUF100"]
+ignore = [
+    "B008",
+    "B023",  # closures in loops here run within their own iteration (sort keys, local helpers)
+]

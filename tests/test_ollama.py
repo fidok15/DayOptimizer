@@ -1,7 +1,9 @@
 import io
 import json
 from urllib.error import HTTPError
+
 import pytest
+
 from dayoptimizer.llm import ollama_backend as ob
 from dayoptimizer.llm.backend import LLMUnavailable, make_backend, request_prompt
 
@@ -70,8 +72,9 @@ def test_request_prompt_has_now_and_categories():
 
 
 def test_ensure_running_starts_ollama_for_the_run_and_stops_it_after(monkeypatch):
-    import dayoptimizer.llm.ollama_backend as ob
     from importlib import reload
+
+    import dayoptimizer.llm.ollama_backend as ob
     ob = reload(ob)
     up = iter([False, False, True])
     started, stopped = [], []

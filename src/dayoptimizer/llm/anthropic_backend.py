@@ -1,8 +1,22 @@
 from __future__ import annotations
+
 import anthropic
+
 from dayoptimizer.core.models import PlannedChange
-from dayoptimizer.llm.backend import (_FIX_SYSTEM, _NOTES_SYSTEM, _REQUEST_SYSTEM, _SUMMARY_SYSTEM, CompiledNotes,
-                                      DayRequest, TaskFix, compile_prompt, fix_prompt, format_changes, request_prompt)
+from dayoptimizer.llm.backend import (
+    _FIX_SYSTEM,
+    _NOTES_SYSTEM,
+    _REQUEST_SYSTEM,
+    _SUMMARY_SYSTEM,
+    CompiledNotes,
+    DayRequest,
+    TaskFix,
+    compile_prompt,
+    fix_prompt,
+    format_changes,
+    request_prompt,
+)
+
 
 class AnthropicBackend:
     def __init__(self, model: str = "claude-sonnet-5-5"):
