@@ -288,3 +288,22 @@ def test_the_model_picks_a_date_and_the_message_checks_it():
     e = pin_day("27.10 o 18 kino", DayRequest(events=[NewEvent(title="kino", category="Work",
                                                              day="2026-10-27", start_time="18:00")]), mon)
     assert e.events[0].day == "2026-10-27"
+
+
+def test_weekday_names_of_the_users_languages_check_the_model(monkeypatch):
+    import re
+    from datetime import date
+
+    from dayoptimizer.llm import backend
+    found = lambda text: [d for p, d in backend.day_words(("de", "es", "ja")) if re.search(p, text.lower())]
+    assert found("am Freitag Bericht") == ["friday"] and found("freitags sport") == ["friday"]
+    assert found("el miércoles informe") == ["wednesday"] and found("金曜日に報告") == ["friday"]
+    assert found("Samstagnachmittag") == [] and found("anna kommt") == []  # not a part of a longer word
+    monkeypatch.setattr(backend, "_user_languages", lambda: ("de",))
+    backend.day_words.cache_clear()
+    try:
+        req = backend.DayRequest(tasks=[backend.TaskRequest(title="Bericht", due_day="2026-10-29")])
+        t = backend.pin_day("am Freitag Bericht 2h", req, date(2026, 10, 26)).tasks[0]
+        assert t.due_day == "friday"  # the model's Thursday was not what the message says
+    finally:
+        backend.day_words.cache_clear()

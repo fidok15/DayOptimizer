@@ -16,6 +16,7 @@ dependencies = [
     "anthropic>=0.90.0",
     "mcp>=1.2",
     "recurring-ical-events>=3.8.2",
+    "babel>=2.18.0",
 ]
 
 [dependency-groups]
