@@ -1,13 +1,15 @@
 import http.client
 import json
 import threading
+from datetime import date, datetime
+
 import pytest
 import yaml
+
 from dayoptimizer import paths
+from dayoptimizer.core.models import Event
 from dayoptimizer.core.rules import load_rules
 from dayoptimizer.onboarding import ConfigError
-from datetime import date, datetime
-from dayoptimizer.core.models import Event
 from dayoptimizer.web import DEFAULT_CONFIG, events_to_week, make_server, read_state, write_state
 
 BLOCK = {"start": "07:00", "end": "07:30", "category": "Food", "title": "Breakfast"}
@@ -159,6 +161,7 @@ def test_serve_reuses_running_planner(server, monkeypatch, capsys):
 
 def test_serve_refuses_foreign_port():
     import socket
+
     from dayoptimizer import web
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -176,6 +179,7 @@ def test_http_save_routine_writes_state_and_brief(server):
 
 def test_category_calendars_report(monkeypatch):
     import os
+
     from dayoptimizer import mcp_server, web
     assert "install.sh" in web.create_category_calendars()["error"]
     exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
@@ -209,8 +213,8 @@ def test_notes_roundtrip_and_validation(server):
 
 
 def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monkeypatch):
-    from dayoptimizer.llm import backend as llm
     from dayoptimizer import web
+    from dayoptimizer.llm import backend as llm
 
     asked = []
 
@@ -249,7 +253,6 @@ def test_compile_notes_asks_per_sentence_and_stores_only_enforceable_rules(monke
 
 
 def test_compile_notes_without_llm_keeps_the_notes(monkeypatch):
-    from dayoptimizer.llm import backend as llm
     from dayoptimizer import web
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_running", lambda: False)
@@ -278,6 +281,7 @@ def test_gap_rules_count_rest_days():
 
 def test_import_lists_every_calendar_with_colour(monkeypatch):
     import os
+
     from dayoptimizer import mcp_server, web
     exe = paths.ensure_private_dir() / "DayOptimizer.app" / "Contents" / "MacOS" / "dayopt"
     exe.parent.mkdir(parents=True)
@@ -359,8 +363,8 @@ def test_free_time_settings_roundtrip_and_validation():
 
 
 def test_a_rule_told_over_two_sentences_compiles_from_both(monkeypatch):
-    from dayoptimizer.llm import backend as llm
     from dayoptimizer import web
+    from dayoptimizer.llm import backend as llm
 
     class FakeLLM:
         def compile_notes(self, sentence, categories):

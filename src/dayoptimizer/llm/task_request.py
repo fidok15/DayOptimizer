@@ -3,12 +3,14 @@ days as words and copies the time-of-day words ('po południu', 'za 2h',
 'po pracy'); the dates and times are worked out here so the model never does
 calendar arithmetic."""
 from __future__ import annotations
+
 import re
 from collections.abc import Callable
-from datetime import date, datetime, time, timedelta
-from dayoptimizer.core.models import Task, at
 from dataclasses import replace
-from dayoptimizer.llm.backend import TaskFix, TaskRequest, day_words, resolve_day  # noqa: F401  (TaskRequest re-exported)
+from datetime import date, datetime, time, timedelta
+
+from dayoptimizer.core.models import Task, at
+from dayoptimizer.llm.backend import TaskFix, TaskRequest, day_words, resolve_day
 
 DEFAULT_MINUTES = 60
 

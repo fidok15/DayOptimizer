@@ -10,7 +10,9 @@ nothing has to be tagged by hand — and a block the watch never saw a workout
 in (Work, Food, ...) is never touched.
 """
 from __future__ import annotations
+
 from datetime import datetime, timedelta
+
 from dayoptimizer.core.models import Activity, GarminSummary
 
 LEG_TYPES = ("running", "trail_run", "treadmill_running", "track_running", "virtual_run",

@@ -1,5 +1,7 @@
 import stat
+
 import pytest
+
 from dayoptimizer.onboarding import ConfigError, save_user_config, validate_config
 
 GOOD = """\

@@ -1,5 +1,7 @@
 from datetime import date, time
+
 import pytest
+
 from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
 from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
@@ -94,6 +96,7 @@ def test_ask_cancel_changes_nothing(routed, monkeypatch):
 
 def test_ask_shows_where_tasks_go_and_ok_writes_that_plan(routed, monkeypatch, capsys):
     from datetime import datetime, timedelta
+
     from dayoptimizer.core.models import PlannedChange
     day = date.today() + timedelta(days=1)
     at = lambda h, m=0: datetime.combine(day, time(h, m)).astimezone()
@@ -189,6 +192,7 @@ def test_words_after_a_command_name_are_a_day_description(routed, monkeypatch):
 
 def test_ask_without_categories_says_how_to_add_them(monkeypatch, capsys):
     import dataclasses
+
     from dayoptimizer.cli import _load_config
     rules, config = _load_config()
     monkeypatch.setattr(cli, "make_backend", lambda *a: (_ for _ in ()).throw(AssertionError("LLM called")))
@@ -216,6 +220,7 @@ def test_blocks_kept_out_by_the_notes_are_one_short_line():
 
 def test_clear_lists_then_deletes_only_what_dayoptimizer_planned(monkeypatch, capsys):
     from datetime import datetime, timedelta
+
     from dayoptimizer.core.models import Event
     now = datetime.now().astimezone()
     mk = lambda id, h, managed: Event(id=id, calendar="Learn", title=id, start=now + timedelta(hours=h),
@@ -247,6 +252,7 @@ def test_clear_lists_then_deletes_only_what_dayoptimizer_planned(monkeypatch, ca
 
 def test_undo_says_what_it_takes_back_and_does_it_with_yes(monkeypatch, capsys):
     import argparse
+
     from dayoptimizer.core import calendar as cal_mod
     taken = []
 

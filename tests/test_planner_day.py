@@ -1,7 +1,8 @@
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+
 from dayoptimizer.core.models import Event, GarminSummary
-from dayoptimizer.core.planner import ensure_meals, adjust_gym, insert_transport, check_free_time, plan_day
+from dayoptimizer.core.planner import adjust_gym, check_free_time, ensure_meals, insert_transport, plan_day
 from dayoptimizer.core.rules import load_rules
 
 RULES = load_rules(Path(__file__).parent / "fixtures" / "config.yaml")
@@ -41,6 +42,7 @@ def test_adjust_gym_moves_on_low_battery():
 
 def test_adjust_gym_user_fixed_gym_requires_approval():
     import dataclasses
+
     from dayoptimizer.core.rules import CategoryRule
     fixed_gym = dataclasses.replace(
         RULES, categories={**RULES.categories, "Gym": CategoryRule(movable=False, priority=5)})
@@ -52,6 +54,7 @@ def test_adjust_gym_user_fixed_gym_requires_approval():
 
 def test_adjust_gym_planner_created_workout_moves_freely_even_when_gym_fixed():
     import dataclasses
+
     from dayoptimizer.core.rules import CategoryRule
     fixed_gym = dataclasses.replace(
         RULES, categories={**RULES.categories, "Gym": CategoryRule(movable=False, priority=5)})
@@ -83,7 +86,7 @@ def test_one_trip_there_before_the_first_class_and_one_back_after_the_last(monke
     trips = [(f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}", c.title) for c in changes]
     assert trips == [("07:15", "08:00", "Commute: Lecture - Maths"), ("18:00", "18:45", "Commute: back from Lab - Physics")]
     made = [_ev(f"t{i}", "Transport", 0, 0) for i in range(2)]
-    for ev, c in zip(made, changes):
+    for ev, c in zip(made, changes, strict=True):
         ev.start, ev.end = c.new_start, c.new_end
     assert insert_transport(classes + made, RULES) == []
 

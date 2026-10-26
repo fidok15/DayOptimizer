@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import os
 import subprocess
 from pathlib import Path
 from xml.sax.saxutils import escape
+
 from dayoptimizer import paths
 
 LABEL = "com.dayoptimizer.check"

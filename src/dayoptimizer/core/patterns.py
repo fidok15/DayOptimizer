@@ -1,5 +1,6 @@
 """Long-term Garmin patterns: weekly averages, sleep trend, plain-English tips."""
 from __future__ import annotations
+
 from dayoptimizer.core.models import GarminSummary
 from dayoptimizer.core.rules import Rules
 

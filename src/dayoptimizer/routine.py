@@ -1,11 +1,13 @@
 """The user's routine as a short brief for the LLM, rendered from the typical
 week drawn in the setup page and saved to ~/.dayoptimizer/routine.md."""
 from __future__ import annotations
+
 import os
+
 from dayoptimizer import paths
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-NAMES = dict(zip(DAYS, ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")))
+NAMES = dict(zip(DAYS, ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), strict=True))
 
 
 def _day_label(days: list[str]) -> str:

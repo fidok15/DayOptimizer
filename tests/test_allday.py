@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
 from dayoptimizer import cli, paths
 from dayoptimizer.core.allday import time_in_title
 from dayoptimizer.core.calendar import CalendarClient

@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import re
 import time
 from datetime import datetime
+
 from dayoptimizer.core.models import Event
+
 
 def normalize_calendar(title: str) -> str:
     """'🔨 Work ' -> 'Work': calendar names carry emoji prefixes and stray
@@ -20,8 +23,7 @@ def _nscolor(color: str):
 def _hex(nscolor) -> str:
     from AppKit import NSColorSpace
     rgb = nscolor.colorUsingColorSpace_(NSColorSpace.sRGBColorSpace())
-    return "#%02x%02x%02x" % tuple(round(c * 255) for c in
-                                   (rgb.redComponent(), rgb.greenComponent(), rgb.blueComponent()))
+    return "#" + "".join(f"{round(c * 255):02x}" for c in (rgb.redComponent(), rgb.greenComponent(), rgb.blueComponent()))
 
 MARKER = "Planned by DayOptimizer"
 SUGGESTED = "Suggested by DayOptimizer"  # a second line on blocks suggested for free time

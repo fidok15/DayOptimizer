@@ -1,10 +1,11 @@
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
+
 from dayoptimizer.core.constraints import parse_rules
 from dayoptimizer.core.models import Event
 from dayoptimizer.core.rules import CategoryRule, RoutineBlock, Rules
 from dayoptimizer.core.storage import Storage
-from dayoptimizer.llm.fillers import Filler, Fillers, bare, check, day_gaps, suggest, record, suffix
+from dayoptimizer.llm.fillers import Filler, Fillers, bare, check, day_gaps, record, suffix, suggest
 
 SAT = date(2026, 10, 17)
 SUN = SAT + timedelta(days=1)
@@ -250,7 +251,8 @@ def test_a_replan_neither_sees_nor_removes_suggestions_and_a_second_one_changes_
 
 
 def test_free_time_replies_are_read_without_a_model():
-    from dayoptimizer.cli import understand_free_time as minutes_of, understand_variety as variety_of
+    from dayoptimizer.cli import understand_free_time as minutes_of
+    from dayoptimizer.cli import understand_variety as variety_of
     assert [minutes_of(x) for x in ("godzinkę", "1h", "90 min", "1,5h", "pół godziny", "dwie godziny", "45", "2",
                                     "półtorej godziny", "an hour", "nic", "hmm", "1h 30min", "1 godz. 30 min",
                                     "1h30")] == [
@@ -262,6 +264,7 @@ def test_free_time_replies_are_read_without_a_model():
 
 def test_the_free_time_question_is_asked_once_in_a_terminal_and_saved(monkeypatch):
     import yaml
+
     from dayoptimizer import cli, paths
     from dayoptimizer.onboarding import save_user_config
     save_user_config(yaml.safe_dump({"typical_week": {"mon": [{"start": "09:00", "end": "10:00", "category": "Gym"}]},
@@ -281,6 +284,7 @@ def test_the_free_time_question_is_asked_once_in_a_terminal_and_saved(monkeypatc
 
 def test_ctrl_c_at_the_free_time_question_stops_and_a_config_that_wont_save_doesnt(monkeypatch):
     import yaml
+
     from dayoptimizer import cli, onboarding, paths
     onboarding.save_user_config(yaml.safe_dump({"typical_week": {"mon": [{"start": "09:00", "end": "10:00",
                                                                            "category": "Gym"}]},

@@ -1,4 +1,5 @@
 from unittest.mock import patch
+
 from dayoptimizer.core.notify import build_osascript, notify
 
 

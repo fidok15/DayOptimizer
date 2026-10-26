@@ -1,13 +1,16 @@
 from __future__ import annotations
+
 import argparse
 import re
 import sys
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
+
 from dayoptimizer import paths
 from dayoptimizer.apply import _missing, apply_changes
 from dayoptimizer.core.allday import conversion, timed_all_day
@@ -131,11 +134,11 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
     so the caller falls back to placing the routine by rule. `extra`: events
     about to be added, planned around as if there. `dry`: nothing is written,
     the changes come back for the user to OK (`accept` writes them)."""
+    from dayoptimizer.core.models import PlannedChange
     from dayoptimizer.llm import backend as llm
+    from dayoptimizer.llm.task_rules import remaining
     from dayoptimizer.llm.week_plan import plan_days, routine_spans
     from dayoptimizer.routine import render_routine
-    from dayoptimizer.core.models import PlannedChange
-    from dayoptimizer.llm.task_rules import remaining
     tasks = storage.open_tasks()
     week_start = days[0] - timedelta(days=days[0].weekday())
     lo = datetime.combine(week_start - timedelta(days=7), time(0)).astimezone()
@@ -632,6 +635,7 @@ def _edit(text: str, tasks, events, rules, now: datetime, placed: dict):
     the words (or its id, 't18'). (tasks, events, what changed), or None when no
     item is named or nothing about it can be read: then the model reads it."""
     import unicodedata
+
     from dayoptimizer.llm.backend import day_words, resolve_day
     from dayoptimizer.llm.task_request import _DROP
     low = text.lower()
@@ -753,6 +757,7 @@ def _save_proposal(days: list[date], added, result) -> None:
 def _load_proposal() -> dict | None:
     """The saved proposal with PlannedChanges; None when there is none or no model could plan."""
     import json
+
     from dayoptimizer.core.models import PlannedChange
     try:
         p = json.loads(_proposal_file().read_text())
@@ -898,6 +903,7 @@ def _keep_undo(command: str) -> None:
     """Keep how to take back this run's calendar writes, for `dayoptimizer undo`
     (a run that wrote nothing keeps the one before)."""
     import json
+
     from dayoptimizer.core.calendar import JOURNAL
     if JOURNAL:
         Storage(paths.db_path()).set_state("undo", json.dumps(
@@ -997,7 +1003,7 @@ def _task_span(tasks, event_days=()) -> tuple[date, int]:
     the next. A week at most, so 'w przyszły piątek' plans next week, not this one."""
     today = date.today()
     first = [max(today, t.not_before.date()) if t.not_before else today for t in tasks]
-    last = [t.due.date() if t.due is not None else f + timedelta(days=1) for t, f in zip(tasks, first)]
+    last = [t.due.date() if t.due is not None else f + timedelta(days=1) for t, f in zip(tasks, first, strict=True)]
     start = min(first + list(event_days))
     return start, max(1, min(7, (max(last + list(event_days)) - start).days + 1))
 
@@ -1138,9 +1144,11 @@ def _ask_free_time(config) -> bool:
     varied the suggestions for free time are. Saved like the setup page saves
     (save_user_config). Without a terminal nothing is asked: 60 min, medium.
     False when the user pressed Ctrl+C: stop the command, nothing saved."""
+    from typing import Literal
+
     import yaml
     from pydantic import BaseModel
-    from typing import Literal
+
     from dayoptimizer.onboarding import ConfigError, save_user_config
     from dayoptimizer.web import _local
     if not sys.stdin.isatty() or _in_bundle():
@@ -1218,6 +1226,7 @@ def cmd_agent(args, rules, config):
 def cmd_garmin(args, rules, config):
     if args.garmin_command == "login":
         from getpass import getpass
+
         from dayoptimizer.core.garmin import GarminLoginError, garmin_finish_mfa, garmin_start_login
         email = console.input("Garmin email: ").strip()
         password = getpass("Garmin password (used once, never stored): ")
@@ -1230,8 +1239,8 @@ def cmd_garmin(args, rules, config):
             console.print(f"[red]{exc}[/red]")
 
 def cmd_stats(args, rules, config):
-    from dayoptimizer.core.patterns import render_stats, suggest_adjustments, weekly_stats
     from dayoptimizer import paths
+    from dayoptimizer.core.patterns import render_stats, suggest_adjustments, weekly_stats
     storage = Storage(paths.db_path())
     stats = weekly_stats(storage.garmin_history(14))
     console.print(render_stats(stats))
@@ -1365,7 +1374,7 @@ def main(argv: list[str] | None = None):
                           f"({type(exc).__name__}: {' '.join(str(exc).split())}).\nFix or delete that file, "
                           "or run  dayoptimizer setup  to draw your week again.",
                           markup=False, style="red")
-            raise SystemExit(1)
+            raise SystemExit(1) from None
     parser = argparse.ArgumentParser(
         prog="dayoptimizer",
         description='dayoptimizer                optimize today around your calendar\n'

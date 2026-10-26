@@ -6,6 +6,7 @@ deterministic: no tokens, works offline, same input means same plan. A note
 that fits no rule type stays plain text for the assistant to read.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date, timedelta
 

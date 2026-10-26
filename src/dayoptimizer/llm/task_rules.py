@@ -2,7 +2,9 @@
 and the checks on the blocks it places for them. llm/week_plan.py calls these;
 everything here is pure so it can be tested without a model or a calendar."""
 from __future__ import annotations
+
 from datetime import date, datetime
+
 from dayoptimizer.core.models import Event, Task, minutes
 
 

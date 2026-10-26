@@ -1,9 +1,13 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date, time
 from pathlib import Path
+
 import yaml
+
 from dayoptimizer.core.constraints import parse_rules
+
 
 @dataclass
 class CategoryRule:

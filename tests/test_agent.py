@@ -1,5 +1,7 @@
 from __future__ import annotations
-from unittest.mock import patch, MagicMock
+
+from unittest.mock import MagicMock, patch
+
 from dayoptimizer import agent
 
 
@@ -162,6 +164,7 @@ def test_build_plist_runs_at_given_times_instead_of_an_interval():
 
 def test_cli_rejects_a_bad_agent_time():
     import pytest
+
     from dayoptimizer import cli
     with pytest.raises(SystemExit):
         cli.main(["agent", "install", "--at", "7am"])

@@ -237,6 +237,7 @@ def test_a_task_next_week_plans_from_its_day():
 
 def test_a_change_said_at_the_preview_is_read_by_code():
     from datetime import datetime
+
     from dayoptimizer.core.models import Task
     now = datetime(2026, 10, 26, 10).astimezone()
     tue = date(2026, 10, 27)

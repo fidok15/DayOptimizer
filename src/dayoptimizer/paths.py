@@ -1,6 +1,7 @@
 """Filesystem locations for user data. Everything private lives under
 ~/.dayoptimizer (override with DAYOPTIMIZER_HOME, mainly for tests)."""
 from __future__ import annotations
+
 import os
 from pathlib import Path
 

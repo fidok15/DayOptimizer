@@ -5,9 +5,11 @@ proposes (with approval) to turn the event into a real timed one. When the
 title is ambiguous ("Room 14", "Exam 12.10") it still plans around the guess
 but says it isn't sure."""
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+
 from dayoptimizer.core.models import Event, PlannedChange
 
 DEFAULT_MINUTES = 60

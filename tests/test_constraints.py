@@ -1,6 +1,15 @@
 from datetime import date
-from dayoptimizer.core.constraints import (NoteRule, allowed_window, explain, free_windows,
-                                           gap_rule, parse_rules, week_rule, window_rule)
+
+from dayoptimizer.core.constraints import (
+    NoteRule,
+    allowed_window,
+    explain,
+    free_windows,
+    gap_rule,
+    parse_rules,
+    week_rule,
+    window_rule,
+)
 
 RAW = [
     {"type": "not_before", "category": "Food", "time": "14:00", "source": "no lunch before 14"},
@@ -78,6 +87,7 @@ def test_skippable_events_are_planned_over_and_never_moved():
     import dataclasses
     from datetime import date, datetime
     from pathlib import Path
+
     from dayoptimizer.core.constraints import describe, parse_rules, skippable
     from dayoptimizer.core.models import Event
     from dayoptimizer.core.planner import plan_day
@@ -131,6 +141,7 @@ def test_a_skippable_prefix_must_be_the_quoted_text_when_there_is_one():
 
 def test_a_skippable_category_is_the_calendar_the_sentence_names_or_any():
     from datetime import datetime
+
     from dayoptimizer.core.constraints import describe, parse_rules, skippable
     from dayoptimizer.core.models import Event
     from dayoptimizer.web import _clean_rule

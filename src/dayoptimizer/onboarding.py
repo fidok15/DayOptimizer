@@ -1,8 +1,10 @@
 """Validated user-config writer. The Claude Code onboarding command builds a
 YAML proposal in conversation; this module is the only path that persists it."""
 from __future__ import annotations
+
 import os
 from typing import Annotated, Literal
+
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 

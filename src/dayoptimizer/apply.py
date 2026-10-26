@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
+
 from dayoptimizer.core.models import PlannedChange
+
 
 def _missing(c: PlannedChange) -> str:
     """Why a KeyError from the calendar happened, with the fix."""

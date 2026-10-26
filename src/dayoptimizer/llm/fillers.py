@@ -20,16 +20,29 @@ not spent on it: the user set that time aside to be filled. The planner puts
 the placeholder back only around the activities (`open_left`).
 """
 from __future__ import annotations
+
 import json
 import re
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
+
 from pydantic import BaseModel
+
 from dayoptimizer.core.constraints import window_rule
 from dayoptimizer.core.models import Event, PlannedChange, at
 from dayoptimizer.llm.task_rules import minutes
-from dayoptimizer.llm.week_plan import (Block, DAY_NAMES, _count_rules, _hhmm, _intent, _minus, _spans, free_gaps,
-                                         intent_kind, routine_spans)
+from dayoptimizer.llm.week_plan import (
+    DAY_NAMES,
+    Block,
+    _count_rules,
+    _hhmm,
+    _intent,
+    _minus,
+    _spans,
+    free_gaps,
+    intent_kind,
+    routine_spans,
+)
 
 SHORTEST, LONGEST = 30, 90
 TITLE_MAX, WHY_MAX = 40, 120

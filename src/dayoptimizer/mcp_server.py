@@ -5,13 +5,16 @@ import EventKit. Reads come from the SQLite cache (kept fresh by the launchd
 `check` agent); writes go through the TCC-approved app bundle.
 """
 from __future__ import annotations
+
 import fcntl
 import os
 import subprocess
 import threading
 from datetime import date as date_type
 from pathlib import Path
+
 import yaml
+
 from dayoptimizer import paths
 from dayoptimizer.core.garmin import summarize
 from dayoptimizer.core.patterns import render_stats, suggest_adjustments, weekly_stats
@@ -215,9 +218,11 @@ def add_task(text: str) -> str:
     """Save tasks (work without a clock time, e.g. 'report for Friday, 3h') from plain words, parsed
     as `dayoptimizer "..."` does. Nothing goes to the calendar: call plan afterwards to place them."""
     from datetime import datetime
+
+    from dotenv import load_dotenv
+
     from dayoptimizer import cli  # EventKit is imported only when a calendar is opened, never here
     from dayoptimizer.llm.backend import LLMUnavailable, make_backend, pin_day
-    from dotenv import load_dotenv
     load_dotenv(_DEFAULT_CONFIG.parent / ".env")  # ANTHROPIC_API_KEY, as the CLI reads it
     rules, config = load_rules(_DEFAULT_CONFIG), load_config_data(_DEFAULT_CONFIG)
     if not rules.categories:
@@ -279,8 +284,9 @@ def task_done(task_id: str) -> str:
 def task_fix(task_id: str, reply: str) -> str:
     """Say what to do with a task plan reported as not fitting, in the user's words (e.g. 'take the break',
     'move it to Friday', 'make it 2h', 'split into 1h pieces', 'drop it'). Call plan afterwards to apply it."""
-    from dayoptimizer import cli
     from dotenv import load_dotenv
+
+    from dayoptimizer import cli
     load_dotenv(_DEFAULT_CONFIG.parent / ".env")
     rules, config = load_rules(_DEFAULT_CONFIG), load_config_data(_DEFAULT_CONFIG)
     s = _storage()

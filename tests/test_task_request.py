@@ -1,5 +1,6 @@
 import json
 from datetime import date, datetime, time
+
 from dayoptimizer.llm.task_request import TaskRequest, task_from_request
 
 CATS = ["Work", "Learn", "Home"]

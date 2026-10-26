@@ -1,6 +1,7 @@
 import importlib.util
 from datetime import datetime
 from pathlib import Path
+
 from dayoptimizer.core.models import PlannedChange
 
 ROOT = Path(__file__).resolve().parent.parent

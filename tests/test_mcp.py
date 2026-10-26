@@ -1,9 +1,11 @@
 from datetime import datetime, time
 from unittest.mock import patch
+
 import pytest
+
+from dayoptimizer import mcp_server
 from dayoptimizer.core.models import Event, GarminSummary
 from dayoptimizer.core.storage import Storage
-from dayoptimizer import mcp_server
 
 
 @pytest.fixture
@@ -108,7 +110,8 @@ def test_bundle_run_echoes_the_log_as_it_grows_and_waits_without_a_timeout(app_h
 
 
 def test_bundle_run_serializes_concurrent_runs(app_home):
-    import threading, time
+    import threading
+    import time
     _make_bundle(app_home)
 
     def fake_run(*_a, **_k):
@@ -229,6 +232,7 @@ def test_save_config_roundtrip(app_home):
 
 def test_task_tools_add_list_and_finish_without_touching_the_calendar(app_home, monkeypatch):
     from types import SimpleNamespace
+
     from dayoptimizer.llm import backend
     from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
     reqs = [DayRequest(tasks=[TaskRequest(title="report", category="Work", duration_minutes=120)]),

@@ -1,8 +1,9 @@
 from __future__ import annotations
-from datetime import datetime, date, time, timedelta
-from dayoptimizer.core.models import Event, GarminSummary, PlannedChange, at, minutes
-from dayoptimizer.core.constraints import (allowed_window, explain, free_windows, gap_rule, skippable,
-                                            week_rule, window_rule)
+
+from datetime import datetime, time, timedelta
+
+from dayoptimizer.core.constraints import allowed_window, explain, free_windows, gap_rule, skippable, week_rule, window_rule
+from dayoptimizer.core.models import Event, PlannedChange, at, minutes
 from dayoptimizer.core.recovery import learn_region, training_advice
 from dayoptimizer.core.rules import Rules
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import functools
 import os
 from datetime import date, timedelta
 from typing import Annotated, Literal, Protocol
+
 from pydantic import AfterValidator, BaseModel
+
 from dayoptimizer.core.models import PlannedChange
 
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -262,6 +265,7 @@ def day_words(languages: tuple[str, ...] | None = None) -> list[tuple[str, str]]
     some language's weekday."""
     import re
     import unicodedata
+
     from babel import Locale, UnknownLocaleError
     names = {day: set() for day in WEEKDAYS}
     for lang in _user_languages() if languages is None else languages:
@@ -280,7 +284,7 @@ def day_words(languages: tuple[str, ...] | None = None) -> list[tuple[str, str]]
             for p, day in _DAY_WORDS]
 
 
-def pin_day(text: str, req: "DayRequest", today: date | None = None) -> "DayRequest":
+def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest:
     """Trust the message's day words over the model, clause by clause (split at
     ',', ';', 'i', 'a', 'oraz', 'and'): an event or task gets the one day its own
     clause names (the clause holding a word of its title), else the day of an
@@ -293,6 +297,7 @@ def pin_day(text: str, req: "DayRequest", today: date | None = None) -> "DayRequ
     the model decides; so does it when its date is that day, or that weekday later on ('w przyszły piątek')."""
     import re
     import unicodedata
+
     from dayoptimizer.llm.task_request import _PARTS
     low = text.lower()
     today = today or date.today()

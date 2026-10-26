@@ -1,4 +1,5 @@
 import stat
+
 from dayoptimizer import paths
 from dayoptimizer.llm.backend import request_prompt
 from dayoptimizer.routine import load_routine, render_routine, save_routine
