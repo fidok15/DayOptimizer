@@ -219,3 +219,25 @@ def test_an_item_goes_with_the_clause_sharing_most_of_its_title():
     model = DayRequest(tasks=[TaskRequest(title="zadzwoń do mamy", category="Family")])
     req = pin_day("w niedzielę obiad u mamy, w piątek zadzwoń do mamy", model)
     assert req.tasks[0].due_day == "friday"
+
+
+def test_day_words_in_every_form():
+    import re
+    from dayoptimizer.llm.backend import _DAY_WORDS
+    said = {
+        "today": ["dziś", "dzis", "dzisiaj", "dzisiejszy dzień", "today", "tonight"],
+        "tomorrow": ["jutro", "jutrze", "jutrzejszy", "na jutro", "tomorrow", "tmrw"],
+        "day_after_tomorrow": ["pojutrze", "day after tomorrow"],
+        "monday": ["poniedziałek", "poniedzialku", "w pon", "monday", "mon"],
+        "tuesday": ["wtorek", "we wtorku", "wtorkowy", "wt", "tuesday", "tue"],
+        "wednesday": ["środa", "w środę", "srode", "środowy", "w śr", "wednesday"],
+        "thursday": ["czwartek", "w czwartku", "czwartkowy", "czw", "thursday", "thu"],
+        "friday": ["piątek", "piatku", "przed piątkiem", "piątkowy", "pt", "friday", "fri"],
+        "saturday": ["sobota", "w sobotę", "sobocie", "sobotni", "sob", "saturday"],
+        "sunday": ["niedziela", "w niedzielę", "niedz", "ndz", "sunday"],
+        None: ["w środku dnia", "środowisko", "o czwartej", "o piątej", "piątka z matmy", "jutsu"],
+    }
+    for day, words in said.items():
+        for w in words:
+            found = [d for p, d in _DAY_WORDS if re.search(p, w)]
+            assert found == ([day] if day else []), w
