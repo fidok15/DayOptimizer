@@ -189,17 +189,19 @@ def request_prompt(text: str, today: str, now: str, categories: list[str]) -> st
     return f"{context}now: {now}\ncategories: {', '.join(categories)}\nmessage: {text}"
 
 
-_DAY_WORDS = [
-    (r"\bpojutrz|\bday after tomorrow\b", "day_after_tomorrow"),
-    (r"\bjutr|\btomorrow\b", "tomorrow"),
+_DAY_WORDS = [  # each day word in every form people type: cases, adjectives, no Polish letters, short forms
+    (r"\bpojutrz|\bday after tomorrow\b|\bovermorrow\b", "day_after_tomorrow"),
+    (r"\bjutr|\bnazajutrz|(?<!after )\btomorrow\b|\btmrw?\b|\btmorrow\b", "tomorrow"),
     (r"\bdziś\b|\bdzis\b|\bdzisiaj|\bdzisiejsz|\btoday\b|\btonight\b", "today"),
-    (r"\bponiedzia|\bmonday", "monday"),
-    (r"\bwtor|\btuesday", "tuesday"),
-    (r"\b[sś]rod(?:a|y|ę|e|ą|zie)\b|\bwednesday", "wednesday"),  # not "w środku" (in the middle)
-    (r"\bczwart(?:ek|k)|\bthursday", "thursday"),  # not "o czwartej" (at four)
-    (r"\bpi[aą]t(?:ek|ku|kiem)\b|\bfriday", "friday"),  # not "o piątej" (at five), "piątka" (a grade)
-    (r"\bsobo[tc]|\bsaturday", "saturday"),
-    (r"\bniedziel|\bsunday", "sunday"),
+    (r"\bponiedzia|\bpon\b|\bpn\b|\bmonday|\bmon\b", "monday"),
+    (r"\bwtor|\bwt\b|\btuesday|\btues?\b", "tuesday"),
+    # not "w środku" (in the middle), "środowisko" (environment)
+    (r"\b[sś]rod(?:a|y|ę|e|ą|zie|ow(?:y|a|e|ego|ej|ym))\b|\b[sś]r\b|\bwednesday", "wednesday"),
+    (r"\bczwart(?:ek|k)|\bczw\b|\bthursday|\bthu(?:rs?)?\b", "thursday"),  # not "o czwartej" (at four)
+    # not "o piątej" (at five), "piątka" (a grade)
+    (r"\bpi[aą]t(?:ek|ku|kiem|kow\w*)\b|\bpt\b|\bfriday|\bfri\b", "friday"),
+    (r"\bsobo[tc]|\bsob\b|\bsaturday", "saturday"),
+    (r"\bniedziel|\bniedz\b|\bndz\b|\bsunday", "sunday"),
 ]
 
 
