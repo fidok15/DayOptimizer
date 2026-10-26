@@ -56,10 +56,11 @@ so they check the logic, not macOS or a real model).
 **Known gaps:**
 
 - Days: the model copies a date from a list of the next 14 days it is given,
-  and code checks it against the day words in the message. That check knows
-  Polish and English only; in other languages the model alone decides, and
-  the local `qwen3:8b` gets them wrong more often (German "morgen" came back as
-  the day after tomorrow in a test).
+  and code checks it against the day words in the message: every form of
+  Polish and English ones, and the weekday names (from CLDR) of the languages
+  set on your Mac. "Today" / "tomorrow" in other languages are left to the
+  model, and the local `qwen3:8b` gets them wrong more often (German "morgen"
+  came back as the day after tomorrow in a test).
 
 - "po X" matches a block or event by its first four letters, plus a short list
   of Polish words for English block names (śniadanie = Breakfast, obiad =

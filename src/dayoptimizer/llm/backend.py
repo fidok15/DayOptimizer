@@ -1,4 +1,5 @@
 from __future__ import annotations
+import functools
 import os
 from datetime import date, timedelta
 from typing import Annotated, Literal, Protocol
@@ -243,6 +244,42 @@ _DAY_WORDS = [  # each day word in every form people type: cases, adjectives, no
 ]
 
 
+def _user_languages() -> tuple[str, ...]:
+    """The languages set for the user's Mac ('pl', 'en'); LANG elsewhere."""
+    try:
+        from Foundation import NSLocale
+        tags = [str(x) for x in NSLocale.preferredLanguages()]
+    except ImportError:
+        tags = [os.environ.get("LANG", "")]
+    return tuple(dict.fromkeys(t.replace("-", "_").split("_")[0].lower() for t in tags if t[:1].isalpha()))
+
+
+@functools.cache
+def day_words(languages: tuple[str, ...] | None = None) -> list[tuple[str, str]]:
+    """`_DAY_WORDS` plus the weekday names of the user's languages from CLDR
+    ('Freitag', 'viernes', '金曜日'), so the message checks the model's day in
+    those too. Only their languages: across all of them, 'anna' or 'sun' is
+    some language's weekday."""
+    import re
+    import unicodedata
+    from babel import Locale, UnknownLocaleError
+    names = {day: set() for day in WEEKDAYS}
+    for lang in _user_languages() if languages is None else languages:
+        try:
+            days = Locale.parse(lang).days
+        except (UnknownLocaleError, ValueError):
+            continue
+        for ctx in ("format", "stand-alone"):
+            for i, name in days[ctx]["wide"].items():  # 0 = Monday
+                names[WEEKDAYS[i]].add(name.lower())
+
+    def pattern(name):  # a whole word, maybe with an ending ('Freitags'); no spaces in CJK or Thai
+        spaced = not any(unicodedata.name(ch, "").startswith(("CJK", "HIRAGANA", "KATAKANA", "THAI")) for ch in name)
+        return rf"(?<!\w){re.escape(name)}\w{{0,2}}(?!\w)" if spaced else re.escape(name)
+    return [(p + "".join(f"|{pattern(n)}" for n in sorted(names[day])) if day in names else p, day)
+            for p, day in _DAY_WORDS]
+
+
 def pin_day(text: str, req: "DayRequest", today: date | None = None) -> "DayRequest":
     """Trust the message's day words over the model, clause by clause (split at
     ',', ';', 'i', 'a', 'oraz', 'and'): an event or task gets the one day its own
@@ -267,7 +304,7 @@ def pin_day(text: str, req: "DayRequest", today: date | None = None) -> "DayRequ
         return said == got or (word in WEEKDAYS and got.weekday() == said.weekday() and got > said)
 
     def day_of(part):
-        said = [(m, day) for pattern, day in _DAY_WORDS if (m := re.search(pattern, part))]
+        said = [(m, day) for pattern, day in day_words() if (m := re.search(pattern, part))]
         if len(said) != 1:
             return None
         m, day = said[0]
@@ -276,7 +313,7 @@ def pin_day(text: str, req: "DayRequest", today: date | None = None) -> "DayRequ
         return part, m, day
     whole, clauses, cur = day_of(low), [], None
     for c in re.split(r"[,;]|\s(?:i|a|oraz|and)\s", low):
-        said = [d for pattern, d in _DAY_WORDS if re.search(pattern, c)]
+        said = [d for pattern, d in day_words() if re.search(pattern, c)]
         cur = day_of(c) if said else cur  # two days in one clause: the model decides
         clauses.append((c, cur))
 
@@ -369,7 +406,7 @@ def _only_day(when: str) -> bool:
     """'sobotę' / 'na piątek' / 'tomorrow': a day and nothing about the time of day."""
     import re
     low = when.lower()
-    for pattern, _ in _DAY_WORDS:
+    for pattern, _ in day_words():
         low = re.sub(rf"(?:{pattern})\w*", " ", low)
     return low != when.lower() and not re.sub(r"\b(na|do|przed|w|we|on|by|until|before|the|next|przysz\w*|nast[eę]pn\w*)\b|\W", "", low)
 

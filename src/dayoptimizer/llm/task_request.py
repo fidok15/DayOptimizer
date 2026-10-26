@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from dayoptimizer.core.models import Task, at
 from dataclasses import replace
-from dayoptimizer.llm.backend import _DAY_WORDS, TaskFix, TaskRequest, resolve_day  # noqa: F401  (TaskRequest re-exported)
+from dayoptimizer.llm.backend import TaskFix, TaskRequest, day_words, resolve_day  # noqa: F401  (TaskRequest re-exported)
 
 DEFAULT_MINUTES = 60
 
@@ -147,7 +147,7 @@ def quick_fix(reply: str) -> TaskFix | None:
     if _DROP.search(low) and not _FILLER.sub("", _DROP.sub("", low)):
         return TaskFix(action="drop_task")
     n = _minutes(low)
-    days = [d for pattern, d in _DAY_WORDS if re.search(pattern, low)]
+    days = [d for pattern, d in day_words() if re.search(pattern, low)]
     clock = re.search(r"\b([01]?\d|2[0-3]):[0-5]\d\b", low)
     if n and not days and not clock:
         return TaskFix(action="allow_split", chunk_minutes=n) if asks_split(low) else TaskFix(action="new_duration", minutes=n)
