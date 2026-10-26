@@ -295,12 +295,13 @@ directory" before running any of these.
 | `uv run dayoptimizer garmin login` | Logs into Garmin Connect once and stores OAuth tokens (password is never persisted) |
 | `uv run dayoptimizer stats` | 14-day Garmin trends and suggested rule adjustments |
 | `dayoptimizer clear [--all]` | Lists every block DayOptimizer planned from now on (`--all`: also past ones) and deletes them on your OK; your own events are never touched |
+| `dayoptimizer undo` | Says what the last run changed in the calendar (blocks added, moved, deleted, events you asked for) and takes it back on your OK; run it again to redo |
 | `uv run dayoptimizer apply --ids 3,4` | Applies pending fixed-event changes by id, after you've reviewed them |
 | `uv run dayoptimizer setup [--port N] [--no-open]` | Opens the typical-week setup page in the browser (see [Web planner](#web-planner)) |
 | `uv run dayoptimizer chat` | Several plain-words requests in a row, one per line |
 
 Because EventKit needs the TCC bundle (see below), the calendar commands
-(`plan`, `apply`, `check`, `sync`, `clear` and plain-words requests) hand themselves to
+(`plan`, `apply`, `check`, `sync`, `clear`, `undo` and plain-words requests) hand themselves to
 the bundle when started from a terminal, and print its output when done.
 
 Plain-words requests and `chat` need a language model: a running local Ollama

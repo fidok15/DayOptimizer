@@ -1,6 +1,6 @@
 from datetime import date, time
 import pytest
-from dayoptimizer import cli
+from dayoptimizer import cli, paths
 from dayoptimizer.core.storage import Storage
 from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest
 
@@ -243,3 +243,35 @@ def test_clear_lists_then_deletes_only_what_dayoptimizer_planned(monkeypatch, ca
     deleted.clear()
     cli.cmd_clear(type("A", (), {"all": True, "yes": True})(), RULES, {})
     assert deleted == ["past", "plan", "plan2"]
+
+
+def test_undo_says_what_it_takes_back_and_does_it_with_yes(monkeypatch, capsys):
+    import argparse
+    from dayoptimizer.core import calendar as cal_mod
+    taken = []
+
+    class Cal:
+        def request_access(self): return True
+        def take_back(self, step):
+            taken.append(step["id"])
+            if step["id"] == "gone":
+                raise KeyError(step["id"])
+            cal_mod.JOURNAL.append({"undo": "create", "id": step["id"]})
+
+    monkeypatch.setattr(cli, "CalendarClient", Cal)
+    monkeypatch.setattr(cli, "_in_bundle", lambda: True)
+    monkeypatch.setattr(cal_mod, "JOURNAL", [{"undo": "remove", "id": "a", "title": "nauka aws",
+                                              "start": "2026-10-26T15:00:00+01:00"},
+                                             {"undo": "remove", "id": "gone", "title": "x",
+                                              "start": "2026-10-26T16:00:00+01:00"}])
+    paths.ensure_private_dir()
+    cli._keep_undo("accept")
+    assert cal_mod.JOURNAL == []
+    cli.cmd_undo(argparse.Namespace(yes=False), None, None)
+    out = capsys.readouterr().out
+    assert "Last change: accept" in out and "remove 2 events it added" in out and "nauka aws" in out
+    assert taken == []  # only said
+    cli.cmd_undo(argparse.Namespace(yes=True), None, None)
+    assert taken == ["gone", "a"] and "Undone: 1 change (1 was gone already)" in capsys.readouterr().out
+    cli._keep_undo("undo")  # what it wrote is the next undo: a redo
+    assert [s["id"] for s in cli._last_writes(Storage(paths.db_path()))["steps"]] == ["a"]

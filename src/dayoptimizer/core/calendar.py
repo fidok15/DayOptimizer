@@ -26,6 +26,10 @@ def _hex(nscolor) -> str:
 MARKER = "Planned by DayOptimizer"
 SUGGESTED = "Suggested by DayOptimizer"  # a second line on blocks suggested for free time
 
+# How to take back each calendar write of this run, newest last; the CLI keeps
+# the last run's for `dayoptimizer undo`.
+JOURNAL: list[dict] = []
+
 TASK_TAG = "Task: "
 _TASK_RE = re.compile(r"^Task: (\S+)$", re.M)
 
@@ -77,6 +81,10 @@ class CalendarClient:
         from Foundation import NSDate
         return NSDate.dateWithTimeIntervalSince1970_(dt.timestamp())
 
+    @staticmethod
+    def _when(nsdate) -> str:
+        return datetime.fromtimestamp(nsdate.timeIntervalSince1970()).astimezone().isoformat()
+
     def list_events(self, start: datetime, end: datetime) -> list[Event]:
         pred = self._store.predicateForEventsWithStartDate_endDate_calendars_(
             self._nsdate(start), self._nsdate(end), None)
@@ -103,6 +111,8 @@ class CalendarClient:
         ev = self._store.eventWithIdentifier_(event_id)
         if ev is None:
             raise KeyError(f"Event {event_id} not found")
+        was = {"undo": "move", "id": event_id, "title": str(ev.title() or ""),
+               "start": self._when(ev.startDate()), "end": self._when(ev.endDate())}
         if ev.isAllDay():
             ev.setAllDay_(False)
         ev.setStartDate_(self._nsdate(new_start))
@@ -110,6 +120,7 @@ class CalendarClient:
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")
+        JOURNAL.append(was)
 
     def _find_calendar(self, name: str):
         for cal in self._store.calendarsForEntityType_(self._EventKit.EKEntityTypeEvent):
@@ -166,9 +177,11 @@ class CalendarClient:
         return True
 
     def create_event(self, calendar_name: str, title: str, start: datetime, end: datetime,
-                     task_id: str | None = None, managed: bool = True, suggested: bool = False) -> str:
+                     task_id: str | None = None, managed: bool = True, suggested: bool = False,
+                     notes: str | None = None) -> str:
         """A planner block (marked, so replans may move or remove it), or with
-        managed=False an event the user asked for: theirs, never touched again."""
+        managed=False an event the user asked for: theirs, never touched again.
+        `notes` puts back a deleted event's own notes instead."""
         EventKit = self._EventKit
         target = self._find_calendar(calendar_name)
         if target is None:
@@ -181,11 +194,14 @@ class CalendarClient:
         ev.setStartDate_(self._nsdate(start))
         ev.setEndDate_(self._nsdate(end))
         ev.setCalendar_(target)
-        if managed:
+        if notes is not None:
+            ev.setNotes_(notes)
+        elif managed:
             ev.setNotes_(MARKER + (f"\n{TASK_TAG}{task_id}" if task_id else "") + (f"\n{SUGGESTED}" if suggested else ""))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Save failed: {err}")
+        JOURNAL.append({"undo": "remove", "id": str(ev.eventIdentifier()), "title": title, "start": start.isoformat()})
         return str(ev.eventIdentifier())
 
     def delete_event(self, event_id: str) -> None:
@@ -196,6 +212,29 @@ class CalendarClient:
             raise KeyError(f"Event {event_id} not found")
         if MARKER not in str(ev.notes() or ""):
             raise RuntimeError("not created by DayOptimizer, left alone")
+        self._remove(ev)
+
+    def _remove(self, ev) -> None:
+        was = {"undo": "create", "calendar": normalize_calendar(str(ev.calendar().title())),
+               "title": str(ev.title() or ""), "start": self._when(ev.startDate()), "end": self._when(ev.endDate()),
+               "notes": str(ev.notes()) if ev.notes() else None}
         ok, err = self._store.removeEvent_span_error_(ev, 0, None)
         if not ok:
             raise RuntimeError(f"Delete failed: {err}")
+        JOURNAL.append(was)
+
+    def take_back(self, step: dict) -> None:
+        """Undo one write a JOURNAL entry records: remove an event DayOptimizer
+        added (also one the user asked for in words), move an event back, or
+        put a deleted block back. Each of these is journaled in turn, so undoing
+        an undo redoes it. KeyError: the event is gone already."""
+        if step["undo"] == "remove":
+            ev = self._store.eventWithIdentifier_(step["id"])
+            if ev is None:
+                raise KeyError(f"Event {step['id']} not found")
+            self._remove(ev)
+        elif step["undo"] == "move":
+            self.move_event(step["id"], datetime.fromisoformat(step["start"]), datetime.fromisoformat(step["end"]))
+        else:
+            self.create_event(step["calendar"], step["title"], datetime.fromisoformat(step["start"]),
+                              datetime.fromisoformat(step["end"]), managed=False, notes=step["notes"])

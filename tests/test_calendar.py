@@ -151,3 +151,76 @@ def test_access_already_given_is_not_asked_again_and_the_store_is_shared(monkeyp
     monkeypatch.setattr(CalendarClient, "_shared", None)
     assert all(CalendarClient().request_access() for _ in range(20))
     assert made == [1] and asked == []
+
+
+def test_every_write_is_journaled_and_taken_back_and_redone(monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from dayoptimizer.core import calendar as cal_mod
+
+    class Date:
+        def __init__(self, dt):
+            self.dt = dt
+
+        def timeIntervalSince1970(self):
+            return self.dt.timestamp()
+
+    class Ev:
+        n = 0
+
+        def __init__(self):
+            Ev.n += 1
+            self.id, self.title_, self.notes_, self.cal = f"e{Ev.n}", "", None, None
+
+        def eventIdentifier(self): return self.id
+        def title(self): return self.title_
+        def setTitle_(self, t): self.title_ = t
+        def notes(self): return self.notes_
+        def setNotes_(self, n): self.notes_ = n
+        def calendar(self): return self.cal
+        def setCalendar_(self, c): self.cal = c
+        def startDate(self): return self.start
+        def setStartDate_(self, d): self.start = d
+        def endDate(self): return self.end
+        def setEndDate_(self, d): self.end = d
+        def isAllDay(self): return False
+
+    class Store(_Store):
+        def __init__(self):
+            super().__init__([_Cal("Learn")], [])
+            self.events = {}
+
+        def eventWithIdentifier_(self, i): return self.events.get(i)
+        def saveEvent_span_error_(self, ev, span, err):
+            self.events[ev.id] = ev
+            return True, None
+
+        def removeEvent_span_error_(self, ev, span, err):
+            del self.events[ev.id]
+            return True, None
+
+    store = Store()
+    client = _client(store)
+    client._EventKit.EKEvent = SimpleNamespace(eventWithEventStore_=lambda s: Ev())
+    monkeypatch.setattr(client, "_nsdate", Date)
+    monkeypatch.setattr(cal_mod, "JOURNAL", [])
+    at = lambda h: datetime(2026, 10, 26, h).astimezone()
+    kept = client.create_event("Learn", "Study", at(8), at(9))
+    moved = client.create_event("Learn", "AWS", at(10), at(11), task_id="t1")
+    gone = client.create_event("Learn", "ML", at(12), at(13))
+    cal_mod.JOURNAL.clear()  # an earlier run
+    client.move_event(moved, at(15), at(16))
+    client.delete_event(gone)
+    added = client.create_event("Learn", "audio", at(17), at(18))
+    steps = list(cal_mod.JOURNAL)
+    assert [s["undo"] for s in steps] == ["move", "create", "remove"]  # how to take back each, in order
+    cal_mod.JOURNAL.clear()
+    for s in reversed(steps):
+        client.take_back(s)
+    titles = {e.title_: (e.start.dt.hour, e.notes_) for e in store.events.values()}
+    assert added not in store.events and kept in store.events
+    assert titles["AWS"][0] == 10 and titles["ML"] == (12, cal_mod.MARKER)  # back as a planner block
+    redo = list(cal_mod.JOURNAL)
+    for s in reversed(redo):  # undoing the undo redoes it
+        client.take_back(s)
+    assert {e.title_ for e in store.events.values()} == {"Study", "AWS", "audio"}

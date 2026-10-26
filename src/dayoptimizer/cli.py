@@ -805,11 +805,69 @@ def cmd_clear(args, rules, config):
     storage.log_change(f"[clear] {gone} planned blocks", "dayoptimizer clear" + (" --all" if args.all else ""))
     console.print(f"Deleted {gone} block{'s' * (gone != 1)} DayOptimizer planned.", style="green")
 
-def _ask_clear() -> bool:
+def _ask_clear(question: str = "Delete them?") -> bool:
     try:
-        return console.input("Delete them? [y/N] ").strip().lower() in ("y", "yes", "t", "tak")
+        return console.input(f"{question} [y/N] ").strip().lower() in ("y", "yes", "t", "tak")
     except (EOFError, KeyboardInterrupt):
         return False
+
+def _keep_undo(command: str) -> None:
+    """Keep how to take back this run's calendar writes, for `dayoptimizer undo`
+    (a run that wrote nothing keeps the one before)."""
+    import json
+    from dayoptimizer.core.calendar import JOURNAL
+    if JOURNAL:
+        Storage(paths.db_path()).set_state("undo", json.dumps(
+            {"at": datetime.now().astimezone().isoformat(), "command": command, "steps": JOURNAL}))
+        JOURNAL.clear()
+
+def _last_writes(storage) -> dict:
+    import json
+    try:
+        return json.loads(storage.get_state("undo") or "{}")
+    except ValueError:
+        return {}
+
+def cmd_undo(args, rules, config):
+    """`dayoptimizer undo`: take back what the last run wrote to the calendar.
+    Says what that is and asks first; --yes does it. Undo again to redo."""
+    storage = Storage(paths.db_path())
+    last = _last_writes(storage)
+    steps = last.get("steps") or []
+    if not steps:
+        console.print("Nothing to undo: DayOptimizer hasn't changed your calendar since.", markup=False)
+        return
+    if not args.yes:
+        kinds = [(sum(1 for s in steps if s["undo"] == k), what) for k, what in
+                 (("remove", "remove {} it added"), ("move", "move {} back"), ("create", "bring back {} it deleted"))]
+        when = datetime.fromisoformat(last["at"])
+        console.print(f"Last change: {last.get('command', '?')} on {when:%a %d.%m %H:%M}. Undo would "
+                      + ", ".join(what.format(f"{n} event{'s' * (n > 1)}") for n, what in kinds if n) + ":",
+                      markup=False)
+        for s in steps[-8:]:
+            console.print(f"  {datetime.fromisoformat(s['start']):%a %d.%m %H:%M}  {s['title']}", markup=False)
+        if len(steps) > 8:
+            console.print(f"  ... and {len(steps) - 8} more", markup=False, style="dim")
+        if not _in_bundle() and sys.stdin.isatty() and _ask_clear("Undo it?"):  # in the bundle, _calendar_run asks
+            cmd_undo(argparse.Namespace(yes=True), rules, config)
+        return
+    calendar = CalendarClient()
+    if not calendar.request_access():
+        console.print(NO_ACCESS_HELP, markup=False, style="red")
+        return
+    storage.set_state("undo", "{}")  # taken: what this writes becomes the next undo (a redo)
+    done = 0
+    for step in reversed(steps):
+        try:
+            calendar.take_back(step)
+        except (KeyError, RuntimeError):
+            continue  # already gone or changed since
+        done += 1
+    storage.log_change(f"[undo] {done} of {len(steps)} changes", f"dayoptimizer undo ({last.get('command')})")
+    n = len(steps) - done
+    skipped = f" ({n} {'was' if n == 1 else 'were'} gone already)" if n else ""
+    console.print(f"Undone: {done} change{'s' * (done != 1)}{skipped}. Run  dayoptimizer undo  again to redo.",
+                  markup=False, style="green")
 
 def _task_line(t) -> str:
     parts = [f"[{t.id}] {t.title} ({t.category}) {t.duration_min} min"]
@@ -1146,7 +1204,7 @@ def cmd_web(args, rules, config):
     from dayoptimizer.web import serve
     serve(port=args.port, open_browser=not args.no_open)
 
-CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "accept", "clear", "calendars"}
+CALENDAR_COMMANDS = {"plan", "apply", "check", "sync", "add", "accept", "clear", "undo", "calendars"}
 
 def _in_bundle() -> bool:
     return "DayOptimizer.app" in sys.executable
@@ -1172,6 +1230,9 @@ def _calendar_run(argv: list[str], ask: bool = True) -> None:
     if ask and argv[:1] in (["plan"], ["add"]):
         _decide_unplaced(_take_unplaced())
     if argv[:1] == ["clear"] and "--yes" not in argv and _clear_file().exists() and sys.stdin.isatty() and _ask_clear():
+        _calendar_run([*argv, "--yes"])
+    if argv[:1] == ["undo"] and "--yes" not in argv and _last_writes(Storage(paths.db_path())).get("steps") \
+            and sys.stdin.isatty() and _ask_clear("Undo it?"):
         _calendar_run([*argv, "--yes"])
 
 def _first_run() -> bool:
@@ -1247,6 +1308,8 @@ def main(argv: list[str] | None = None):
     p_clear = sub.add_parser("clear", help="delete every block DayOptimizer planned (your own events stay)")
     p_clear.add_argument("--all", action="store_true", help="past blocks too, not only from now on")
     p_clear.add_argument("--yes", action="store_true", help="don't ask")
+    p_undo = sub.add_parser("undo", help="take back what the last run changed in the calendar (again: redo)")
+    p_undo.add_argument("--yes", action="store_true", help="don't ask")
     p_task = sub.add_parser("task", help='add work to place in free time: task "report for Friday, 3h"; '
                                          'several at once: task "tomorrow: laundry and exam prep, 2h each"; '
                                          'task list; task done t3')
@@ -1291,9 +1354,13 @@ def main(argv: list[str] | None = None):
         console.print("Working on your calendar...", style="dim")
         _calendar_run(argv)
         return
-    {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
-     "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask, "add": cmd_add, "accept": cmd_accept, "clear": cmd_clear, "task": cmd_task,
-     "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
+    try:
+        {"plan": cmd_plan, "apply": cmd_apply, "chat": cmd_chat, "check": cmd_check, "stats": cmd_stats,
+         "agent": cmd_agent, "garmin": cmd_garmin, "sync": cmd_sync, "calendars": cmd_calendars, "ask": cmd_ask,
+         "add": cmd_add, "accept": cmd_accept, "clear": cmd_clear, "undo": cmd_undo, "task": cmd_task,
+         "setup": cmd_web, "web": cmd_web}[args.command](args, rules, config)
+    finally:
+        _keep_undo(args.command)
 
 if __name__ == "__main__":
     main()
