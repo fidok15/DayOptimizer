@@ -552,26 +552,50 @@ def cmd_ask(args, rules, config):
     tasks = [t for t, _ in tasks]
     proposal = None
     before = {t.id: storage.get_task(t.id) for t in tasks}  # a task said again: as it was, for 'n'
-    if sys.stdin.isatty() and tasks:
-        for task in tasks:
-            storage.save_task(task)  # the planner reads them from storage; undone again on 'n'
-        proposal = _propose(tasks, to_create, rules, config)
-        if proposal is not None:
-            _show_proposal(proposal, tasks)
-    if sys.stdin.isatty():
+
+    def unsave(task):
+        if before[task.id] is not None:
+            storage.save_task(before[task.id])
+        elif storage.get_task(task.id):
+            storage.mark_task_done(task.id)
+    while sys.stdin.isatty():
+        if tasks:
+            for task in tasks:
+                storage.save_task(task)  # the planner reads them from storage; undone again on 'n'
+            proposal = _propose(tasks, to_create, rules, config)
+            if proposal is not None:
+                _show_proposal(proposal, tasks)
+        if not tasks and not to_create:
+            console.print("Nothing left to add.")
+            return
         try:
-            answer = console.input("Add to your calendar and replan? [Y/n] ").strip().lower()
+            answer = console.input("Add to your calendar and replan? [Y/n, or say what to change] ").strip()
         except (EOFError, KeyboardInterrupt):
             answer = "n"
-        if answer not in ("", "y", "yes", "t", "tak"):
+        if answer.lower() in ("", "y", "yes", "t", "tak"):
+            break
+        edit = None if answer.lower() in ("n", "no", "nie") else \
+            _edit(answer, tasks, to_create, rules, now, _placed_days(proposal))
+        if edit is not None:
+            new_tasks, to_create, what = edit
             for task in tasks:
-                if before[task.id] is not None:
-                    storage.save_task(before[task.id])
-                elif storage.get_task(task.id):
-                    storage.mark_task_done(task.id)
-            _proposal_file().unlink(missing_ok=True)
+                if task.id not in {t.id for t in new_tasks}:
+                    unsave(task)
+            tasks = new_tasks
+            console.print(f"Changed: {what}", markup=False, style="green")
+            for category, title, start, end in to_create:
+                console.print(f"  {start:%a %d.%m %H:%M}-{end:%H:%M}  {title}  ({category})", markup=False)
+            proposal = None
+            continue
+        for task in tasks:
+            unsave(task)
+        _proposal_file().unlink(missing_ok=True)
+        if answer.lower() in ("n", "no", "nie"):
             console.print("Nothing changed.")
             return
+        # not a change code can read: the model reads the message again with it
+        console.print("Reading it again with that...", style="dim")
+        return cmd_ask(argparse.Namespace(text=f"{args.text}; {answer}"), rules, config)
     if proposal is not None:  # what was shown is what gets written
         if _in_bundle() or sys.platform != "darwin":
             cmd_accept(argparse.Namespace(), rules, config)
@@ -592,6 +616,65 @@ def cmd_ask(args, rules, config):
     else:
         console.print("Working on your calendar...", style="dim")
         _calendar_run(["add", payload, *week])
+
+def _placed_days(proposal) -> dict:
+    """The day the proposal put each task on (its first block)."""
+    days = {}
+    for c in (proposal or {}).get("changes", []):
+        if c.kind == "create" and c.task_id and c.new_start is not None:
+            days[c.task_id] = min(days.get(c.task_id, c.new_start.date()), c.new_start.date())
+    return days
+
+def _edit(text: str, tasks, events, rules, now: datetime, placed: dict):
+    """A change said at the preview, read by code: '<name> o 16' / 'audio na 16:30'
+    (that time), '<name> jutro' / 'w piątek' (that day, also both), 'bez <name>' /
+    'usuń <name>' (not this time). The item is the task or event sharing most of
+    the words (or its id, 't18'). (tasks, events, what changed), or None when no
+    item is named or nothing about it can be read: then the model reads it."""
+    import unicodedata
+    from dayoptimizer.llm.backend import day_words, resolve_day
+    from dayoptimizer.llm.task_request import _DROP
+    low = text.lower()
+
+    def stems(words):  # 'siłownię' ~ 'silownia': endings and Polish letters aside; 'ml', 'IO' count
+        return {unicodedata.normalize("NFKD", w.replace("ł", "l")).encode("ascii", "ignore").decode()[:4]
+                for w in re.findall(r"\w{2,}", words.lower())} - {"na", "do", "po", "od", "za", "we", "at", "on",
+                                                                    "to", "in", "the", "and", "bez"}
+    said = stems(low)
+    items = [(t.id in re.findall(r"\bt\d+\b", low), len(said & stems(t.title)), "task", i) for i, t in enumerate(tasks)]
+    items += [(False, len(said & stems(e[1])), "event", i) for i, e in enumerate(events)]
+    item = max(items, default=None)
+    if item is None or not (item[0] or item[1]):
+        return None
+    _, _, kind, i = item
+    title = tasks[i].title if kind == "task" else events[i][1]
+    if _DROP.search(low) or re.search(r"\b(?:bez|without)\b", low):
+        return ([t for j, t in enumerate(tasks) if kind != "task" or j != i],
+                [e for j, e in enumerate(events) if kind != "event" or j != i], f"without {title}")
+    clock = re.search(r"\b(?:o|na|at|on|to|godz\.?|od|from)\s+(\d{1,2})(?:[:.](\d{2}))?\b(?!\s*(?:h\b|min|godz))"
+                      r"|\b(\d{1,2})[:.](\d{2})\b", low)
+    at = clock and time(int(clock[1] or clock[3]), int(clock[2] or clock[4] or 0)) \
+        if clock and int(clock[1] or clock[3]) < 24 else None
+    days = list(dict.fromkeys(d for p, d in day_words() if re.search(p, low)))
+    day = resolve_day(days[0], now.date()) if len(days) == 1 else None
+    if at is None and day is None:
+        return None
+    if kind == "event":
+        category, _, start, end = events[i]
+        new = datetime.combine(day or start.date(), at or start.timetz().replace(tzinfo=None)).astimezone()
+        events = [*events[:i], (category, title, new, new + (end - start)), *events[i + 1:]]
+        return tasks, events, f"{title} {new:%a %d.%m %H:%M}"
+    task = tasks[i]
+    on = day or placed.get(task.id) or (task.not_before or task.due or now).date()
+    if at is not None:  # that very time
+        start = datetime.combine(on, at).astimezone()
+        task = replace(task, not_before=start, due=start + timedelta(minutes=task.duration_min))
+        what = f"{title} {start:%a %d.%m %H:%M}-{task.due:%H:%M}"
+    else:  # some time that day
+        lo, hi = rules.awake(on)
+        task = replace(task, not_before=datetime.combine(on, lo).astimezone(), due=datetime.combine(on, hi).astimezone())
+        what = f"{title} {on:%a %d.%m}"
+    return [*tasks[:i], task, *tasks[i + 1:]], events, what
 
 def _events_json(events) -> str:
     import json

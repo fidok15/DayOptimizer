@@ -275,3 +275,27 @@ def test_undo_says_what_it_takes_back_and_does_it_with_yes(monkeypatch, capsys):
     assert taken == ["gone", "a"] and "Undone: 1 change (1 was gone already)" in capsys.readouterr().out
     cli._keep_undo("undo")  # what it wrote is the next undo: a redo
     assert [s["id"] for s in cli._last_writes(Storage(paths.db_path()))["steps"]] == ["a"]
+
+
+def test_a_change_at_the_preview_shows_it_again_and_the_model_reads_what_code_cant(routed, monkeypatch, capsys):
+    from datetime import timedelta
+    day = date.today() + timedelta(days=1)
+    heard = []
+
+    class Tasks:
+        def parse_request(self, text, today, now, categories):
+            heard.append(text)
+            return DayRequest(tasks=[TaskRequest(title="ml", category="Gym", duration_minutes=120,
+                                                 due_day="tomorrow", not_before_day="tomorrow")])
+
+    monkeypatch.setattr(cli, "_calendar_run", lambda argv, ask=True: routed.append(("bundle", argv)))
+    monkeypatch.setattr(cli, "make_backend", lambda cfg: Tasks())
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    answers = iter(["ml o 13", "a może inaczej", "n"])
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: next(answers))
+    cli.cmd_ask(type("A", (), {"text": "jutro ml 2h"})(), RULES, {"llm": {}})
+    out = capsys.readouterr().out
+    assert f"Changed: ml {day:%a %d.%m} 13:00-15:00" in out
+    assert [argv[0] for _, argv in routed] == ["plan", "plan", "plan"]  # shown again after the change
+    assert heard == ["jutro ml 2h", "jutro ml 2h; a może inaczej"] and "Nothing changed." in out
+    assert Storage(cli.paths.db_path()).open_tasks() == []
