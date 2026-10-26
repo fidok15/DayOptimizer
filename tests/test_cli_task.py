@@ -233,3 +233,28 @@ def test_a_task_next_week_plans_from_its_day():
     task = Task(id="t1", title="raport", category="Work", duration_min=120, not_before=at(6), due=at(22))
     assert cli._task_span([task]) == (day, 1)  # not the week from today, which never reaches it
     assert cli._span_argv(day, 1) == ["--date", f"{day:%d-%m-%Y}", "--week", "1"]
+
+
+def test_a_change_said_at_the_preview_is_read_by_code():
+    from datetime import datetime
+    from dayoptimizer.core.models import Task
+    now = datetime(2026, 10, 26, 10).astimezone()
+    tue = date(2026, 10, 27)
+    at = lambda d, h, m=0: datetime.combine(d, time(h, m)).astimezone()
+    audio = Task(id="t18", title="nauka audio", category="Learn", duration_min=120)
+    aws = Task(id="t19", title="nauka aws", category="Learn", duration_min=60)
+    meet = ("Meets", "spotanie", at(now.date(), 11), at(now.date(), 12))
+    edit = lambda text, placed={}: cli._edit(text, [audio, aws], [meet], RULES, now, placed)
+    tasks, events, what = edit("audio o 16", {"t18": tue})  # the day the preview put it on
+    assert (tasks[0].not_before, tasks[0].due) == (at(tue, 16), at(tue, 18)) and tasks[1] == aws
+    assert what == "nauka audio Tue 27.10 16:00-18:00"
+    tasks, _, _ = edit("t19 jutro")
+    assert (tasks[1].not_before, tasks[1].due) == (at(tue, 5), at(tue, 23, 59))  # some time that day
+    tasks, _, _ = edit("aws w środę na 16:30")
+    assert tasks[1].not_before == at(date(2026, 10, 28), 16, 30)
+    _, events, _ = edit("spotkanie o 13")  # an event keeps its length
+    assert events[0][2:] == (at(now.date(), 13), at(now.date(), 14))
+    tasks, events, what = edit("bez aws")
+    assert [t.id for t in tasks] == ["t18"] and events == [meet] and what == "without nauka aws"
+    assert edit("audio 2h dłużej") is None  # nothing code reads: the model reads it again
+    assert edit("i jeszcze pranie o 18") is None  # nothing it names
