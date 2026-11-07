@@ -52,7 +52,7 @@ export function usePlanner() {
           setAppCalendars(calendars);
           setCategories((c) =>
             Object.fromEntries(
-              Object.entries(c).map(([name, cat]) => [name, cat.color || !colors[name] ? cat : { ...cat, color: colors[name] }]),
+              Object.entries(c).map(([name, cat]) => [name, cat.color || !Object.hasOwn(colors, name) ? cat : { ...cat, color: colors[name] }]),
             ),
           );
         });

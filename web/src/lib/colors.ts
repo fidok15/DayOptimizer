@@ -11,7 +11,8 @@ const DEFAULTS: Record<string, string> = {
 
 export const categoryColor = (name: string, stored?: string): string => {
   if (stored) return stored;
-  if (DEFAULTS[name]) return DEFAULTS[name];
+  // own keys only: a category called "constructor" must not get Object.prototype.constructor
+  if (Object.hasOwn(DEFAULTS, name)) return DEFAULTS[name];
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return SWATCHES[h % SWATCHES.length];

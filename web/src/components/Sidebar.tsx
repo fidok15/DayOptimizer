@@ -309,8 +309,8 @@ export default function Sidebar(props: {
   const offered = Object.entries(calendars).filter(([name]) => name && !have.has(name.toLowerCase()));
 
   const { counts, totals } = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const totals: Record<string, number> = {};
+    const counts: Record<string, number> = Object.create(null); // keyed by the user's names: no inherited keys
+    const totals: Record<string, number> = Object.create(null);
     for (const d of oneDay ? [TEMPLATE_DAY] : WEEKDAYS)
       for (const b of week[d]) {
         counts[b.category] = (counts[b.category] ?? 0) + 1;
