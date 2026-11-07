@@ -424,7 +424,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     seeds = {}
     for d in days:
         for x in (routine_days or {}).get(d, []):
-            if _intent(x) and x[0] >= now:
+            midnight = datetime.combine(d, time(0)).astimezone()
+            if _intent(x) and x[0] >= now and window_rule(rules, x[2], minutes(midnight, x[0]),
+                                                           minutes(midnight, x[1]), d.weekday()) is None:
+                # an open block where a note rules its category out is left out, as a model's would be
                 seed = Block(day=d.isoformat(), start=f"{x[0]:%H:%M}", end=_spans(d, [x[:2]]).split("-")[1],
                              category=x[2], title=x[3])
                 seeds[id(seed)] = (seed, x)
@@ -866,7 +869,9 @@ def said_first(tasks: list[Task], left: dict[str, int], days: list[date], routin
     free of events and of fixed or protected routine. The flexible routine
     gives way to them (it moves or goes, see _forgotten_routine)."""
     out = []
+    # an overdue task has no window end any more (window() gives None): _fill places it as soon as possible
     for t in sorted((t for t in tasks if not t.done and left.get(t.id, 0) > 0 and t.not_before and t.due
+                     and not overdue(t, now)
                      and t.due.date() == t.not_before.date() in days and t.due - t.not_before < SAID_WINDOW),
                     key=lambda t: t.due):
         taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in out]

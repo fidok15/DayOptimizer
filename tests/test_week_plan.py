@@ -1395,3 +1395,19 @@ def test_a_task_said_for_a_part_of_the_day_goes_first_and_the_flexible_routine_g
     # the commute takes the first time after breakfast; ML still fills the Deep work after it
     assert got == [("t1", "08:15-08:45"), ("t1", "09:00-10:30"), ("t2", "07:30-08:15")]
     assert unscheduled == []
+
+
+def test_an_overdue_task_with_a_narrow_window_does_not_break_planning():
+    from datetime import timedelta
+
+    from dayoptimizer.llm.week_plan import said_first
+    late = task(not_before=NOW - timedelta(hours=4), due=NOW - timedelta(hours=1))
+    assert said_first([late], {"t1": 120}, [NOW.date()], {}, [], None, NOW) == []
+
+
+def test_an_open_block_where_a_note_rules_its_category_out_is_left_out():
+    rules = parse_rules([{"type": "not_after", "category": "Learn", "time": "18:00", "source": "no study after 18"}])
+    routine = {MON: sleep_only(MON)[MON] + [_open(MON, "18:00", "20:00", "Deep work")]}
+    changes, *_ = plan_days(Small(WeekPlan()), [MON], "# r", OCATS, [], NOTES, rules, NOW, attempts=1,
+                            routine_days=routine)
+    assert _day(changes, "Deep work") == []
