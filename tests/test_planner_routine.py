@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 """The user's typical week drives the plan when there is one."""
 import dataclasses
 from datetime import date, datetime
@@ -173,7 +175,7 @@ def test_a_block_pushed_by_a_new_event_still_obeys_the_notes():
 def test_a_planner_block_that_breaks_a_note_is_moved_back_inside_the_rules():
     rules = _with_notes([{"type": "not_after", "category": "Learn", "time": "21:00", "source": "no study after 21"}],
                         {4: [RoutineBlock(20 * 60, 21 * 60, "Learn", "English")]})
-    late = _ev("l", "Learn", 21, 22, "English", m1=30, m2=30)
+    late = replace(_ev("l", "Learn", 21, 22, "English", m1=30, m2=30), managed=True)  # the planner's block
     mine = _ev("u", "Learn", 22, 23, "Exam prep", m1=30)
     changes = plan_day(DAY, [late, mine], None, rules, now=EARLY)
     moves = [(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes if c.kind == "move"]

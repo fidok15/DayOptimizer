@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, time, timedelta
 
 from dayoptimizer.core.constraints import allowed_window, explain, free_windows, gap_rule, skippable, week_rule, window_rule
@@ -66,10 +67,17 @@ def _anchored(ev: Event) -> bool:
     return ev.calendar == "Transport" and ev.title.startswith("Commute:")
 
 def _effectively_movable(rules: Rules, calendar: str, title: str) -> bool:
-    """A block is effectively movable if its category is movable in config OR
-    the planner itself created it (recognized by title): planner-created blocks
-    are always the planner's to manage, even inside a user-fixed category."""
+    """A block the planner is about to create is movable if its category is
+    movable in config OR it is one of the planner's own kinds (by title):
+    planner-created blocks are the planner's to manage, even inside a
+    user-fixed category."""
     return rules.is_movable(calendar) or _is_planner_managed(title, rules)
+
+def _movable(rules: Rules, ev: Event) -> bool:
+    """An event already in the calendar is movable if its category is, or the
+    planner created it (its notes marker, `managed`). Never by title: the
+    user's own 'Lunch' in a fixed category moves only after they agree."""
+    return rules.is_movable(ev.calendar) or ev.managed
 
 def resolve_conflicts(events, rules, day_start, day_end):
     midnight = datetime.combine(day_start.date(), time(0)).astimezone()
@@ -104,7 +112,7 @@ def resolve_conflicts(events, rules, day_start, day_end):
             if ev.calendar == "Sleep" or conflict.calendar == "Sleep":
                 sleep_block = ev if ev.calendar == "Sleep" else conflict
                 other = conflict if sleep_block is ev else ev
-                if not _effectively_movable(rules, other.calendar, other.title):
+                if not _movable(rules, other):
                     record(PlannedChange(
                         kind="note", category="Sleep", title=sleep_block.title,
                         reason=(f"sleep window overlaps fixed '{other.title}' "
@@ -118,10 +126,10 @@ def resolve_conflicts(events, rules, day_start, day_end):
             elif _anchored(ev) != _anchored(conflict):
                 mover = conflict if _anchored(ev) else ev
                 stay = ev if mover is conflict else conflict
-                requires_approval = not _effectively_movable(rules, mover.calendar, mover.title)
+                requires_approval = not _movable(rules, mover)
             else:
-                ev_movable = _effectively_movable(rules, ev.calendar, ev.title)
-                other_movable = _effectively_movable(rules, conflict.calendar, conflict.title)
+                ev_movable = _movable(rules, ev)
+                other_movable = _movable(rules, conflict)
                 requires_approval = not ev_movable and not other_movable
                 if ev_movable == other_movable:
                     mover = ev if rules.priority(ev.calendar) <= rules.priority(conflict.calendar) else conflict
@@ -217,8 +225,7 @@ def adjust_gym(events, garmin, rules, day_start, day_end, now):
             changes.append(PlannedChange(kind="move", category="Gym", title=gym.title,
                                          reason=reason, event_id=gym.id,
                                          new_start=new_start, new_end=new_start + duration,
-                                         requires_approval=not _effectively_movable(
-                                             rules, gym.calendar, gym.title)))
+                                         requires_approval=not _movable(rules, gym)))
         else:
             changes.append(PlannedChange(kind="note", category="Gym", title=gym.title,
                                          reason=reason + "; no later slot — consider a lighter workout or skipping",
@@ -379,14 +386,18 @@ def _project(events, changes):
             continue
         if c.kind == "move" and c.event_id is not None and c.event_id in by_id:
             old = projected[by_id[c.event_id]]
-            projected[by_id[c.event_id]] = Event(
-                id=old.id, calendar=old.calendar, title=old.title,
-                start=c.new_start, end=c.new_end, location=old.location)
+            moved = Event(id=old.id, calendar=old.calendar, title=old.title,
+                          start=c.new_start, end=c.new_end, location=old.location, managed=old.managed)
+            if c.requires_approval:
+                # not moved until the user agrees: the old time stays taken, and so does the new one
+                projected.append(replace(moved, id=f"pending:{old.id}"))
+            else:
+                projected[by_id[c.event_id]] = moved
         elif c.kind == "create":
             projected.append(Event(
                 id=f"planned:{c.category}:{c.new_start.isoformat()}",
                 calendar=c.category, title=c.title,
-                start=c.new_start, end=c.new_end))
+                start=c.new_start, end=c.new_end, managed=True))
     return projected
 
 def _dedupe_moves(changes):
@@ -435,7 +446,7 @@ def enforce_notes(day, events, rules, now, day_start, day_end):
     midnight = datetime.combine(day, time(0)).astimezone()
     working = list(events)
     for ev in sorted(events, key=lambda e: e.start):
-        if ev.start < now or not (rules.is_movable(ev.calendar) and _is_planner_managed(ev.title, rules)):
+        if ev.start < now or not (rules.is_movable(ev.calendar) and ev.managed):
             continue
         broken = window_rule(rules.note_rules, ev.calendar, minutes(midnight, ev.start),
                              minutes(midnight, ev.end), day.weekday())

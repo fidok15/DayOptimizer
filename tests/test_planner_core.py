@@ -74,13 +74,20 @@ def test_fixed_vs_fixed_conflict_without_free_slot_keeps_note():
     assert changes[0].kind == "note" and changes[0].requires_approval
     assert "user decision required" in changes[0].reason
 
-def test_planner_managed_title_in_fixed_category_is_effectively_movable():
-    events = [_ev("w", "Work", 9, 12, title="Sprint"), _ev("o", "Work", 11, 13, title="Own work")]
+def test_planner_block_in_fixed_category_is_effectively_movable():
+    from dataclasses import replace
+    events = [_ev("w", "Work", 9, 12, title="Sprint"),
+              replace(_ev("o", "Work", 11, 13, title="Own work"), managed=True)]
     changes = resolve_conflicts(events, RULES, D.replace(hour=7), D.replace(hour=22))
     assert len(changes) == 1
     ch = changes[0]
     assert ch.kind == "move" and ch.event_id == "o"
     assert not ch.requires_approval
+
+def test_users_event_titled_like_a_planner_block_needs_approval():
+    events = [_ev("w", "Work", 9, 12, title="Sprint"), _ev("o", "Work", 11, 13, title="Own work")]
+    changes = resolve_conflicts(events, RULES, D.replace(hour=7), D.replace(hour=22))
+    assert changes and all(c.requires_approval for c in changes if c.kind == "move")
 
 def test_sleep_vs_sleep_overlap_is_not_a_conflict():
     s1 = Event(id="s1", calendar="Sleep", title="Sleep",
@@ -189,3 +196,16 @@ def test_default_wake_is_day_start_local_on_the_night_clocks_change(monkeypatch)
     finally:
         monkeypatch.undo()
         _time.tzset()
+
+
+def test_a_move_waiting_for_approval_keeps_both_times_taken():
+    from dayoptimizer.core.models import PlannedChange
+    from dayoptimizer.core.planner import _project
+    ev = _ev("m", "Meeting", 9, 10)
+    move = PlannedChange(kind="move", category="Meeting", title="x", reason="r", event_id="m",
+                         new_start=D.replace(hour=14), new_end=D.replace(hour=15), requires_approval=True)
+    taken = sorted((e.start.hour, e.end.hour) for e in _project([ev], [move]))
+    assert taken == [(9, 10), (14, 15)]
+    auto = PlannedChange(kind="move", category="Meeting", title="x", reason="r", event_id="m",
+                         new_start=D.replace(hour=14), new_end=D.replace(hour=15))
+    assert [(e.start.hour, e.end.hour) for e in _project([ev], [auto])] == [(14, 15)]
