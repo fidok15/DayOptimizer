@@ -152,10 +152,12 @@ def test_a_suggestion_something_took_goes_and_its_time_is_offered_again():
     storage, cal = Storage(":memory:"), Cal(plan(SAT))
     run(Model(f("14:00", "15:30")), cal, storage, days=(SAT,))
     cal.events.append(ev("u1", "Gym", "Trening", SAT, "14:00", "14:30"))  # the user's new event
-    model = Model(f("14:30", "15:30", "Spacer"))
-    changes, _ = run(model, cal, storage, days=(SAT,))
+    model = Model(f("14:30", "15:30", "Spacer"), f("14:45", "15:30", "Spacer"))
+    changes, refused = run(model, cal, storage, days=(SAT,))
     assert [(c.kind, c.title) for c in changes] == [("delete", "Czytanie (sugestia)"), ("create", "Spacer (sugestia)")]
-    assert "Gaps to fill: 14:30-15:30;" in model.prompts[0]
+    # the 15-minute break after the user's event is not free time
+    assert "Gaps to fill: 14:45-15:30;" in model.prompts[0] and "not inside a free gap" in refused[0]
+    assert changes[1].new_start == at(SAT, "14:45")
 
 
 def test_a_suggestion_the_planner_hid_and_then_covered_goes_even_if_it_started_meanwhile():
