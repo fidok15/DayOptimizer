@@ -65,3 +65,11 @@ def test_move_event_makes_an_all_day_event_timed():
     client.move_event("dent", start, start + timedelta(hours=1))
     ev.setAllDay_.assert_called_once_with(False)
     ev.setStartDate_.assert_called_once_with(start)
+
+
+def test_time_in_title_reads_am_pm_with_minutes():
+    assert time_in_title("Dentist 2:30 pm").start == time(14, 30)
+    assert time_in_title("Call 12:30 am").start == time(0, 30)
+    assert time_in_title("Lunch 12:15 PM").start == time(12, 15)
+    tt = time_in_title("Meeting 2:30-3:30 pm")
+    assert (tt.start, tt.end) == (time(14, 30), time(15, 30))

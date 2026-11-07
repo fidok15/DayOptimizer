@@ -16,8 +16,10 @@ DEFAULT_MINUTES = 60
 
 _H = r"([01]?\d|2[0-3])"
 _M = r"([0-5]\d)"
-_RANGE = re.compile(rf"(?<![\d.:]){_H}(?:[:.]{_M})?\s*[-–—]\s*{_H}(?:[:.]{_M})?(?![\d.:])")
-_CLOCK = re.compile(rf"(?<![\d.:]){_H}([:.]){_M}(?![\d.:])")
+_AMPM = r"(?:\s*([ap]m)\b)?"
+_RANGE = re.compile(rf"(?<![\d.:]){_H}(?:[:.]{_M})?{_AMPM}\s*[-–—]\s*{_H}(?:[:.]{_M})?{_AMPM}(?![\d.:])",
+                    re.IGNORECASE)
+_CLOCK = re.compile(rf"(?<![\d.:]){_H}([:.]){_M}{_AMPM}(?![\d.:])", re.IGNORECASE)
 _MARKED = re.compile(rf"(?:\b(?:o|at|godz\.?|od|from)\s+|@\s*){_H}(?![\d.:])", re.IGNORECASE)
 _SUFFIX = re.compile(rf"(?<![\d.:])(1[0-2]|0?\d)\s*(am|pm)\b|(?<![\d.:]){_H}\s*h\b", re.IGNORECASE)
 _BARE = re.compile(rf"(?<![\d.:]){_H}(?![\d.:])")
@@ -30,16 +32,24 @@ class TitleTime:
     sure: bool
 
 
+def _hour(h: int, suffix: str | None) -> int:
+    """12-hour clock to 24: '2:30 pm' is 14:30, '12:30 am' 00:30."""
+    if not suffix or not 1 <= h <= 12:
+        return h
+    return h % 12 + (12 if suffix.lower() == "pm" else 0)
+
+
 def time_in_title(title: str) -> TitleTime | None:
     """The time a title names, or None. `sure` is False when it may well mean
     something else: a bare number, a dd.mm-looking "12.10", an hour before 6
     without minutes, or several different times."""
     if m := _RANGE.search(title):
-        h1, m1, h2, m2 = m.groups()
-        start, end = time(int(h1), int(m1 or 0)), time(int(h2), int(m2 or 0))
+        h1, m1, p1, h2, m2, p2 = m.groups()
+        start = time(_hour(int(h1), p1 or p2), int(m1 or 0))
+        end = time(_hour(int(h2), p2), int(m2 or 0))
         if end > start:
             return TitleTime(start, end, m1 is not None or m2 is not None or int(h1) >= 6)
-    clocks = [(int(h), sep, int(mi)) for h, sep, mi in _CLOCK.findall(title)]
+    clocks = [(_hour(int(h), p), sep, int(mi)) for h, sep, mi, p in _CLOCK.findall(title)]
     if clocks:
         h, sep, mi = clocks[0]
         looks_like_date = sep == "." and 1 <= h <= 31 and 1 <= mi <= 12
