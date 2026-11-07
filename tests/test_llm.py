@@ -307,3 +307,12 @@ def test_weekday_names_of_the_users_languages_check_the_model(monkeypatch):
         assert t.due_day == "friday"  # the model's Thursday was not what the message says
     finally:
         backend.day_words.cache_clear()
+
+
+def test_after_today_starts_tomorrow():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    req = DayRequest(tasks=[TaskRequest(title="write report", category="Work")])
+    t = pin_day("write report after today", req).tasks[0]
+    assert (t.not_before_day, t.due_day) == ("tomorrow", None)
+    t = pin_day("po dzisiaj napisz raport", DayRequest(tasks=[TaskRequest(title="napisz raport")])).tasks[0]
+    assert t.not_before_day == "tomorrow"
