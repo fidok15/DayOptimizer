@@ -1271,8 +1271,11 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
               history: dict[str, list[date]] | None = None, expect: set[date] | frozenset[date] = frozenset(),
               attempts: int = 3, tasks: list[Task] = (), left: dict[str, int] | None = None,
               few_shot: bool = True, reserved: Reserved | None = None,
-              routine_days: dict | None = None) -> tuple[list[PlannedChange], str, list[str], list[str]]:
+              routine_days: dict | None = None,
+              buffer_minutes: int = 0) -> tuple[list[PlannedChange], str, list[str], list[str]]:
     """Ask, check, send the problems back; at most `attempts` rounds.
+    `buffer_minutes`: the break kept before and after each of the user's own
+    timed events; their times are widened by it for the model and every check.
     Returns the calendar changes, the model's summary, what was dropped and the
     tasks it could not fit ("t2: reason").
     A small local model (`one_day_at_a_time`) gets one day per request; every
@@ -1282,6 +1285,12 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
     only costs rounds; a task due that day is reported instead.
     When the small model fails on a day (too slow, broken answer) twice, that
     day alone is planned by code: its routine and its tasks (`_ByRule`)."""
+    if buffer_minutes > 0:
+        pad = timedelta(minutes=buffer_minutes)
+        events = [replace(e, start=e.start - pad, end=e.end + pad) if not e.managed and not e.all_day else e
+                  for e in events]
+        routine += (f"\n\nBreaks: the times of the person's own events below already include a "
+                    f"{buffer_minutes}-minute break before and after each.")
     late = [d for d in days if datetime.combine(d + timedelta(days=1), time(0)).astimezone() - now < timedelta(hours=1)]
     days = [d for d in days if d not in late]
     left = dict(left or {})

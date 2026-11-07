@@ -1447,3 +1447,12 @@ def test_the_garmin_summary_reaches_a_remote_model_only_when_the_user_allows_it(
                                                                   "llm": {"share_health": share}}))
         cli._llm_plan([date.today()], Cal(), cli.Storage(":memory:"), Rules())
         assert [n for n, h in seen if h] == (["Remote", "Local"] if share else ["Local"])
+
+
+def test_blocks_keep_the_break_around_the_users_events():
+    tight = WeekPlan(blocks=[block(MON, "12:00", "12:30")])  # LECTURE ends 12:00
+    changes, *_ = plan_days(Small(tight), [MON], "# r", CATS, [LECTURE], NOTES, [], NOW, attempts=1)
+    assert [c.new_start for c in changes if c.kind == "create"] == [at(MON, "12:00")]
+    changes, *_ = plan_days(Small(tight), [MON], "# r", CATS, [LECTURE], NOTES, [], NOW, attempts=1,
+                            buffer_minutes=15)
+    assert not [c for c in changes if c.kind == "create" and c.new_start < at(MON, "12:15")]

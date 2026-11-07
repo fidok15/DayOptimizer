@@ -193,7 +193,8 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
             changes, summary, dropped, unscheduled = plan_days(
                 backend, days, routine, list(config["categories"]), window, notes, rules.note_rules, now,
                 shared, history, {d for d in days if rules.typical_week.get(d.weekday())},
-                tasks=tasks, left=left, reserved=reserved, routine_days=routine_days)
+                tasks=tasks, left=left, reserved=reserved, routine_days=routine_days,
+                buffer_minutes=getattr(rules, "buffer_minutes", 0))
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
@@ -1369,6 +1370,7 @@ _TAKES_WORDS = {"ask", "add", "agent", "garmin", "task"}
 
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
+    load_dotenv(paths.app_dir() / ".env")  # the key set on the setup page wins over the repo's .env
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
     try:
         rules, config = _load_config()
