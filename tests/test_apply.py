@@ -186,7 +186,8 @@ def test_cmd_apply_missing_calendar_logs_error_and_applies_the_rest(monkeypatch,
     assert f"#{pid_bad} failed: calendar 'Learn' not found" in out
     assert "Applied 1 of 2" in out
     storage = _real_storage()
-    assert storage.get_pending() == []
+    # the create kept for a retry once its calendar exists; the applied move is gone
+    assert [pid for pid, _ in storage.get_pending()] == [pid_bad]
     logs = storage.recent_changes()
     assert any(desc.startswith("[error]") and "not found" in reason
                for _, desc, reason in logs)

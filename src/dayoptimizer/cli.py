@@ -368,6 +368,7 @@ def cmd_apply(args, rules, config):
         return
     pending = storage.get_pending(ids)
     applied = 0
+    done: list[int] = []  # applied, or a move of an event that is gone: it can never apply
     for pid, c in pending:
         try:
             if c.kind == "move":
@@ -377,14 +378,17 @@ def cmd_apply(args, rules, config):
         except KeyError:
             storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", _missing(c))
             console.print(f"#{pid} failed: {_missing(c)}", markup=False)
+            if c.kind == "move":
+                done.append(pid)
             continue
-        except RuntimeError as exc:
+        except RuntimeError as exc:  # a failed save: kept, so  dayoptimizer apply  can try again
             storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", str(exc))
             console.print(f"#{pid} failed: {exc}", markup=False)
             continue
         storage.log_change(f"[applied #{pid}] {c.kind} {c.category}: {c.title}", c.reason)
         applied += 1
-    storage.delete_pending([pid for pid, _ in pending])
+        done.append(pid)
+    storage.delete_pending(done)
     missing = sorted(set(ids) - {pid for pid, _ in pending})
     if missing:
         console.print(f"No pending change {', '.join(f'#{i}' for i in missing)} — already applied, "
