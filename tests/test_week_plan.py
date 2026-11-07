@@ -138,6 +138,7 @@ def test_cli_falls_back_to_the_next_model_when_one_fails(monkeypatch):
     changes, applied, errors, _, _, _ = cli._llm_plan([MON], cal, storage, Rules(), confirm=lambda c: True)
     assert cal.created == [("Food", "Lunch", at(MON, "16:00"))] and errors == []
     assert len(good.prompts) == 1
+    assert {e.title for e in storage.events_on(MON.isoformat())} >= {LECTURE.title}  # the cache MCP reads
 
 
 def test_an_empty_plan_for_a_routine_day_is_a_problem():

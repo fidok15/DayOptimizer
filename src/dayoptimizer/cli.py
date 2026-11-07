@@ -206,6 +206,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
             record(done, storage)
             changes, applied, errors = changes + more, applied + done, errors + failed
         _note_unplaced(unscheduled)
+        storage.sync_events(calendar.list_events(lo, hi), lo, hi)  # the cache MCP reads shows the new plan
         return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
