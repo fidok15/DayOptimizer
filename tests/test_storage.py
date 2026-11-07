@@ -232,3 +232,22 @@ def test_old_rows_without_task_id_still_load(tmp_path):
     s._conn.commit()
     assert s.events_on("2026-07-03")[0].task_id is None
     assert s.get_pending()[0][1].task_id is None
+
+
+def test_locked_db_is_not_set_aside(tmp_path, monkeypatch):
+    import sqlite3
+
+    import pytest
+    db = tmp_path / "t.db"
+    Storage(db).save_garmin(GarminSummary(date="2026-07-03", sleep_score=70))
+
+    def locked(self, path):
+        exc = sqlite3.OperationalError("database is locked")
+        exc.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        raise exc
+    monkeypatch.setattr(Storage, "_open", locked)
+    with pytest.raises(sqlite3.OperationalError):
+        Storage(db)
+    assert not list(tmp_path.glob("t.db.corrupt-*"))
+    monkeypatch.undo()
+    assert Storage(db).get_garmin("2026-07-03").sleep_score == 70
