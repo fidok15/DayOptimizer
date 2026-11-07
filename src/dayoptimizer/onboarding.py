@@ -115,6 +115,7 @@ class LLMConfig(BaseModel):
     ollama_model: str = Field(default="qwen3:8b", min_length=1, max_length=100)
     ollama_mode: Literal["slots", "layout"] = "slots"
     model: str = Field(default="claude-sonnet-5-5", min_length=1, max_length=100)
+    share_health: StrictBool = False  # the Garmin summary goes to a remote model (Anthropic) too
 
 
 class UserConfig(BaseModel):

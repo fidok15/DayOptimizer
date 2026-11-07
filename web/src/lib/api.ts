@@ -80,8 +80,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export const garminStatus = (): Promise<{ connected: boolean }> =>
-  fetch("/api/garmin", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { connected: false }));
+export type GarminState = { connected: boolean; share_health: boolean };
+export const garminStatus = (): Promise<GarminState> =>
+  fetch("/api/garmin", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { connected: false, share_health: false }));
+export const garminShare = (share: boolean) => post<GarminState>("/api/garmin/share", { share });
 export const garminLogin = (email: string, password: string) =>
   post<{ status: "connected" | "mfa" }>("/api/garmin/login", { email, password });
 export const garminMfa = (code: string) => post<{ status: "connected" }>("/api/garmin/mfa", { code });

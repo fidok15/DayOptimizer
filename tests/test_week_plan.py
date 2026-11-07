@@ -1411,3 +1411,39 @@ def test_an_open_block_where_a_note_rules_its_category_out_is_left_out():
     changes, *_ = plan_days(Small(WeekPlan()), [MON], "# r", OCATS, [], NOTES, rules, NOW, attempts=1,
                             routine_days=routine)
     assert _day(changes, "Deep work") == []
+
+
+def test_the_garmin_summary_reaches_a_remote_model_only_when_the_user_allows_it(monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.core.models import GarminSummary
+    seen = []
+
+    def fake_plan_days(backend, days, routine, cats, window, notes, rules, now, health, *a, **kw):
+        seen.append((type(backend).__name__, health))
+        raise RuntimeError("stop here")
+
+    class Remote:
+        local = False
+
+    class Local:
+        local = True
+
+    class Rules:
+        has_routine = True
+        note_rules = []
+        typical_week = {}
+
+    monkeypatch.setattr("dayoptimizer.llm.week_plan.plan_days", fake_plan_days)
+    monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [Remote(), Local()])
+    monkeypatch.setattr(cli, "_fetch_garmin", lambda storage, day: GarminSummary(date=day, sleep_score=80))
+
+    class Cal:
+        def list_events(self, start, end):
+            return []
+
+    for share in (False, True):
+        seen.clear()
+        monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in CATS},
+                                                                  "llm": {"share_health": share}}))
+        cli._llm_plan([date.today()], Cal(), cli.Storage(":memory:"), Rules())
+        assert [n for n, h in seen if h] == (["Remote", "Local"] if share else ["Local"])

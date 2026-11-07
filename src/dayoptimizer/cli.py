@@ -188,9 +188,11 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
         name = type(backend).__name__.removesuffix("Backend")
         console.print(f"Planning with {name}...", style="dim")
         try:
+            # the Garmin summary stays on the Mac unless the user lets a remote model see it (setup page)
+            shared = health if getattr(backend, "local", False) or (config.get("llm") or {}).get("share_health") else None
             changes, summary, dropped, unscheduled = plan_days(
                 backend, days, routine, list(config["categories"]), window, notes, rules.note_rules, now,
-                health, history, {d for d in days if rules.typical_week.get(d.weekday())},
+                shared, history, {d for d in days if rules.typical_week.get(d.weekday())},
                 tasks=tasks, left=left, reserved=reserved, routine_days=routine_days)
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",

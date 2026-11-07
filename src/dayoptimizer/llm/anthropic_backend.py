@@ -19,6 +19,8 @@ from dayoptimizer.llm.backend import (
 
 
 class AnthropicBackend:
+    local = False  # prompts leave the Mac: health data only with llm.share_health
+
     def __init__(self, model: str = "claude-sonnet-5-5"):
         self.model = model
         self.client = anthropic.Anthropic()

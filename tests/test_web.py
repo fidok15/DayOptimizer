@@ -135,7 +135,16 @@ def test_http_garmin_mfa_flow(server, monkeypatch):
     assert post("/api/garmin/mfa", {"code": "12a"})[0] == 422
     assert post("/api/garmin/mfa", {"code": "123456"}) == (200, {"status": "connected"})
     assert calls == [("api", "123456")]
-    assert _request(server, "GET", path="/api/garmin") == (200, {"connected": False})
+    assert _request(server, "GET", path="/api/garmin") == (200, {"connected": False, "share_health": False})
+
+
+def test_http_garmin_share_is_saved_and_validated(server):
+    hdr = {"Content-Type": "application/json"}
+    post = lambda body: _request(server, "POST", body, hdr, "/api/garmin/share")
+    assert post({"share": "yes"})[0] == 422
+    assert post({"share": True}) == (200, {"connected": False, "share_health": True})
+    assert _request(server, "GET", path="/api/garmin")[1]["share_health"] is True
+    assert post({"share": False})[1]["share_health"] is False
 
 
 def test_http_garmin_bad_password_never_echoed(server, monkeypatch):

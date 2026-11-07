@@ -346,7 +346,10 @@ If you ever rebuild your `.venv` (e.g. after upgrading Python), rerun
 - With a local Ollama model, planning stays on your Mac. When Claude plans
   (`ANTHROPIC_API_KEY` set), the Anthropic API receives your routine, notes,
   open tasks and the week's events (titles, times, locations). Garmin data
-  stays local in the terminal app.
+  stays on your Mac unless you turn on "Let Claude see my health summary"
+  in the Garmin window of `dayoptimizer setup`; then a one-line summary
+  (sleep, Body Battery, HRV, stress, resting heart rate) goes with each plan
+  Claude makes. A local Ollama model always gets it.
 - In plugin mode, event titles and health summaries are sent to Claude as
   part of your conversation (i.e., to the Anthropic API) so Claude can
   explain and discuss your plan.

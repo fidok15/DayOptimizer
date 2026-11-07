@@ -19,6 +19,8 @@ API
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
   POST /api/garmin/mfa      <- {code}            -> {status: connected}
   POST /api/garmin/disconnect                    -> {status: disconnected}
+  POST /api/garmin/share    <- {share: bool}     -> {connected, share_health}  (let Claude see the
+                    Garmin summary when it plans; off = it stays on the Mac, a local model still sees it)
   Errors are {error, code?}. The Garmin password is only passed through to
   Garmin's sign-in; only the returned session tokens are stored.
 """
@@ -488,7 +490,20 @@ _mfa_pending: dict = {}
 
 def garmin_status() -> dict:
     from dayoptimizer.core.garmin import garmin_configured
-    return {"connected": garmin_configured()}
+    return {"connected": garmin_configured(),
+            "share_health": bool((_local().get("llm") or {}).get("share_health", False))}
+
+
+def garmin_share(payload: object) -> dict:
+    share = payload.get("share") if isinstance(payload, dict) else None
+    if not isinstance(share, bool):
+        raise ApiError("invalid", "share must be true or false.", 422)
+    local = _local()
+    llm = dict(local.get("llm") or {})
+    llm["share_health"] = share
+    local["llm"] = llm
+    save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+    return garmin_status()
 
 
 def _str_field(payload: object, key: str, max_len: int) -> str:
@@ -614,6 +629,7 @@ class Handler(SimpleHTTPRequestHandler):
         "/api/garmin/login": garmin_login,
         "/api/garmin/mfa": garmin_mfa,
         "/api/garmin/disconnect": garmin_disconnect,
+        "/api/garmin/share": garmin_share,
     }
 
     def do_POST(self):

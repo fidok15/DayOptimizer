@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckCircle, CircleNotch, Eye, EyeSlash, LockKey, ShieldCheck, Trash, WarningCircle, Watch, X } from "@phosphor-icons/react";
-import { ApiError, garminDisconnect, garminLogin, garminMfa, garminStatus } from "../lib/api";
+import { ApiError, garminDisconnect, garminLogin, garminMfa, garminShare, garminStatus } from "../lib/api";
 
 type Step = "form" | "mfa" | "connected";
 
@@ -24,10 +24,14 @@ export default function GarminConnect() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmOff, setConfirmOff] = useState(false);
+  const [share, setShare] = useState(false);
 
   useEffect(() => {
     garminStatus()
-      .then((s) => setConnected(s.connected))
+      .then((s) => {
+        setConnected(s.connected);
+        setShare(s.share_health);
+      })
       .catch(() => setConnected(false));
   }, []);
 
@@ -88,6 +92,11 @@ export default function GarminConnect() {
       done();
     });
   };
+
+  const toggleShare = (on: boolean) =>
+    run(async () => {
+      setShare((await garminShare(on)).share_health);
+    });
 
   const disconnect = () =>
     run(async () => {
@@ -206,7 +215,8 @@ export default function GarminConnect() {
                 <li className="flex gap-2">
                   <ShieldCheck size={16} weight="bold" className="shrink-0 text-accent" aria-hidden />
                   Garmin sends back a session key, stored only on this Mac in ~/.dayoptimizer, readable by your user
-                  alone. No DayOptimizer server exists, nothing is shared.
+                  alone. No DayOptimizer server exists. Your health data stays on this Mac unless you let Claude see it
+                  (after connecting).
                 </li>
                 <li className="flex gap-2">
                   <Trash size={16} weight="bold" className="shrink-0 text-accent" aria-hidden />
@@ -269,6 +279,23 @@ export default function GarminConnect() {
                 <CheckCircle size={20} weight="fill" className="shrink-0 text-[#4fb286]" aria-hidden />
                 Garmin is connected. Your health data is used from the next planning run.
               </p>
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] border border-line bg-ink/[0.03] p-3 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={share}
+                  disabled={busy}
+                  onChange={(e) => toggleShare(e.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 accent-[#f4b860]"
+                />
+                <span className="flex flex-col gap-1">
+                  Let Claude see my health summary when it plans
+                  <span className="text-xs leading-snug text-ink-dim">
+                    {share
+                      ? "On: a one-line summary (sleep, Body Battery, HRV, stress, resting heart rate) goes to Anthropic with each plan Claude makes."
+                      : "Off: the summary stays on this Mac. A local Ollama model still uses it; Claude plans without it."}
+                  </span>
+                </span>
+              </label>
               <div className="flex justify-end gap-2">
                 {confirmOff ? (
                   <>
