@@ -130,3 +130,10 @@ def test_between_two_hours_is_the_window():
         TaskRequest(title="obiad", category="Home", when=when, **kw), CATS, now, "t1")[0])
     assert win("gdzieś między 14 a 16", due_day="tomorrow") == (at(15, 14), at(15, 16))
     assert win("between 14 and 16") == (at(14, 14), at(14, 16))
+
+
+def test_quick_fix_leaves_next_weeks_day_to_the_model():
+    from dayoptimizer.llm.task_request import quick_fix
+    assert quick_fix("move it to next Friday") is None
+    assert quick_fix("na przyszły piątek") is None
+    assert quick_fix("friday").day == "friday"
