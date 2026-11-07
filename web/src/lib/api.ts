@@ -20,13 +20,22 @@ const toServerWeek = (week: Week) =>
     ]),
   );
 
+// Writes of the routine go one at a time, in order: the server handles requests in parallel, so a
+// slower older save could otherwise land after a newer one and overwrite it.
+let writes: Promise<unknown> = Promise.resolve();
+const inOrder = <T>(write: () => Promise<T>): Promise<T> => {
+  const next = writes.then(write, write);
+  writes = next.catch(() => undefined);
+  return next;
+};
+
 export const saveState = (categories: Categories, week: Week, notes: string, routineMode: RoutineMode | null, free: FreeTime): Promise<ServerState> => {
-  const typical_week = toServerWeek(week);
-  return fetch("/api/state", {
+  const body = JSON.stringify({ categories, typical_week: toServerWeek(week), notes, ...(routineMode && { routine_mode: routineMode }), ...free });
+  return inOrder(() => fetch("/api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ categories, typical_week, notes, ...(routineMode && { routine_mode: routineMode }), ...free }),
-  }).then(parse);
+    body,
+  }).then(parse));
 };
 
 export type ImportedWeek = Partial<Record<Weekday, ImportedBlock[]>>;
@@ -89,7 +98,8 @@ export const saveRoutine = (categories: Categories, week: Week, notes: string) =
   const coloured = Object.fromEntries(
     Object.entries(categories).map(([name, c]) => [name, { ...c, color: categoryColor(name, c.color) }]),
   );
-  return post<RoutineSaved>("/api/routine", { categories: coloured, typical_week: toServerWeek(week), notes });
+  const body = { categories: coloured, typical_week: toServerWeek(week), notes };
+  return inOrder(() => post<RoutineSaved>("/api/routine", body));
 };
 
 export const calendarColors = (): Promise<{ colors: Record<string, string>; calendars: Record<string, string> }> =>
