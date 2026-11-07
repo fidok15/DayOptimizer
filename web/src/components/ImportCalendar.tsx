@@ -177,9 +177,10 @@ export default function ImportCalendar(props: {
         setInclude(on);
         setFound(r);
       })
-      .catch((e: unknown) =>
-        setFailure(e instanceof ApiError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" }),
-      )
+      .catch((e: unknown) => {
+        setFound(null); // the previous week's events must not be importable under the new date
+        setFailure(e instanceof ApiError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" });
+      })
       .finally(() => setLoading(false));
   };
 
