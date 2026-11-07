@@ -449,7 +449,7 @@ def test_a_replan_puts_an_open_block_back_only_around_its_activities_and_an_even
     cal = Calendar([])
     monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in CATS}, "llm": {},
                                                              "notes": "Lubię czytać."}))
-    storage, r = Storage(":memory:"), open_rules(note_rules=[], min_free_minutes=1000)
+    storage, r = Storage(":memory:"), open_rules(note_rules=[], min_free_minutes=1000, buffer_minutes=0)
 
     def replan():
         backend = Backend(f("18:00", "19:00", day=tomorrow), f("19:15", "20:15", "Spacer", day=tomorrow))
