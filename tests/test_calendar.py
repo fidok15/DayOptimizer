@@ -188,7 +188,11 @@ def test_every_write_is_journaled_and_taken_back_and_redone(monkeypatch):
         def setStartDate_(self, d): self.start = d
         def endDate(self): return self.end
         def setEndDate_(self, d): self.end = d
-        def isAllDay(self): return False
+        allday = False
+        attendees = False
+        def isAllDay(self): return self.allday
+        def setAllDay_(self, v): self.allday = v
+        def hasAttendees(self): return self.attendees
 
     class Store(_Store):
         def __init__(self):
@@ -214,7 +218,9 @@ def test_every_write_is_journaled_and_taken_back_and_redone(monkeypatch):
     moved = client.create_event("Learn", "AWS", at(10), at(11), task_id="t1")
     gone = client.create_event("Learn", "ML", at(12), at(13))
     cal_mod.JOURNAL.clear()  # an earlier run
+    store.events[moved].allday = True  # "AWS 10:00" put in as all-day, turned into a timed event
     client.move_event(moved, at(15), at(16))
+    assert store.events[moved].allday is False
     client.delete_event(gone)
     added = client.create_event("Learn", "audio", at(17), at(18))
     steps = list(cal_mod.JOURNAL)
@@ -225,7 +231,14 @@ def test_every_write_is_journaled_and_taken_back_and_redone(monkeypatch):
     titles = {e.title_: (e.start.dt.hour, e.notes_) for e in store.events.values()}
     assert added not in store.events and kept in store.events
     assert titles["AWS"][0] == 10 and titles["ML"] == (12, cal_mod.MARKER)  # back as a planner block
+    assert store.events[moved].allday is True  # back as all-day
     redo = list(cal_mod.JOURNAL)
     for s in reversed(redo):  # undoing the undo redoes it
         client.take_back(s)
     assert {e.title_ for e in store.events.values()} == {"Study", "AWS", "audio"}
+    assert store.events[moved].allday is False
+    # an invitation carrying the marker is someone else's: never deleted
+    store.events[kept].attendees = True
+    import pytest
+    with pytest.raises(RuntimeError):
+        client.delete_event(kept)

@@ -48,6 +48,13 @@ def ek_to_event(identifier, calendar_title, title, start, end, location, all_day
                  start=start, end=end, location=location, all_day=all_day, managed=managed,
                  task_id=task_id, suggested=suggested)
 
+def _ours(ev, notes: str) -> bool:
+    """A block DayOptimizer created: its marker in the notes. An invitation
+    (it has attendees, DayOptimizer never adds any) is someone else's even
+    when its notes carry the marker."""
+    return MARKER in notes and not ev.hasAttendees()
+
+
 class CalendarClient:
     _shared = None  # one EKEventStore per process: a long-lived caller (MCP server) makes many clients
 
@@ -94,7 +101,7 @@ class CalendarClient:
         out = []
         for ev in ek_events:
             notes = str(ev.notes() or "")
-            managed = MARKER in notes
+            managed = _ours(ev, notes)
             out.append(ek_to_event(
                 str(ev.eventIdentifier()),
                 str(ev.calendar().title()),
@@ -109,14 +116,17 @@ class CalendarClient:
             ))
         return sorted(out, key=lambda e: e.start)
 
-    def move_event(self, event_id: str, new_start: datetime, new_end: datetime) -> None:
+    def move_event(self, event_id: str, new_start: datetime, new_end: datetime, all_day: bool = False) -> None:
+        """Move an event to a timed slot; `all_day` makes it all-day again (undo
+        of turning "Dentist 14:00" into a timed event)."""
         ev = self._store.eventWithIdentifier_(event_id)
         if ev is None:
             raise KeyError(f"Event {event_id} not found")
         was = {"undo": "move", "id": event_id, "title": str(ev.title() or ""),
-               "start": self._when(ev.startDate()), "end": self._when(ev.endDate())}
-        if ev.isAllDay():
-            ev.setAllDay_(False)
+               "start": self._when(ev.startDate()), "end": self._when(ev.endDate()),
+               "all_day": bool(ev.isAllDay())}
+        if bool(ev.isAllDay()) != all_day:
+            ev.setAllDay_(all_day)
         ev.setStartDate_(self._nsdate(new_start))
         ev.setEndDate_(self._nsdate(new_end))
         ok, err = self._store.saveEvent_span_error_(ev, 0, None)
@@ -212,7 +222,7 @@ class CalendarClient:
         ev = self._store.eventWithIdentifier_(event_id)
         if ev is None:
             raise KeyError(f"Event {event_id} not found")
-        if MARKER not in str(ev.notes() or ""):
+        if not _ours(ev, str(ev.notes() or "")):
             raise RuntimeError("not created by DayOptimizer, left alone")
         self._remove(ev)
 
@@ -236,7 +246,8 @@ class CalendarClient:
                 raise KeyError(f"Event {step['id']} not found")
             self._remove(ev)
         elif step["undo"] == "move":
-            self.move_event(step["id"], datetime.fromisoformat(step["start"]), datetime.fromisoformat(step["end"]))
+            self.move_event(step["id"], datetime.fromisoformat(step["start"]), datetime.fromisoformat(step["end"]),
+                            all_day=step.get("all_day", False))
         else:
             self.create_event(step["calendar"], step["title"], datetime.fromisoformat(step["start"]),
                               datetime.fromisoformat(step["end"]), managed=False, notes=step["notes"])
