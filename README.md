@@ -85,40 +85,20 @@ so they check the logic, not macOS or a real model).
 
 ## Set up your calendars
 
-DayOptimizer writes planned blocks into Apple Calendar calendars whose names
-match its planner categories **exactly** — case-sensitive, no emoji, no extra
-spaces. There is no fuzzy matching: a calendar named `food` or `🍔 Food` does
-not count as `Food`.
-
 There are no default categories: you define your own in `dayoptimizer setup`
-(name, colour, Fixed or Flexible). Flexible categories are moved by the planner
-on its own; Fixed ones change only after you approve.
+(name, colour, Fixed or Flexible), in any language. Flexible categories are
+moved by the planner on its own; Fixed ones change only after you approve.
 
-**Without a matching calendar for a category, plans are computed but every
-block for that category is skipped** — as of this version, that failure is
-reported to you explicitly (a "N block(s) could not be written" summary
-naming the missing calendars) instead of vanishing silently.
+Each category is written to the Apple Calendar calendar of the same name.
+Emoji and spaces around the name don't matter: `🍔 Food ` counts as `Food`
+(case does). Saving the routine in `dayoptimizer setup` creates the calendars
+that are missing and gives them the category colour; `dayoptimizer calendars`
+does the same from the terminal (`--read` only reports). A calendar can live
+in any account (iCloud, local, Google).
 
-To create the calendars you're missing:
-
-1. Open Calendar.app.
-2. `File > New Calendar`.
-3. Name it exactly one of the category names above (e.g. `Food`).
-4. Pick any account for it (iCloud, local, a Google account) — DayOptimizer
-   doesn't care where the calendar lives, only its name.
-5. Repeat for each category you want the planner to manage.
-
-`/dayoptimizer:init` (see [Onboarding](#onboarding)) now checks which
-calendars already exist and tells you exactly which ones to create before
-asking anything else.
-
-**Language note:** the category names above (and the block titles the
-planner writes, e.g. "Deep work", "Own work") are English-only in this
-version — they are not translated or configurable. What *is* configurable
-per-user is meal names (`day_rules.meal_windows[].name`) and the free-time
-activity label (`day_rules.free_time_activity`), via `config.local.yaml` /
-the onboarding interview — but the calendar names themselves must stay
-exactly as listed above.
+If a calendar still can't be created (for example the account is read-only),
+plans are computed but that category's blocks are skipped, and you get a
+"N block(s) could not be written" summary naming the missing calendars.
 
 ## Quick start
 
