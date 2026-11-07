@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 """The user's typical week drives the plan when there is one."""
 import dataclasses
 from datetime import date, datetime
@@ -173,7 +175,7 @@ def test_a_block_pushed_by_a_new_event_still_obeys_the_notes():
 def test_a_planner_block_that_breaks_a_note_is_moved_back_inside_the_rules():
     rules = _with_notes([{"type": "not_after", "category": "Learn", "time": "21:00", "source": "no study after 21"}],
                         {4: [RoutineBlock(20 * 60, 21 * 60, "Learn", "English")]})
-    late = _ev("l", "Learn", 21, 22, "English", m1=30, m2=30)
+    late = replace(_ev("l", "Learn", 21, 22, "English", m1=30, m2=30), managed=True)  # the planner's block
     mine = _ev("u", "Learn", 22, 23, "Exam prep", m1=30)
     changes = plan_day(DAY, [late, mine], None, rules, now=EARLY)
     moves = [(c.title, f"{c.new_start:%H:%M}", f"{c.new_end:%H:%M}") for c in changes if c.kind == "move"]
@@ -259,3 +261,10 @@ def test_an_open_block_is_placed_like_a_normal_one_titled_by_its_intent():
                                          "intent": "something productive"}]})
     changes = plan_day(DAY, [], None, dataclasses.replace(BASE, typical_week=week), now=EARLY)
     assert _created(changes) == [("something productive", "15:00", "17:00")]
+
+
+def test_without_a_routine_no_block_is_created_where_the_notes_forbid_it():
+    rules = _with_notes([{"type": "not_before", "category": "Food", "time": "14:00",
+                          "source": "no food before 14"}], {})
+    food = [c for c in plan_day(DAY, [], None, rules, now=EARLY) if c.category == "Food" and c.kind == "create"]
+    assert all(c.new_start.hour >= 14 for c in food)

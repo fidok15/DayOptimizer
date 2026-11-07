@@ -223,6 +223,7 @@ def add_task(text: str) -> str:
 
     from dayoptimizer import cli  # EventKit is imported only when a calendar is opened, never here
     from dayoptimizer.llm.backend import LLMUnavailable, make_backend, pin_day
+    load_dotenv(paths.app_dir() / ".env")  # the key set on the setup page first, as the CLI reads it
     load_dotenv(_DEFAULT_CONFIG.parent / ".env")  # ANTHROPIC_API_KEY, as the CLI reads it
     rules, config = load_rules(_DEFAULT_CONFIG), load_config_data(_DEFAULT_CONFIG)
     if not rules.categories:
@@ -287,6 +288,7 @@ def task_fix(task_id: str, reply: str) -> str:
     from dotenv import load_dotenv
 
     from dayoptimizer import cli
+    load_dotenv(paths.app_dir() / ".env")
     load_dotenv(_DEFAULT_CONFIG.parent / ".env")
     rules, config = load_rules(_DEFAULT_CONFIG), load_config_data(_DEFAULT_CONFIG)
     s = _storage()

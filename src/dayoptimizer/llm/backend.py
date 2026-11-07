@@ -386,7 +386,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
             # 'dziś' / 'zaplanuj dzisiejszy dzień': done today, so only today is planned; with a
             # part of the day it isn't pinned, so a late 'rano' still rolls to tomorrow
             t = t.model_copy(update={"due_day": "today", "not_before_day": None})
-        elif said and day != "today":
+        elif said and (day != "today" or word in ("po", "after")):  # 'after today' starts tomorrow
             # the clause's one day is all it says: a model's other day for the task goes
             t = t.model_copy(update={"due_day": _shift(value, 0 if clock(c) else -1), "not_before_day": None}
                              if word in ("przed", "before")

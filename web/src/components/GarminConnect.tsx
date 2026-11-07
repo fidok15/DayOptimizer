@@ -206,7 +206,8 @@ export default function GarminConnect() {
                 <li className="flex gap-2">
                   <ShieldCheck size={16} weight="bold" className="shrink-0 text-accent" aria-hidden />
                   Garmin sends back a session key, stored only on this Mac in ~/.dayoptimizer, readable by your user
-                  alone. No DayOptimizer server exists, nothing is shared.
+                  alone. No DayOptimizer server exists. Your health data stays on this Mac unless you let Claude see it
+                  in Settings.
                 </li>
                 <li className="flex gap-2">
                   <Trash size={16} weight="bold" className="shrink-0 text-accent" aria-hidden />

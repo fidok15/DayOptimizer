@@ -51,9 +51,14 @@ class Storage:
         path = Path(db_path)
         try:
             self._open(path)
-        except sqlite3.DatabaseError:
-            if not path.is_file():
+        except sqlite3.DatabaseError as exc:
+            # only real damage: a lock ("database is locked") is an OperationalError too,
+            # and setting a healthy database aside would lose the tasks and undo history
+            if not path.is_file() or getattr(exc, "sqlite_errorcode", None) not in (
+                    sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB):
                 raise
+            if getattr(self, "_conn", None) is not None:
+                self._conn.close()
             aside = path.with_name(f"{path.name}.corrupt-{datetime.now():%Y%m%d%H%M%S}")
             path.rename(aside)
             print(f"The local cache {path} was damaged; moved it to {aside.name} and started a new one.",

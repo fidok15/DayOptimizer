@@ -138,6 +138,75 @@ def test_http_garmin_mfa_flow(server, monkeypatch):
     assert _request(server, "GET", path="/api/garmin") == (200, {"connected": False})
 
 
+@pytest.fixture
+def no_launchd(monkeypatch):
+    """Settings tests never touch the real launchd or a running Ollama."""
+    from dayoptimizer import agent
+    calls = []
+    monkeypatch.setattr(agent, "status", lambda: "not loaded")
+    monkeypatch.setattr(agent, "PLIST_PATH", paths.app_dir() / "agent.plist")
+    monkeypatch.setattr(agent, "install", lambda interval, at=None: calls.append(("install", interval)) or "Installed")
+    monkeypatch.setattr(agent, "uninstall", lambda: calls.append(("uninstall",)) or "Uninstalled")
+    monkeypatch.setattr("dayoptimizer.llm.ollama_backend.ollama_available", lambda: False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    return calls
+
+
+def test_settings_change_only_what_is_sent_and_are_validated(no_launchd):
+    from dayoptimizer.web import read_settings, write_settings
+    s = read_settings()
+    assert s["llm"]["backend"] == "auto" and s["share_health"] is False and s["day"]["buffer_minutes"] == 15
+    s = write_settings({"llm": {"backend": "ollama"}, "share_health": True, "day": {"buffer_minutes": 5}})
+    assert (s["llm"]["backend"], s["share_health"], s["day"]["buffer_minutes"]) == ("ollama", True, 5)
+    s = write_settings({"day": {"buffer_minutes": None}})  # back to the default
+    assert (s["llm"]["backend"], s["day"]["buffer_minutes"]) == ("ollama", 15)
+    for bad in ({"llm": {"backend": "gpt"}}, {"day": {"buffer_minutes": "10"}}, {"share_health": "yes"}):
+        with pytest.raises(ConfigError):
+            write_settings(bad)
+    from dayoptimizer.web import ApiError
+    for bad in ({"day": [1]}, {"llm": "ollama"}):
+        with pytest.raises(ApiError):
+            write_settings(bad)
+
+
+def test_api_key_is_stored_privately_and_never_sent_back(no_launchd):
+    import stat
+
+    from dayoptimizer.web import ApiError, read_settings, write_key
+    assert read_settings()["key_set"] is False
+    with pytest.raises(ApiError):
+        write_key({"key": "not-a-key"})
+    s = write_key({"key": "sk-ant-api03-" + "x" * 40})
+    env = paths.app_dir() / ".env"
+    assert s["key_set"] is True and "sk-ant" not in json.dumps(s)
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600 and "sk-ant-api03-" in env.read_text()
+    assert write_key({"key": ""})["key_set"] is False
+
+
+def test_background_check_is_switched_through_launchd(no_launchd, monkeypatch):
+    from dayoptimizer import agent
+    from dayoptimizer.web import ApiError, set_agent
+    with pytest.raises(ApiError):
+        set_agent({"enabled": True, "interval_minutes": 1})
+    monkeypatch.setattr(agent, "BUNDLE_BINARY", str(paths.app_dir() / "missing"))
+    with pytest.raises(ApiError) as exc:
+        set_agent({"enabled": True, "interval_minutes": 15})
+    assert "install.sh" in str(exc.value)
+    paths.ensure_private_dir()
+    (paths.app_dir() / "missing").touch()
+    set_agent({"enabled": True, "interval_minutes": 15})
+    set_agent({"enabled": False, "interval_minutes": 15})
+    assert no_launchd == [("install", 900), ("uninstall",)]
+
+
+def test_http_settings_roundtrip(server, no_launchd):
+    hdr = {"Content-Type": "application/json"}
+    status, body = _request(server, "PUT", {"day": {"buffer_minutes": 20}}, hdr, "/api/settings")
+    assert status == 200 and body["day"]["buffer_minutes"] == 20
+    assert _request(server, "GET", path="/api/settings")[1]["day"]["buffer_minutes"] == 20
+    assert _request(server, "PUT", {"llm": {"backend": "nope"}}, hdr, "/api/settings")[0] == 422
+
+
 def test_http_garmin_bad_password_never_echoed(server, monkeypatch):
     import dayoptimizer.core.garmin as g
     def fail(e, p):
@@ -358,6 +427,8 @@ def test_free_time_settings_roundtrip_and_validation():
     state = write_state(_state_payload(min_free_minutes=90, variety="low"))
     assert (state["min_free_minutes"], state["variety"]) == (90, "low")
     assert write_state(_state_payload())["variety"] == "low"  # not sent: kept
+    cleared = write_state(_state_payload(min_free_minutes=None))  # the field emptied: back to the default
+    assert (cleared["min_free_minutes"], cleared["variety"]) == (None, "low")
     with pytest.raises(ConfigError):
         write_state(_state_payload(variety="lots"))
 

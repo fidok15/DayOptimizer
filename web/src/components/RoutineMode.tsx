@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { CalendarBlank, Rows } from "@phosphor-icons/react";
 import type { RoutineMode } from "../lib/types";
@@ -18,12 +19,20 @@ const OPTIONS: { id: RoutineMode; label: string; Icon: typeof Rows; text: string
 ];
 
 export function RoutineChooser({ onChoose }: { onChoose: (m: RoutineMode) => void }) {
+  // a native modal dialog: focus moves in, stays in, and the page behind is inert until a choice is made
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = dialog.current;
+    if (d && !d.open) d.showModal();
+  }, []);
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-night/60 p-4 backdrop-blur-sm">
+    <dialog
+      ref={dialog}
+      aria-labelledby="routine-mode-title"
+      onCancel={(e) => e.preventDefault()}
+      className="m-auto w-[min(36rem,calc(100vw-2rem))] bg-transparent p-0 text-ink backdrop:bg-night/60 backdrop:backdrop-blur-sm"
+    >
       <motion.div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="routine-mode-title"
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         className="glass-strong flex w-full max-w-xl flex-col gap-4 rounded-2xl p-5 shadow-2xl"
@@ -47,7 +56,7 @@ export function RoutineChooser({ onChoose }: { onChoose: (m: RoutineMode) => voi
           ))}
         </div>
       </motion.div>
-    </div>
+    </dialog>
   );
 }
 

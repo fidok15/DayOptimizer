@@ -58,7 +58,7 @@ def test_adjust_gym_planner_created_workout_moves_freely_even_when_gym_fixed():
     from dayoptimizer.core.rules import CategoryRule
     fixed_gym = dataclasses.replace(
         RULES, categories={**RULES.categories, "Gym": CategoryRule(movable=False, priority=5)})
-    events = [_ev("g", "Gym", 10, 11, title="Workout"), _ev("w", "Work", 12, 16)]
+    events = [dataclasses.replace(_ev("g", "Gym", 10, 11, title="Workout"), managed=True), _ev("w", "Work", 12, 16)]
     low = GarminSummary(date="2026-07-03", body_battery_start=25)
     changes = adjust_gym(events, low, fixed_gym, D.replace(hour=6), D.replace(hour=23), now=D.replace(hour=7))
     assert len(changes) == 1 and changes[0].kind == "move"

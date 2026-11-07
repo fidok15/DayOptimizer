@@ -43,10 +43,14 @@ def test_drops_a_block_over_a_user_event():
     assert creates == [] and "L - Physics" in problems[0]
 
 
-def test_plan_over_needs_the_users_own_sentence():
+def test_plan_over_needs_the_users_own_sentence_and_a_compiled_note():
     over = WeekPlan(blocks=[block(MON, "11:00", "11:30")],
                     plan_over=[PlanOver(event_id="lec", note='Lectures starting with "W -" may be planned over')])
-    assert check(over)[1] == []
+    skip = parse_rules([{"type": "skippable", "category": "Uni", "prefix": "W -", "source": "x"}])
+    assert check(over, rules=skip)[1] == []
+    # a real note sentence alone frees no event: it may be about something else entirely
+    creates, problems = check(over)
+    assert creates == [] and "overlaps 'W - Math'" in problems[0]
     made_up = WeekPlan(blocks=[block(MON, "11:00", "11:30")],
                        plan_over=[PlanOver(event_id="lec", note="the user does not care about lectures")])
     creates, problems = check(made_up)
@@ -138,6 +142,7 @@ def test_cli_falls_back_to_the_next_model_when_one_fails(monkeypatch):
     changes, applied, errors, _, _, _ = cli._llm_plan([MON], cal, storage, Rules(), confirm=lambda c: True)
     assert cal.created == [("Food", "Lunch", at(MON, "16:00"))] and errors == []
     assert len(good.prompts) == 1
+    assert {e.title for e in storage.events_on(MON.isoformat())} >= {LECTURE.title}  # the cache MCP reads
 
 
 def test_an_empty_plan_for_a_routine_day_is_a_problem():
@@ -1390,3 +1395,64 @@ def test_a_task_said_for_a_part_of_the_day_goes_first_and_the_flexible_routine_g
     # the commute takes the first time after breakfast; ML still fills the Deep work after it
     assert got == [("t1", "08:15-08:45"), ("t1", "09:00-10:30"), ("t2", "07:30-08:15")]
     assert unscheduled == []
+
+
+def test_an_overdue_task_with_a_narrow_window_does_not_break_planning():
+    from datetime import timedelta
+
+    from dayoptimizer.llm.week_plan import said_first
+    late = task(not_before=NOW - timedelta(hours=4), due=NOW - timedelta(hours=1))
+    assert said_first([late], {"t1": 120}, [NOW.date()], {}, [], None, NOW) == []
+
+
+def test_an_open_block_where_a_note_rules_its_category_out_is_left_out():
+    rules = parse_rules([{"type": "not_after", "category": "Learn", "time": "18:00", "source": "no study after 18"}])
+    routine = {MON: sleep_only(MON)[MON] + [_open(MON, "18:00", "20:00", "Deep work")]}
+    changes, *_ = plan_days(Small(WeekPlan()), [MON], "# r", OCATS, [], NOTES, rules, NOW, attempts=1,
+                            routine_days=routine)
+    assert _day(changes, "Deep work") == []
+
+
+def test_the_garmin_summary_reaches_a_remote_model_only_when_the_user_allows_it(monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.core.models import GarminSummary
+    seen = []
+
+    def fake_plan_days(backend, days, routine, cats, window, notes, rules, now, health, *a, **kw):
+        seen.append((type(backend).__name__, health))
+        raise RuntimeError("stop here")
+
+    class Remote:
+        local = False
+
+    class Local:
+        local = True
+
+    class Rules:
+        has_routine = True
+        note_rules = []
+        typical_week = {}
+
+    monkeypatch.setattr("dayoptimizer.llm.week_plan.plan_days", fake_plan_days)
+    monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [Remote(), Local()])
+    monkeypatch.setattr(cli, "_fetch_garmin", lambda storage, day: GarminSummary(date=day, sleep_score=80))
+
+    class Cal:
+        def list_events(self, start, end):
+            return []
+
+    for share in (False, True):
+        seen.clear()
+        monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in CATS},
+                                                                  "llm": {"share_health": share}}))
+        cli._llm_plan([date.today()], Cal(), cli.Storage(":memory:"), Rules())
+        assert [n for n, h in seen if h] == (["Remote", "Local"] if share else ["Local"])
+
+
+def test_blocks_keep_the_break_around_the_users_events():
+    tight = WeekPlan(blocks=[block(MON, "12:00", "12:30")])  # LECTURE ends 12:00
+    changes, *_ = plan_days(Small(tight), [MON], "# r", CATS, [LECTURE], NOTES, [], NOW, attempts=1)
+    assert [c.new_start for c in changes if c.kind == "create"] == [at(MON, "12:00")]
+    changes, *_ = plan_days(Small(tight), [MON], "# r", CATS, [LECTURE], NOTES, [], NOW, attempts=1,
+                            buffer_minutes=15)
+    assert not [c for c in changes if c.kind == "create" and c.new_start < at(MON, "12:15")]

@@ -153,7 +153,8 @@ def quick_fix(reply: str) -> TaskFix | None:
     clock = re.search(r"\b([01]?\d|2[0-3]):[0-5]\d\b", low)
     if n and not days and not clock:
         return TaskFix(action="allow_split", chunk_minutes=n) if asks_split(low) else TaskFix(action="new_duration", minutes=n)
-    if len(days) == 1 and not n:
+    # 'next Friday' / 'przyszły piątek' is the next calendar week's: the model reads that
+    if len(days) == 1 and not n and not re.search(r"\b(?:next|przysz\w*|nast[eę]pn\w*)\b", low):
         return TaskFix(action="new_deadline", day=days[0], time=clock.group(0) if clock else None)
     return None
 

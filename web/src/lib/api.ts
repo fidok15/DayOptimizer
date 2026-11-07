@@ -1,5 +1,5 @@
 import { categoryColor } from "./colors";
-import type { Categories, FreeTime, ImportedBlock, RoutineMode, ServerState, Week, Weekday } from "./types";
+import type { Categories, ImportedBlock, Settings, RoutineMode, ServerState, Week, Weekday } from "./types";
 
 async function parse(res: Response): Promise<ServerState> {
   const body = await res.json().catch(() => ({}));
@@ -20,13 +20,22 @@ const toServerWeek = (week: Week) =>
     ]),
   );
 
-export const saveState = (categories: Categories, week: Week, notes: string, routineMode: RoutineMode | null, free: FreeTime): Promise<ServerState> => {
-  const typical_week = toServerWeek(week);
-  return fetch("/api/state", {
+// Writes of the routine go one at a time, in order: the server handles requests in parallel, so a
+// slower older save could otherwise land after a newer one and overwrite it.
+let writes: Promise<unknown> = Promise.resolve();
+const inOrder = <T>(write: () => Promise<T>): Promise<T> => {
+  const next = writes.then(write, write);
+  writes = next.catch(() => undefined);
+  return next;
+};
+
+export const saveState = (categories: Categories, week: Week, notes: string, routineMode: RoutineMode | null): Promise<ServerState> => {
+  const body = JSON.stringify({ categories, typical_week: toServerWeek(week), notes, ...(routineMode && { routine_mode: routineMode }) });
+  return inOrder(() => fetch("/api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ categories, typical_week, notes, ...(routineMode && { routine_mode: routineMode }), ...free }),
-  }).then(parse);
+    body,
+  }).then(parse));
 };
 
 export type ImportedWeek = Partial<Record<Weekday, ImportedBlock[]>>;
@@ -59,10 +68,10 @@ export const importWeek = async (weekStart: string): Promise<ImportedCalendars> 
 export const importFiles = async (weekStart: string, files: string[]): Promise<ImportedCalendars> =>
   toImported(await post("/api/import-file", { week_start: weekStart, files }));
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, method = "POST"): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch {
     throw new ApiError("Can't reach DayOptimizer. Is `dayoptimizer web` still running?", "offline");
   }
@@ -89,7 +98,8 @@ export const saveRoutine = (categories: Categories, week: Week, notes: string) =
   const coloured = Object.fromEntries(
     Object.entries(categories).map(([name, c]) => [name, { ...c, color: categoryColor(name, c.color) }]),
   );
-  return post<RoutineSaved>("/api/routine", { categories: coloured, typical_week: toServerWeek(week), notes });
+  const body = { categories: coloured, typical_week: toServerWeek(week), notes };
+  return inOrder(() => post<RoutineSaved>("/api/routine", body));
 };
 
 export const calendarColors = (): Promise<{ colors: Record<string, string>; calendars: Record<string, string> }> =>
@@ -100,3 +110,15 @@ export const calendarColors = (): Promise<{ colors: Record<string, string>; cale
       calendars: b?.calendars ?? {},
     }))
     .catch(() => ({ colors: {}, calendars: {} }));
+
+export const fetchSettings = (): Promise<Settings> =>
+  fetch("/api/settings", { cache: "no-store" }).then(async (r) => {
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new ApiError(body.error ?? `Request failed (${r.status})`, body.code ?? "failed");
+    return body as Settings;
+  });
+export type SettingsChange = { llm?: Partial<Settings["llm"]>; share_health?: boolean; day?: Partial<{ [K in keyof Settings["day"]]: Settings["day"][K] | null }> };
+export const saveSettings = (change: SettingsChange) => inOrder(() => post<Settings>("/api/settings", change, "PUT"));
+export const saveApiKey = (key: string) => inOrder(() => post<Settings>("/api/settings/key", { key }));
+export const setBackgroundCheck = (enabled: boolean, interval_minutes: number) =>
+  post<Settings>("/api/agent", { enabled, interval_minutes });

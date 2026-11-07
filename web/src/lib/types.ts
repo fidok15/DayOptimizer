@@ -37,10 +37,26 @@ export type View = "day" | "week";
 export type RoutineMode = "day" | "week";
 
 export type Variety = "low" | "medium" | "high";
-/** Free time kept empty each day, and how soon a suggested activity may come back; null = not chosen yet. */
-export interface FreeTime {
-  min_free_minutes: number | null;
-  variety: Variety | null;
+export type Backend = "auto" | "ollama" | "anthropic";
+export type DayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+
+/** GET /api/settings: what the planner reads, merged with the defaults. The API key itself never comes back. */
+export interface Settings {
+  llm: { backend: Backend; model: string; ollama_model: string };
+  key_set: boolean;
+  ollama: boolean;
+  share_health: boolean;
+  garmin: boolean;
+  day: {
+    day_start: string;
+    day_end: string;
+    buffer_minutes: number;
+    morning_buffer_minutes: number;
+    work_days: DayKey[];
+    min_free_minutes: number;
+    variety: Variety | null;
+  };
+  agent: { running: boolean; interval_minutes: number | null; bundle: boolean };
 }
 
 export interface ServerState {

@@ -225,15 +225,13 @@ def test_run_check_syncs_events_across_three_day_window():
     assert start.date().isoformat() == "2026-07-02"
     assert end.date().isoformat() == "2026-07-05"
 
-def test_run_check_filters_planner_titles_from_foreign_events():
-    from dayoptimizer.core.planner import PLANNER_TITLES
+def test_run_check_filters_planner_blocks_from_foreign_events():
     calendar = MagicMock()
     storage = MagicMock()
     planner_event = Event(id="p1", calendar="Food", title="Lunch",
-                          start=NOW_MORNING, end=NOW_MORNING)
+                          start=NOW_MORNING, end=NOW_MORNING, managed=True)
     commute_event = Event(id="d1", calendar="Transport", title="Commute: Work",
-                         start=NOW_MORNING, end=NOW_MORNING)
-    assert "Lunch" in PLANNER_TITLES
+                         start=NOW_MORNING, end=NOW_MORNING, managed=True)
     storage.sync_events.return_value = [planner_event, commute_event]
     storage.get_state.return_value = None
     plan_fn = MagicMock(return_value=([], [], []))
@@ -245,27 +243,21 @@ def test_run_check_filters_planner_titles_from_foreign_events():
     assert performed == []
     plan_fn.assert_not_called()
 
-def test_is_foreign_accepts_extra_titles():
-    assert check._is_foreign("Reading") is True
-    assert check._is_foreign("Reading", extra={"Reading"}) is False
-
-def test_run_check_custom_free_time_activity_is_not_foreign():
+def test_run_check_users_event_titled_like_a_planner_block_is_foreign():
     calendar = MagicMock()
     storage = MagicMock()
-    reading = Event(id="r1", calendar="Free time", title="Reading",
-                    start=NOW_MORNING, end=NOW_MORNING)
-    storage.sync_events.return_value = [reading]
+    mine = Event(id="u1", calendar="Food", title="Lunch",
+                 start=NOW_MORNING.replace(hour=12), end=NOW_MORNING.replace(hour=13))
+    storage.sync_events.return_value = [mine]
     storage.get_state.return_value = None
     plan_fn = MagicMock(return_value=([], [], []))
     fetch_garmin_fn = MagicMock(return_value=None)
-    rules = _rules()
-    rules.free_time_activity = "Reading"
 
-    performed = check.run_check(calendar, storage, rules, NOW_MORNING,
+    performed = check.run_check(calendar, storage, _rules(), NOW_MORNING,
                                  plan_fn=plan_fn, fetch_garmin_fn=fetch_garmin_fn)
 
-    assert performed == []
-    plan_fn.assert_not_called()
+    assert performed == ["event_replan"]
+    plan_fn.assert_called_once()
 
 
 def test_run_check_rescheduled_foreign_event_triggers_event_replan(tmp_path, monkeypatch):
@@ -290,13 +282,13 @@ def test_run_check_rescheduled_foreign_event_triggers_event_replan(tmp_path, mon
     plan_fn.assert_called_once()
     assert plan_fn.call_args.args[0] == moved.start.date()
 
-def test_run_check_rescheduled_planner_titled_event_is_not_foreign(tmp_path, monkeypatch):
+def test_run_check_rescheduled_planner_block_is_not_foreign(tmp_path, monkeypatch):
     storage = Storage(tmp_path / "t.db")
-    cached = Event(id="p1", calendar="Food", title="Lunch",
+    cached = Event(id="p1", calendar="Food", title="Lunch", managed=True,
                    start=NOW_MORNING.replace(hour=10), end=NOW_MORNING.replace(hour=10, minute=30))
     storage.sync_events([cached])
 
-    moved = Event(id="p1", calendar="Food", title="Lunch",
+    moved = Event(id="p1", calendar="Food", title="Lunch", managed=True,
                   start=NOW_MORNING.replace(hour=12), end=NOW_MORNING.replace(hour=12, minute=30))
     calendar = MagicMock()
     calendar.list_events.return_value = [moved]

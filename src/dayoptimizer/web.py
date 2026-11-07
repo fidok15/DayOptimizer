@@ -19,6 +19,11 @@ API
   POST /api/garmin/login    <- {email, password} -> {status: connected | mfa}
   POST /api/garmin/mfa      <- {code}            -> {status: connected}
   POST /api/garmin/disconnect                    -> {status: disconnected}
+  GET  /api/settings -> {llm, key_set, ollama, share_health, garmin, day, agent}  (the Settings panel)
+  PUT  /api/settings <- {llm?, share_health?, day?} -> same  (only the keys sent change)
+  POST /api/settings/key <- {key}   -> same  (the Anthropic API key, into ~/.dayoptimizer/.env, 0600;
+                    "" removes it; never sent back)
+  POST /api/agent    <- {enabled, interval_minutes} -> same  (the background check, via launchd)
   Errors are {error, code?}. The Garmin password is only passed through to
   Garmin's sign-in; only the returned session tokens are stored.
 """
@@ -31,6 +36,7 @@ import re
 import threading
 import time as time_mod
 import webbrowser
+from contextlib import nullcontext
 from datetime import date, datetime, time, timedelta
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -45,6 +51,7 @@ from dayoptimizer.core.storage import Storage
 from dayoptimizer.onboarding import ConfigError, save_user_config
 
 STATIC_DIR = Path(__file__).parent / "web_static"
+_CONFIG_LOCK = threading.Lock()
 DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config.default.yaml"
 MAX_BODY = 256 * 1024
 MAX_FILE_BODY = 20 * 1024 * 1024
@@ -123,8 +130,14 @@ def write_state(payload: object) -> dict:
     week = {day: blocks for day, blocks in week.items() if blocks}
     if week:
         local["typical_week"] = week
-    day_rules = {**(local.get("day_rules") or {}),
-                 **{k: payload[k] for k in ("min_free_minutes", "variety") if payload.get(k) is not None}}
+    day_rules = dict(local.get("day_rules") or {})
+    for k in ("min_free_minutes", "variety"):  # not sent: kept; sent empty (null): back to the default
+        if k in payload:
+            if payload[k] is None:
+                day_rules.pop(k, None)
+            else:
+                day_rules[k] = payload[k]
+    local.pop("day_rules", None)
     if day_rules:
         local["day_rules"] = day_rules
     save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
@@ -485,6 +498,108 @@ def garmin_status() -> dict:
     return {"connected": garmin_configured()}
 
 
+LLM_KEYS = ("backend", "model", "ollama_model")
+DAY_KEYS = ("day_start", "day_end", "buffer_minutes", "morning_buffer_minutes", "work_days",
+            "min_free_minutes", "variety")
+_KEY_NAME = "ANTHROPIC_API_KEY"
+
+
+def _key_set() -> bool:
+    from dotenv import dotenv_values
+    return any(dotenv_values(f).get(_KEY_NAME) for f in (paths.app_dir() / ".env", DEFAULT_CONFIG.parent / ".env")
+               if f.exists()) or bool(os.environ.get(_KEY_NAME))
+
+
+def _agent_state() -> dict:
+    import plistlib
+
+    from dayoptimizer import agent
+    interval = None
+    if agent.PLIST_PATH.exists():
+        try:
+            interval = plistlib.loads(agent.PLIST_PATH.read_bytes()).get("StartInterval")
+        except Exception:
+            interval = None
+    return {"running": agent.status() == "running", "interval_minutes": interval // 60 if interval else None,
+            "bundle": Path(agent.BUNDLE_BINARY).exists()}
+
+
+def read_settings() -> dict:
+    from dayoptimizer.core.garmin import garmin_configured
+    from dayoptimizer.llm.ollama_backend import ollama_available
+    merged = load_config_data(DEFAULT_CONFIG)
+    llm, rules = merged.get("llm") or {}, merged.get("day_rules") or {}
+    return {"llm": {k: llm.get(k) for k in LLM_KEYS}, "key_set": _key_set(), "ollama": ollama_available(),
+            "share_health": bool(llm.get("share_health", False)), "garmin": garmin_configured(),
+            "day": {k: rules.get(k) for k in DAY_KEYS}, "agent": _agent_state()}
+
+
+def write_settings(payload: object) -> dict:
+    """Only the keys sent change; null puts a day setting back to the default."""
+    if not isinstance(payload, dict):
+        raise ApiError("invalid", "Send the settings as an object.", 422)
+    if any(not isinstance(payload.get(k) or {}, dict) for k in ("llm", "day")):
+        raise ApiError("invalid", "Send llm and day as objects.", 422)
+    local = _local()
+    llm = dict(local.get("llm") or {})
+    for k, v in (payload.get("llm") or {}).items():
+        if k in LLM_KEYS:
+            llm[k] = v
+    if "share_health" in payload:
+        llm["share_health"] = payload["share_health"]
+    if llm:
+        local["llm"] = llm
+    day = dict(local.get("day_rules") or {})
+    for k, v in (payload.get("day") or {}).items():
+        if k not in DAY_KEYS:
+            continue
+        if v is None:
+            day.pop(k, None)
+        else:
+            day[k] = v
+    local.pop("day_rules", None)
+    if day:
+        local["day_rules"] = day
+    save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))  # validates every value
+    return read_settings()
+
+
+def write_key(payload: object) -> dict:
+    """The Anthropic API key, kept beside the private config (0600), never in the repo."""
+    key = payload.get("key") if isinstance(payload, dict) else None
+    if not isinstance(key, str) or len(key) > 300 or (key.strip() and not re.fullmatch(r"sk-ant-[\w-]{20,}", key.strip())):
+        raise ApiError("invalid", "That doesn't look like an Anthropic API key (it starts with sk-ant-).", 422)
+    from dotenv import set_key, unset_key
+    env = paths.ensure_private_dir() / ".env"
+    env.touch(mode=0o600, exist_ok=True)
+    os.chmod(env, 0o600)
+    if key.strip():
+        set_key(env, _KEY_NAME, key.strip(), quote_mode="never")
+    else:
+        unset_key(env, _KEY_NAME, quote_mode="never")
+        os.environ.pop(_KEY_NAME, None)
+    return read_settings()
+
+
+def set_agent(payload: object) -> dict:
+    from dayoptimizer import agent
+    enabled = payload.get("enabled") if isinstance(payload, dict) else None
+    minutes_ = payload.get("interval_minutes", 15) if isinstance(payload, dict) else None
+    if not isinstance(enabled, bool) or not isinstance(minutes_, int) or isinstance(minutes_, bool) \
+            or not 5 <= minutes_ <= 240:
+        raise ApiError("invalid", "Choose on or off and a check every 5 to 240 minutes.", 422)
+    if enabled:
+        if not Path(agent.BUNDLE_BINARY).exists():
+            raise ApiError("setup", "The background check runs from the calendar app bundle. "
+                                    "Run scripts/install.sh first.", 409)
+        out = agent.install(minutes_ * 60)
+        if "failed" in out:
+            raise ApiError("failed", out, 502)
+    else:
+        agent.uninstall()
+    return read_settings()
+
+
 def _str_field(payload: object, key: str, max_len: int) -> str:
     value = payload.get(key) if isinstance(payload, dict) else None
     if not isinstance(value, str) or not value.strip() or len(value) > max_len:
@@ -566,6 +681,8 @@ class Handler(SimpleHTTPRequestHandler):
                                                  "file, then press Retry."})
         if self.path.split("?")[0] == "/api/garmin":
             return self._json(200, garmin_status())
+        if self.path.split("?")[0] == "/api/settings":
+            return self._json(200, read_settings())
         if self.path.split("?")[0] == "/api/calendar-colors":
             return self._json(200, calendar_colors())
         if self.path.startswith("/api/"):
@@ -585,7 +702,10 @@ class Handler(SimpleHTTPRequestHandler):
         if not 0 < length <= max_body:
             return self._json(413, {"error": "body too large or empty"})
         try:
-            return self._json(200, action(json.loads(self.rfile.read(length))))
+            body = json.loads(self.rfile.read(length))
+            # writes of config.local.yaml read, change and write the whole file: one at a time
+            with _CONFIG_LOCK if action in _CONFIG_WRITERS else nullcontext():
+                return self._json(200, action(body))
         except json.JSONDecodeError:
             return self._json(400, {"error": "invalid JSON"})
         except ConfigError as exc:
@@ -597,9 +717,10 @@ class Handler(SimpleHTTPRequestHandler):
                                              "Try again; if it keeps failing, restart `dayoptimizer setup`."})
 
     def do_PUT(self):
-        if self.path != "/api/state":
+        action = {"/api/state": write_state, "/api/settings": write_settings}.get(self.path)
+        if action is None:
             return self._json(404, {"error": "not found"})
-        return self._write(write_state)
+        return self._write(action)
 
     POST_ROUTES = {
         "/api/import": import_week,
@@ -608,6 +729,8 @@ class Handler(SimpleHTTPRequestHandler):
         "/api/garmin/login": garmin_login,
         "/api/garmin/mfa": garmin_mfa,
         "/api/garmin/disconnect": garmin_disconnect,
+        "/api/settings/key": write_key,
+        "/api/agent": set_agent,
     }
 
     def do_POST(self):
@@ -693,3 +816,6 @@ def serve(port: int = 8765, open_browser: bool = True) -> None:
         pass
     finally:
         server.server_close()
+
+
+_CONFIG_WRITERS = {write_state, write_settings, write_key, save_routine_brief}

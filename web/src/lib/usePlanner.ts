@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calendarColors, fetchState, saveState } from "./api";
 import { uid } from "./time";
-import { WEEKDAYS, type Block, type Categories, type FreeTime, type RoutineMode, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
+import { WEEKDAYS, type Block, type Categories, type RoutineMode, type SaveStatus, type ServerState, type Week, type Weekday } from "./types";
 
 const AUTOSAVE_MS = 700;
 
@@ -9,7 +9,7 @@ export const TEMPLATE_DAY: Weekday = "mon";
 const everyDay = (w: Week, from: Weekday): Week =>
   Object.fromEntries(WEEKDAYS.map((d) => [d, d === from ? w[from] : w[from].map((b) => ({ ...b, id: uid() }))])) as Week;
 
-const blockKey = (b: Block) => `${b.start}-${b.end}-${b.title.trim().toLowerCase()}`;
+const blockKey = (b: Block) => `${b.start}-${b.end}-${b.category}-${b.title.trim().toLowerCase()}`;
 
 const toWeek = (s: ServerState): Week =>
   Object.fromEntries(
@@ -22,7 +22,6 @@ export function usePlanner() {
   const [categories, setCategories] = useState<Categories>({});
   const [week, setWeek] = useState<Week>(() => toWeek({ typical_week: {} } as ServerState));
   const [notes, setNotes] = useState("");
-  const [freeTime, setFreeTime] = useState<FreeTime>({ min_free_minutes: null, variety: null });
   const [routineMode, setRoutineMode] = useState<RoutineMode | null>(null);
   const [appCalendars, setAppCalendars] = useState<Record<string, string>>({});
   const modeRef = useRef(routineMode);
@@ -42,7 +41,6 @@ export function usePlanner() {
         setCategories(s.categories);
         setWeek(toWeek(s));
         setNotes(s.notes ?? "");
-        setFreeTime({ min_free_minutes: s.min_free_minutes ?? null, variety: s.variety ?? null });
         const anyBlock = Object.values(s.typical_week).some((b) => b && b.length > 0);
         setRoutineMode(s.routine_mode ?? (anyBlock ? "week" : null));
         setDefaults(s.defaults);
@@ -52,7 +50,7 @@ export function usePlanner() {
           setAppCalendars(calendars);
           setCategories((c) =>
             Object.fromEntries(
-              Object.entries(c).map(([name, cat]) => [name, cat.color || !colors[name] ? cat : { ...cat, color: colors[name] }]),
+              Object.entries(c).map(([name, cat]) => [name, cat.color || !Object.hasOwn(colors, name) ? cat : { ...cat, color: colors[name] }]),
             ),
           );
         });
@@ -65,10 +63,10 @@ export function usePlanner() {
 
   useEffect(reload, [reload]);
 
-  const save = useCallback((cats: Categories, w: Week, n: string, mode: RoutineMode | null, free: FreeTime) => {
+  const save = useCallback((cats: Categories, w: Week, n: string, mode: RoutineMode | null) => {
     const mine = rev.current;
     setSaveStatus("saving");
-    saveState(cats, w, n, mode, free)
+    saveState(cats, w, n, mode)
       .then(() => {
         if (mine === rev.current) {
           dirty.current = false;
@@ -85,9 +83,9 @@ export function usePlanner() {
 
   useEffect(() => {
     if (!dirty.current) return;
-    const t = window.setTimeout(() => save(categories, week, notes, routineMode, freeTime), AUTOSAVE_MS);
+    const t = window.setTimeout(() => save(categories, week, notes, routineMode), AUTOSAVE_MS);
     return () => window.clearTimeout(t);
-  }, [categories, week, notes, routineMode, freeTime, save]);
+  }, [categories, week, notes, routineMode, save]);
 
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
@@ -153,16 +151,11 @@ export function usePlanner() {
     setNotes(text);
   }, []);
 
-  const updateFreeTime = useCallback((change: Partial<FreeTime>) => {
-    touch();
-    setFreeTime((f) => ({ ...f, ...change }));
-  }, []);
-
-  const retrySave = useCallback(() => save(categories, week, notes, routineMode, freeTime), [save, categories, week, notes, routineMode, freeTime]);
+  const retrySave = useCallback(() => save(categories, week, notes, routineMode), [save, categories, week, notes, routineMode]);
 
   return {
     load, loadError, reload,
-    categories, week, notes, defaults, dayStart, updateNotes, freeTime, updateFreeTime, routineMode, chooseRoutineMode, appCalendars,
+    categories, week, notes, defaults, dayStart, updateNotes, routineMode, chooseRoutineMode, appCalendars,
     updateWeek, updateCategories, removeCategory, importBlocks,
     saveStatus, saveError, retrySave,
   };

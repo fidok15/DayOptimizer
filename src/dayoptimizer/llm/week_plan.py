@@ -409,8 +409,9 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
         if p.event_id not in over:
             problems.append(f"plan_over {p.event_id}: \"{p.note}\" is not a sentence from the notes")
     # a planner block already under way stays in the calendar, so it blocks like the user's events;
-    # one the notes let us plan over doesn't, whether or not the model listed it
-    blocking = [e for e in events if not e.all_day and (not e.managed or e.start < now) and e.id not in over
+    # one a compiled note lets us plan over doesn't, whether or not the model listed it. plan_over
+    # alone never frees an event: a copied note sentence says nothing about which event it covers
+    blocking = [e for e in events if not e.all_day and (not e.managed or e.start < now)
                 and not skippable(rules, e)]
     by_id = {t.id: t for t in tasks}
     left = dict(left or {})
@@ -423,7 +424,10 @@ def validate(plan: WeekPlan, days: list[date], categories: list[str], events: li
     seeds = {}
     for d in days:
         for x in (routine_days or {}).get(d, []):
-            if _intent(x) and x[0] >= now:
+            midnight = datetime.combine(d, time(0)).astimezone()
+            if _intent(x) and x[0] >= now and window_rule(rules, x[2], minutes(midnight, x[0]),
+                                                           minutes(midnight, x[1]), d.weekday()) is None:
+                # an open block where a note rules its category out is left out, as a model's would be
                 seed = Block(day=d.isoformat(), start=f"{x[0]:%H:%M}", end=_spans(d, [x[:2]]).split("-")[1],
                              category=x[2], title=x[3])
                 seeds[id(seed)] = (seed, x)
@@ -865,7 +869,9 @@ def said_first(tasks: list[Task], left: dict[str, int], days: list[date], routin
     free of events and of fixed or protected routine. The flexible routine
     gives way to them (it moves or goes, see _forgotten_routine)."""
     out = []
+    # an overdue task has no window end any more (window() gives None): _fill places it as soon as possible
     for t in sorted((t for t in tasks if not t.done and left.get(t.id, 0) > 0 and t.not_before and t.due
+                     and not overdue(t, now)
                      and t.due.date() == t.not_before.date() in days and t.due - t.not_before < SAID_WINDOW),
                     key=lambda t: t.due):
         taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in out]
@@ -1265,8 +1271,11 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
               history: dict[str, list[date]] | None = None, expect: set[date] | frozenset[date] = frozenset(),
               attempts: int = 3, tasks: list[Task] = (), left: dict[str, int] | None = None,
               few_shot: bool = True, reserved: Reserved | None = None,
-              routine_days: dict | None = None) -> tuple[list[PlannedChange], str, list[str], list[str]]:
+              routine_days: dict | None = None,
+              buffer_minutes: int = 0) -> tuple[list[PlannedChange], str, list[str], list[str]]:
     """Ask, check, send the problems back; at most `attempts` rounds.
+    `buffer_minutes`: the break kept before and after each of the user's own
+    timed events; their times are widened by it for the model and every check.
     Returns the calendar changes, the model's summary, what was dropped and the
     tasks it could not fit ("t2: reason").
     A small local model (`one_day_at_a_time`) gets one day per request; every
@@ -1276,6 +1285,12 @@ def plan_days(backend, days: list[date], routine: str, categories: list[str], ev
     only costs rounds; a task due that day is reported instead.
     When the small model fails on a day (too slow, broken answer) twice, that
     day alone is planned by code: its routine and its tasks (`_ByRule`)."""
+    if buffer_minutes > 0:
+        pad = timedelta(minutes=buffer_minutes)
+        events = [replace(e, start=e.start - pad, end=e.end + pad) if not e.managed and not e.all_day else e
+                  for e in events]
+        routine += (f"\n\nBreaks: the times of the person's own events below already include a "
+                    f"{buffer_minutes}-minute break before and after each.")
     late = [d for d in days if datetime.combine(d + timedelta(days=1), time(0)).astimezone() - now < timedelta(hours=1)]
     days = [d for d in days if d not in late]
     left = dict(left or {})

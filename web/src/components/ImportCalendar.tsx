@@ -169,7 +169,7 @@ export default function ImportCalendar(props: {
         const guess: Record<string, string> = {};
         const on: Record<string, boolean> = {};
         for (const cal of names) {
-          const home = categories[remembered[cal]] ? remembered[cal] : byLower.get(cal.toLowerCase());
+          const home = Object.hasOwn(remembered, cal) && Object.hasOwn(categories, remembered[cal]) ? remembered[cal] : byLower.get(cal.toLowerCase());
           guess[cal] = home ?? NEW;
           on[cal] = from === "file" || home !== undefined;
         }
@@ -177,9 +177,10 @@ export default function ImportCalendar(props: {
         setInclude(on);
         setFound(r);
       })
-      .catch((e: unknown) =>
-        setFailure(e instanceof ApiError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" }),
-      )
+      .catch((e: unknown) => {
+        setFound(null); // the previous week's events must not be importable under the new date
+        setFailure(e instanceof ApiError ? { message: e.message, code: e.code } : { message: "Something went wrong. Try again.", code: "failed" });
+      })
       .finally(() => setLoading(false));
   };
 
@@ -408,7 +409,7 @@ export default function ImportCalendar(props: {
                               onChange={(e) => setInclude((m) => ({ ...m, [cal]: e.target.checked }))}
                               className="size-4 shrink-0 accent-[#f4b860]"
                             />
-                            <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: found.calendars[cal] || "currentColor" }} />
+                            <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: (Object.hasOwn(found.calendars, cal) && found.calendars[cal]) || "currentColor" }} />
                             <span className="truncate">{cal}</span>
                             {google.has(cal) && (
                               <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] leading-4 text-ink-dim">Google</span>

@@ -332,8 +332,11 @@ def suggest(backend, days: list[date], events: list[Event], storage, rules, note
             changes.append(PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
                                          reason="the day needs its free time"))
     asks, budget, holders = {}, {}, []
+    pad = timedelta(minutes=getattr(rules, "buffer_minutes", 0))
     for d in (d for d in days if d in near and rules.typical_week.get(d.weekday())):
-        gaps = _minus(day_gaps(d, busy, now, (rules.day_start, rules.day_end)), routine_time(d, rules, busy))
+        # the break kept around the user's own events (Settings) is not a gap to fill
+        padded = [e if e.managed else replace(e, start=e.start - pad, end=e.end + pad) for e in busy]
+        gaps = _minus(day_gaps(d, padded, now, (rules.day_start, rules.day_end)), routine_time(d, rules, busy))
         budget[d] = sum(minutes(a, b) for a, b in gaps) - rules.min_free_minutes
         new = [(a, b) for a, b in _minus(gaps, offered[d]) if minutes(a, b) >= SHORTEST] \
             if budget[d] >= SHORTEST else []

@@ -188,10 +188,13 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
         name = type(backend).__name__.removesuffix("Backend")
         console.print(f"Planning with {name}...", style="dim")
         try:
+            # the Garmin summary stays on the Mac unless the user lets a remote model see it (setup page)
+            shared = health if getattr(backend, "local", False) or (config.get("llm") or {}).get("share_health") else None
             changes, summary, dropped, unscheduled = plan_days(
                 backend, days, routine, list(config["categories"]), window, notes, rules.note_rules, now,
-                health, history, {d for d in days if rules.typical_week.get(d.weekday())},
-                tasks=tasks, left=left, reserved=reserved, routine_days=routine_days)
+                shared, history, {d for d in days if rules.typical_week.get(d.weekday())},
+                tasks=tasks, left=left, reserved=reserved, routine_days=routine_days,
+                buffer_minutes=getattr(rules, "buffer_minutes", 0))
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
@@ -206,6 +209,7 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
             record(done, storage)
             changes, applied, errors = changes + more, applied + done, errors + failed
         _note_unplaced(unscheduled)
+        storage.sync_events(calendar.list_events(lo, hi), lo, hi)  # the cache MCP reads shows the new plan
         return changes, applied, errors, summary, dropped, unscheduled
     console.print("No language model could plan — placing your routine by rule instead.",
                   markup=False, style="yellow")
@@ -368,6 +372,7 @@ def cmd_apply(args, rules, config):
         return
     pending = storage.get_pending(ids)
     applied = 0
+    done: list[int] = []  # applied, or a move of an event that is gone: it can never apply
     for pid, c in pending:
         try:
             if c.kind == "move":
@@ -377,14 +382,17 @@ def cmd_apply(args, rules, config):
         except KeyError:
             storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", _missing(c))
             console.print(f"#{pid} failed: {_missing(c)}", markup=False)
+            if c.kind == "move":
+                done.append(pid)
             continue
-        except RuntimeError as exc:
+        except RuntimeError as exc:  # a failed save: kept, so  dayoptimizer apply  can try again
             storage.log_change(f"[error] apply #{pid} {c.kind} {c.category}: {c.title}", str(exc))
             console.print(f"#{pid} failed: {exc}", markup=False)
             continue
         storage.log_change(f"[applied #{pid}] {c.kind} {c.category}: {c.title}", c.reason)
         applied += 1
-    storage.delete_pending([pid for pid, _ in pending])
+        done.append(pid)
+    storage.delete_pending(done)
     missing = sorted(set(ids) - {pid for pid, _ in pending})
     if missing:
         console.print(f"No pending change {', '.join(f'#{i}' for i in missing)} — already applied, "
@@ -1362,6 +1370,7 @@ _TAKES_WORDS = {"ask", "add", "agent", "garmin", "task"}
 
 def main(argv: list[str] | None = None):
     paths.ensure_private_dir()
+    load_dotenv(paths.app_dir() / ".env")  # the key set on the setup page wins over the repo's .env
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
     try:
         rules, config = _load_config()

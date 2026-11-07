@@ -113,16 +113,24 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
   useEffect(() => {
     if (editing && !edited) setEditing(null);
   }, [editing, edited]);
+  const editedRef = useRef(edited);
+  editedRef.current = edited;
 
   const closeEditor = useCallback((returnFocus: boolean) => {
     const id = editingRef.current;
+    const open = editedRef.current;
+    if (open && open.block.intent !== undefined && !open.block.intent.trim()) {
+      // "Open block" ticked but nothing said for it: it saves as an ordinary block, so show it as one
+      const { day: d, block } = open;
+      onChange((w) => ({ ...w, [d]: w[d].map((b) => (b.id === block.id ? { ...b, intent: undefined } : b)) }));
+    }
     setEditing(null);
     if (returnFocus && id) {
       requestAnimationFrame(() =>
         document.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }),
       );
     }
-  }, []);
+  }, [onChange]);
 
   const updateEdited = (patch: Partial<Omit<Block, "id">>) => {
     if (!edited) return;
@@ -137,7 +145,8 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
     setEditing(null);
   };
   const moveEdited = (to: Weekday) => {
-    if (!edited || to === edited.day) return;
+    // one typical day is Monday mirrored to every day: moving it off Monday would delete it everywhere
+    if (!edited || to === edited.day || single) return;
     const { day: from, block } = edited;
     onChange((w) => ({ ...w, [from]: w[from].filter((b) => b.id !== block.id), [to]: [...w[to], block] }));
     if (view === "day") onDayChange(to);
@@ -290,7 +299,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
               categories={categories}
               onUpdate={updateEdited}
               onDelete={deleteEdited}
-              onMoveDay={moveEdited}
+              onMoveDay={single ? undefined : moveEdited}
               onClose={closeEditor}
             />
           )}
