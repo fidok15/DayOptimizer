@@ -177,3 +177,15 @@ def test_open_block_intent_accepted_stripped_and_bounded(tmp_path, monkeypatch):
 def test_a_block_cannot_be_both_open_and_protected():
     with pytest.raises(ConfigError, match="can't be both open and protected"):
         validate_config('typical_week:\n  mon:\n  - {start: "09:00", end: "10:00", category: Work, protected: true, intent: study}\n')
+
+
+def test_quoted_values_that_would_be_saved_as_strings_are_rejected():
+    import pytest
+
+    from dayoptimizer.onboarding import ConfigError, validate_config
+    for bad in ('categories: {Work: {movable: "false"}}',
+                "day_rules: {gym_per_week: '3'}",
+                "transport_routes: {office: '20'}"):
+        with pytest.raises(ConfigError):
+            validate_config(bad)
+    validate_config("categories: {Work: {movable: false}}\nday_rules: {gym_per_week: 3, sleep_target_hours: 8}")

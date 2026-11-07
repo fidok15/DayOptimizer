@@ -6,7 +6,16 @@ import os
 from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 _VALID_WORK_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -19,8 +28,8 @@ class ConfigError(ValueError):
 
 class CategoryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    movable: bool
-    priority: int = Field(default=5, ge=0, le=10)
+    movable: StrictBool
+    priority: int = Field(default=5, ge=0, le=10, strict=True)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     emoji: str | None = Field(default=None, min_length=1, max_length=8)
 
@@ -32,7 +41,7 @@ class TemplateBlock(BaseModel):
     end: str = Field(pattern=r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$")
     category: str = Field(min_length=1, max_length=40)
     title: str = Field(default="", max_length=60)
-    protected: bool = False
+    protected: StrictBool = False
     # an open block: the planner fills it with something that fits this intent
     intent: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)] | None = None
 
@@ -63,24 +72,24 @@ class MealWindowConfig(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
-    duration_minutes: int = Field(ge=5, le=240)
+    duration_minutes: int = Field(ge=5, le=240, strict=True)
 
 
 class DayRulesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    gym_per_week: int | None = Field(default=None, ge=0, le=14)
-    gym_duration_minutes: int | None = Field(default=None, ge=10, le=300)
-    min_free_minutes: int | None = Field(default=None, ge=0, le=720)
+    gym_per_week: int | None = Field(default=None, ge=0, le=14, strict=True)
+    gym_duration_minutes: int | None = Field(default=None, ge=10, le=300, strict=True)
+    min_free_minutes: int | None = Field(default=None, ge=0, le=720, strict=True)
     variety: Literal["low", "medium", "high"] | None = None  # how soon a suggested activity may come back
-    deep_work_minutes: int | None = Field(default=None, ge=15, le=300)
-    deep_work_blocks_per_day: int | None = Field(default=None, ge=0, le=8)
-    buffer_minutes: int | None = Field(default=None, ge=0, le=120)
-    respect_recovery: bool | None = None
-    recovery_lighter_hours: int | None = Field(default=None, ge=0, le=336)
-    recovery_skip_hours: int | None = Field(default=None, ge=0, le=336)
-    wind_down_minutes: int | None = Field(default=None, ge=0, le=180)
-    sleep_target_hours: float | None = Field(default=None, ge=4, le=12)
-    morning_buffer_minutes: int | None = Field(default=None, ge=0, le=240)
+    deep_work_minutes: int | None = Field(default=None, ge=15, le=300, strict=True)
+    deep_work_blocks_per_day: int | None = Field(default=None, ge=0, le=8, strict=True)
+    buffer_minutes: int | None = Field(default=None, ge=0, le=120, strict=True)
+    respect_recovery: StrictBool | None = None
+    recovery_lighter_hours: int | None = Field(default=None, ge=0, le=336, strict=True)
+    recovery_skip_hours: int | None = Field(default=None, ge=0, le=336, strict=True)
+    wind_down_minutes: int | None = Field(default=None, ge=0, le=180, strict=True)
+    sleep_target_hours: float | None = Field(default=None, ge=4, le=12, strict=True)
+    morning_buffer_minutes: int | None = Field(default=None, ge=0, le=240, strict=True)
     free_time_activity: str | None = Field(default=None, max_length=60)
     day_start: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     day_end: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -113,7 +122,7 @@ class UserConfig(BaseModel):
     llm: LLMConfig | None = None
     categories: dict[str, CategoryConfig | None] = {}
     day_rules: DayRulesConfig = DayRulesConfig()
-    transport_routes: dict[str, Annotated[int, Field(ge=0, le=600)]] = {}
+    transport_routes: dict[str, Annotated[int, Field(ge=0, le=600, strict=True)]] = {}
     holiday_calendars: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = Field(
         default=None, max_length=10)
     notes: str | None = Field(default=None, max_length=2000)
