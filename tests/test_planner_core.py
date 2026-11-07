@@ -84,6 +84,15 @@ def test_planner_block_in_fixed_category_is_effectively_movable():
     assert ch.kind == "move" and ch.event_id == "o"
     assert not ch.requires_approval
 
+def test_planner_block_stays_movable_after_its_first_move():
+    from dataclasses import replace
+    # o goes to 9-10 for w, then x wants 9-10 too: o is still the planner's to move
+    events = [replace(_ev("o", "Meeting", 7, 8, title="Prep"), managed=True),
+              _ev("w", "Meeting", 7, 9, title="Sprint"), _ev("x", "Meeting", 9, 10, title="Review")]
+    changes = resolve_conflicts(events, RULES, D.replace(hour=7), D.replace(hour=22))
+    moves = [c for c in changes if c.kind == "move"]
+    assert moves and all(c.event_id == "o" and not c.requires_approval for c in moves)
+
 def test_users_event_titled_like_a_planner_block_needs_approval():
     events = [_ev("w", "Work", 9, 12, title="Sprint"), _ev("o", "Work", 11, 13, title="Own work")]
     changes = resolve_conflicts(events, RULES, D.replace(hour=7), D.replace(hour=22))

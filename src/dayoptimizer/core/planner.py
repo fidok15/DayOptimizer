@@ -152,8 +152,7 @@ def resolve_conflicts(events, rules, day_start, day_end):
                         kind="note", category=mover.calendar, title=mover.title,
                         reason="no free slot left that day — not moved", event_id=mover.id))
                 break
-            moved = Event(id=mover.id, calendar=mover.calendar, title=mover.title,
-                          start=new_start, end=new_start + duration, location=mover.location)
+            moved = replace(mover, start=new_start, end=new_start + duration)
             if requires_approval:
                 reason = (f"conflict between two fixed events: '{conflict.title}' and "
                           f"'{ev.title}' — approval required")
@@ -386,8 +385,7 @@ def _project(events, changes):
             continue
         if c.kind == "move" and c.event_id is not None and c.event_id in by_id:
             old = projected[by_id[c.event_id]]
-            moved = Event(id=old.id, calendar=old.calendar, title=old.title,
-                          start=c.new_start, end=c.new_end, location=old.location, managed=old.managed)
+            moved = replace(old, start=c.new_start, end=c.new_end)
             if c.requires_approval:
                 # not moved until the user agrees: the old time stays taken, and so does the new one
                 projected.append(replace(moved, id=f"pending:{old.id}"))
@@ -458,8 +456,7 @@ def enforce_notes(day, events, rules, now, day_start, day_end):
             changes.append(PlannedChange(kind="note", category=ev.calendar, title=ev.title, event_id=ev.id,
                                          reason=f"breaks {explain(broken)}, and there is no allowed time left today"))
             continue
-        moved = Event(id=ev.id, calendar=ev.calendar, title=ev.title, start=new_start,
-                      end=new_start + (ev.end - ev.start), location=ev.location)
+        moved = replace(ev, start=new_start, end=new_start + (ev.end - ev.start))
         working = [moved if e.id == ev.id else e for e in working]
         changes.append(PlannedChange(kind="move", category=ev.calendar, title=ev.title, event_id=ev.id,
                                      new_start=moved.start, new_end=moved.end,
