@@ -5,7 +5,6 @@ from datetime import datetime, time, timedelta
 from dayoptimizer.core.allday import time_in_title
 from dayoptimizer.core.models import Event, GarminSummary
 from dayoptimizer.core.notify import notify
-from dayoptimizer.core.planner import PLANNER_TITLES
 
 
 def decide(now: datetime, today: str, garmin: GarminSummary | None,
@@ -42,11 +41,6 @@ def _added(applied) -> str:
     return f". Added: {', '.join(adds)}" if adds else ""
 
 
-def _is_foreign(title: str, extra: set[str] | frozenset[str] = frozenset()) -> bool:
-    return (title not in PLANNER_TITLES and title not in extra
-            and not title.startswith("Commute:"))
-
-
 def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmin_fn=None) -> list[str]:
     """Stateless-ish background cycle: sync a 3-day window around today,
     fetch Garmin, decide what to do, and act on it. Never touches fixed
@@ -63,9 +57,9 @@ def run_check(calendar, storage, rules, now: datetime, plan_fn=None, fetch_garmi
     window_end = datetime.combine(today_date + timedelta(days=2), datetime.min.time()).astimezone()
     events = calendar.list_events(window_start, window_end)
     changed_events = storage.sync_events(events, window_start, window_end)
+    # the planner's own blocks carry its marker (managed); anything else is the user's, whatever its title
     new_foreign_events = [e for e in changed_events if not e.managed
-                          and (not e.all_day or time_in_title(e.title))
-                          and _is_foreign(e.title, extra={rules.free_time_activity} | rules.routine_titles)]
+                          and (not e.all_day or time_in_title(e.title))]
 
     garmin = fetch_garmin_fn(storage, today)
 
