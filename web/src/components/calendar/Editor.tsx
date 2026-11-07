@@ -12,7 +12,7 @@ interface Props {
   categories: Categories;
   onUpdate: (patch: Partial<Omit<Block, "id">>) => void;
   onDelete: () => void;
-  onMoveDay: (d: Weekday) => void;
+  onMoveDay?: (d: Weekday) => void; // left out: the block can't change day (one typical day)
   onClose: (returnFocus: boolean) => void;
 }
 
@@ -208,17 +208,19 @@ export default function Editor({ block, day, categories, onUpdate, onDelete, onM
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${uidBase}-day`} className={labelCls}>Day</label>
-        <select
-          id={`${uidBase}-day`}
-          value={day}
-          onChange={(ev) => onMoveDay(ev.target.value as Weekday)}
-          className={`${inputCls} [&>option]:bg-[var(--surface)]`}
-        >
-          {WEEKDAYS.map((d) => <option key={d} value={d}>{DAY_NAME[d]}</option>)}
-        </select>
-      </div>
+      {onMoveDay && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${uidBase}-day`} className={labelCls}>Day</label>
+          <select
+            id={`${uidBase}-day`}
+            value={day}
+            onChange={(ev) => onMoveDay(ev.target.value as Weekday)}
+            className={`${inputCls} [&>option]:bg-[var(--surface)]`}
+          >
+            {WEEKDAYS.map((d) => <option key={d} value={d}>{DAY_NAME[d]}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <div className="grid grid-cols-2 gap-2">

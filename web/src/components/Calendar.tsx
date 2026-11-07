@@ -137,7 +137,8 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
     setEditing(null);
   };
   const moveEdited = (to: Weekday) => {
-    if (!edited || to === edited.day) return;
+    // one typical day is Monday mirrored to every day: moving it off Monday would delete it everywhere
+    if (!edited || to === edited.day || single) return;
     const { day: from, block } = edited;
     onChange((w) => ({ ...w, [from]: w[from].filter((b) => b.id !== block.id), [to]: [...w[to], block] }));
     if (view === "day") onDayChange(to);
@@ -290,7 +291,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
               categories={categories}
               onUpdate={updateEdited}
               onDelete={deleteEdited}
-              onMoveDay={moveEdited}
+              onMoveDay={single ? undefined : moveEdited}
               onClose={closeEditor}
             />
           )}
