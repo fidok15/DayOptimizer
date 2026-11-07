@@ -43,10 +43,14 @@ def test_drops_a_block_over_a_user_event():
     assert creates == [] and "L - Physics" in problems[0]
 
 
-def test_plan_over_needs_the_users_own_sentence():
+def test_plan_over_needs_the_users_own_sentence_and_a_compiled_note():
     over = WeekPlan(blocks=[block(MON, "11:00", "11:30")],
                     plan_over=[PlanOver(event_id="lec", note='Lectures starting with "W -" may be planned over')])
-    assert check(over)[1] == []
+    skip = parse_rules([{"type": "skippable", "category": "Uni", "prefix": "W -", "source": "x"}])
+    assert check(over, rules=skip)[1] == []
+    # a real note sentence alone frees no event: it may be about something else entirely
+    creates, problems = check(over)
+    assert creates == [] and "overlaps 'W - Math'" in problems[0]
     made_up = WeekPlan(blocks=[block(MON, "11:00", "11:30")],
                        plan_over=[PlanOver(event_id="lec", note="the user does not care about lectures")])
     creates, problems = check(made_up)
