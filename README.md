@@ -135,9 +135,11 @@ and asks before touching the calendar. It uses a local model when
 brew install ollama && brew services start ollama && ollama pull qwen3:8b
 ```
 
-Otherwise it uses Claude when `ANTHROPIC_API_KEY=...` is in a `.env` file in the
-DayOptimizer folder. `llm.backend` in the config forces one (`ollama`, `anthropic`,
-default `auto`). `llm.ollama_mode` picks how the local model plans: `slots`
+Otherwise it uses Claude when an Anthropic API key is set: paste it in Settings
+(the gear on the `dayoptimizer setup` page, stored in `~/.dayoptimizer/.env`) or
+put `ANTHROPIC_API_KEY=...` in a `.env` file in the DayOptimizer folder. Settings
+also picks who plans (automatic, only this Mac, only Claude), the break kept
+around your events, your work days and the background check. `llm.ollama_mode` picks how the local model plans: `slots`
 (default, it picks among free slots code found, one day at a time) or `layout`
 (it lays out the day itself).
 
@@ -347,7 +349,7 @@ If you ever rebuild your `.venv` (e.g. after upgrading Python), rerun
   (`ANTHROPIC_API_KEY` set), the Anthropic API receives your routine, notes,
   open tasks and the week's events (titles, times, locations). Garmin data
   stays on your Mac unless you turn on "Let Claude see my health summary"
-  in the Garmin window of `dayoptimizer setup`; then a one-line summary
+  in Settings (the gear on the `dayoptimizer setup` page); then a one-line summary
   (sleep, Body Battery, HRV, stress, resting heart rate) goes with each plan
   Claude makes. A local Ollama model always gets it.
 - In plugin mode, event titles and health summaries are sent to Claude as

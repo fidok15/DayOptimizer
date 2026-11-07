@@ -7,6 +7,7 @@ import { fromMin, sceneHour } from "../lib/time";
 import { setTheme, useTheme } from "../lib/theme";
 import type { Categories, SaveStatus, View, Week, Weekday } from "../lib/types";
 import GarminConnect from "./GarminConnect";
+import Settings from "./Settings";
 import ImportCalendar from "./ImportCalendar";
 import SaveRoutine from "./SaveRoutine";
 
@@ -79,6 +80,7 @@ export default function Header(props: {
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} oneDay={oneDay} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
+        <Settings />
         <button
           type="button"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

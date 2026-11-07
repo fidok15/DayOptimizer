@@ -1,5 +1,5 @@
 import { categoryColor } from "./colors";
-import type { Categories, FreeTime, ImportedBlock, RoutineMode, ServerState, Week, Weekday } from "./types";
+import type { Categories, ImportedBlock, Settings, RoutineMode, ServerState, Week, Weekday } from "./types";
 
 async function parse(res: Response): Promise<ServerState> {
   const body = await res.json().catch(() => ({}));
@@ -29,8 +29,8 @@ const inOrder = <T>(write: () => Promise<T>): Promise<T> => {
   return next;
 };
 
-export const saveState = (categories: Categories, week: Week, notes: string, routineMode: RoutineMode | null, free: FreeTime): Promise<ServerState> => {
-  const body = JSON.stringify({ categories, typical_week: toServerWeek(week), notes, ...(routineMode && { routine_mode: routineMode }), ...free });
+export const saveState = (categories: Categories, week: Week, notes: string, routineMode: RoutineMode | null): Promise<ServerState> => {
+  const body = JSON.stringify({ categories, typical_week: toServerWeek(week), notes, ...(routineMode && { routine_mode: routineMode }) });
   return inOrder(() => fetch("/api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -68,10 +68,10 @@ export const importWeek = async (weekStart: string): Promise<ImportedCalendars> 
 export const importFiles = async (weekStart: string, files: string[]): Promise<ImportedCalendars> =>
   toImported(await post("/api/import-file", { week_start: weekStart, files }));
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, method = "POST"): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch {
     throw new ApiError("Can't reach DayOptimizer. Is `dayoptimizer web` still running?", "offline");
   }
@@ -80,10 +80,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export type GarminState = { connected: boolean; share_health: boolean };
-export const garminStatus = (): Promise<GarminState> =>
-  fetch("/api/garmin", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { connected: false, share_health: false }));
-export const garminShare = (share: boolean) => post<GarminState>("/api/garmin/share", { share });
+export const garminStatus = (): Promise<{ connected: boolean }> =>
+  fetch("/api/garmin", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { connected: false }));
 export const garminLogin = (email: string, password: string) =>
   post<{ status: "connected" | "mfa" }>("/api/garmin/login", { email, password });
 export const garminMfa = (code: string) => post<{ status: "connected" }>("/api/garmin/mfa", { code });
@@ -112,3 +110,15 @@ export const calendarColors = (): Promise<{ colors: Record<string, string>; cale
       calendars: b?.calendars ?? {},
     }))
     .catch(() => ({ colors: {}, calendars: {} }));
+
+export const fetchSettings = (): Promise<Settings> =>
+  fetch("/api/settings", { cache: "no-store" }).then(async (r) => {
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new ApiError(body.error ?? `Request failed (${r.status})`, body.code ?? "failed");
+    return body as Settings;
+  });
+export type SettingsChange = { llm?: Partial<Settings["llm"]>; share_health?: boolean; day?: Partial<{ [K in keyof Settings["day"]]: Settings["day"][K] | null }> };
+export const saveSettings = (change: SettingsChange) => inOrder(() => post<Settings>("/api/settings", change, "PUT"));
+export const saveApiKey = (key: string) => inOrder(() => post<Settings>("/api/settings/key", { key }));
+export const setBackgroundCheck = (enabled: boolean, interval_minutes: number) =>
+  post<Settings>("/api/agent", { enabled, interval_minutes });
