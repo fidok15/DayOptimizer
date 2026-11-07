@@ -538,6 +538,8 @@ def write_settings(payload: object) -> dict:
     """Only the keys sent change; null puts a day setting back to the default."""
     if not isinstance(payload, dict):
         raise ApiError("invalid", "Send the settings as an object.", 422)
+    if any(not isinstance(payload.get(k) or {}, dict) for k in ("llm", "day")):
+        raise ApiError("invalid", "Send llm and day as objects.", 422)
     local = _local()
     llm = dict(local.get("llm") or {})
     for k, v in (payload.get("llm") or {}).items():

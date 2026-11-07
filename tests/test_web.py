@@ -163,6 +163,10 @@ def test_settings_change_only_what_is_sent_and_are_validated(no_launchd):
     for bad in ({"llm": {"backend": "gpt"}}, {"day": {"buffer_minutes": "10"}}, {"share_health": "yes"}):
         with pytest.raises(ConfigError):
             write_settings(bad)
+    from dayoptimizer.web import ApiError
+    for bad in ({"day": [1]}, {"llm": "ollama"}):
+        with pytest.raises(ApiError):
+            write_settings(bad)
 
 
 def test_api_key_is_stored_privately_and_never_sent_back(no_launchd):
