@@ -123,8 +123,14 @@ def write_state(payload: object) -> dict:
     week = {day: blocks for day, blocks in week.items() if blocks}
     if week:
         local["typical_week"] = week
-    day_rules = {**(local.get("day_rules") or {}),
-                 **{k: payload[k] for k in ("min_free_minutes", "variety") if payload.get(k) is not None}}
+    day_rules = dict(local.get("day_rules") or {})
+    for k in ("min_free_minutes", "variety"):  # not sent: kept; sent empty (null): back to the default
+        if k in payload:
+            if payload[k] is None:
+                day_rules.pop(k, None)
+            else:
+                day_rules[k] = payload[k]
+    local.pop("day_rules", None)
     if day_rules:
         local["day_rules"] = day_rules
     save_user_config(yaml.safe_dump(local, sort_keys=False, allow_unicode=True))

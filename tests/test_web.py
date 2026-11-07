@@ -358,6 +358,8 @@ def test_free_time_settings_roundtrip_and_validation():
     state = write_state(_state_payload(min_free_minutes=90, variety="low"))
     assert (state["min_free_minutes"], state["variety"]) == (90, "low")
     assert write_state(_state_payload())["variety"] == "low"  # not sent: kept
+    cleared = write_state(_state_payload(min_free_minutes=None))  # the field emptied: back to the default
+    assert (cleared["min_free_minutes"], cleared["variety"]) == (None, "low")
     with pytest.raises(ConfigError):
         write_state(_state_payload(variety="lots"))
 
