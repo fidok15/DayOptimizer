@@ -64,6 +64,11 @@ function Status({ ok, children }: { ok: boolean; children: ReactNode }) {
   );
 }
 
+function kept<T extends object>(draft: T, before: T, after: T): T {
+  const edited = (k: keyof T) => JSON.stringify(draft[k]) !== JSON.stringify(before[k]);
+  return Object.fromEntries((Object.keys(after) as (keyof T)[]).map((k) => [k, edited(k) ? draft[k] : after[k]])) as T;
+}
+
 export default function Settings() {
   const dialog = useRef<HTMLDialogElement>(null);
   const [saved, setSaved] = useState<S | null>(null);
@@ -73,15 +78,26 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
 
+  const savedRef = useRef<S | null>(null);
+  // the server's answer, keeping every edit not saved yet (made before or while a request ran)
   const load = (s: S) => {
+    const before = savedRef.current;
+    savedRef.current = s;
     setSaved(s);
-    setDraft(s);
+    setDraft((d) =>
+      d && before
+        ? { ...s, llm: kept(d.llm, before.llm, s.llm), day: kept(d.day, before.day, s.day),
+            agent: kept(d.agent, before.agent, s.agent),
+            share_health: d.share_health !== before.share_health ? d.share_health : s.share_health }
+        : s,
+    );
   };
 
   const open = () => {
     setError("");
     setNote("");
     dialog.current?.showModal();
+    savedRef.current = null; // opening shows what is saved
     fetchSettings().then(load).catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't read your settings."));
   };
   const close = () => dialog.current?.close();
