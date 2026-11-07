@@ -9,7 +9,7 @@ export const TEMPLATE_DAY: Weekday = "mon";
 const everyDay = (w: Week, from: Weekday): Week =>
   Object.fromEntries(WEEKDAYS.map((d) => [d, d === from ? w[from] : w[from].map((b) => ({ ...b, id: uid() }))])) as Week;
 
-const blockKey = (b: Block) => `${b.start}-${b.end}-${b.title.trim().toLowerCase()}`;
+const blockKey = (b: Block) => `${b.start}-${b.end}-${b.category}-${b.title.trim().toLowerCase()}`;
 
 const toWeek = (s: ServerState): Week =>
   Object.fromEntries(
