@@ -261,3 +261,10 @@ def test_an_open_block_is_placed_like_a_normal_one_titled_by_its_intent():
                                          "intent": "something productive"}]})
     changes = plan_day(DAY, [], None, dataclasses.replace(BASE, typical_week=week), now=EARLY)
     assert _created(changes) == [("something productive", "15:00", "17:00")]
+
+
+def test_without_a_routine_no_block_is_created_where_the_notes_forbid_it():
+    rules = _with_notes([{"type": "not_before", "category": "Food", "time": "14:00",
+                          "source": "no food before 14"}], {})
+    food = [c for c in plan_day(DAY, [], None, rules, now=EARLY) if c.category == "Food" and c.kind == "create"]
+    assert all(c.new_start.hour >= 14 for c in food)

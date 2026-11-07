@@ -555,11 +555,19 @@ def plan_day(day, events, garmin, rules, now, tomorrow_first_fixed=None, week_gy
     day_end = _window_dt(day, rules.day_end)
     changes: list[PlannedChange] = []
     working = [e for e in events if not skippable(rules.note_rules, e)]
+    midnight = datetime.combine(day, time(0)).astimezone()
+
+    def breaks_notes(c) -> bool:
+        """A block the phase would put where the user's notes rule it out (the
+        fallback generators below don't all read the notes themselves)."""
+        return (c.kind in ("create", "move") and c.new_start is not None and c.new_end is not None
+                and window_rule(rules.note_rules, c.category, minutes(midnight, c.new_start),
+                                minutes(midnight, c.new_end), day.weekday()) is not None)
 
     def run(phase_changes):
         nonlocal working
         phase_changes = [c for c in phase_changes
-                         if c.kind != "create" or c.category in rules.categories]
+                         if (c.kind != "create" or c.category in rules.categories) and not breaks_notes(c)]
         changes.extend(phase_changes)
         working = _project(working, phase_changes)
 
