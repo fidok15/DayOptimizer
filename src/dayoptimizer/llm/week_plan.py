@@ -100,6 +100,7 @@ TASK_RULES = (
     "'in one piece': one block for all its minutes.\n"
     "- Never place more minutes than are left. Overdue tasks first, then nearer deadlines, then "
     "higher priority.\n"
+    "- Leave at least 15 minutes free between two task blocks: no study or work blocks back to back.\n"
     "- Spread a long task over days rather than one marathon: at most about 3 hours of one task a day "
     "when the deadline allows.\n"
     "- A routine block marked (open: tasks may go here) takes a task of any category.\n"
@@ -820,6 +821,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
 
 
 SESSION_PIECE = 30  # a task split over routine sessions: no piece shorter, unless it finishes the task
+TASK_BREAK = timedelta(minutes=15)  # rest between two task blocks: focus drops without one (no 2h of study in a row)
 
 
 def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], routine_days: dict,
@@ -850,11 +852,12 @@ def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], rou
                         continue
                     if s > a and minutes(a, s) < SESSION_PIECE:
                         continue  # ponytail: a session is filled from its start; no stub before a task
-                    a = s + timedelta(minutes=n)
-                    out.append((s, a, Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, a)]).split("-")[1],
-                                            category=t.category, title=t.title, task_id=t.id,
-                                            why=f"in your {x[3]} time")))
+                    end = s + timedelta(minutes=n)
+                    out.append((s, end, Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, end)]).split("-")[1],
+                                              category=t.category, title=t.title, task_id=t.id,
+                                              why=f"in your {x[3]} time")))
                     still[t.id] -= n
+                    a = end + TASK_BREAK
     return out
 
 
@@ -930,8 +933,8 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             need -= n
             return end
 
-        def busy():
-            return [e for e in taken if not (e.id.startswith(("kept", "open")) and e.task_id is None
+        def busy():  # a task block keeps a break around it
+            return [replace(e, start=e.start - TASK_BREAK, end=e.end + TASK_BREAK) if e.task_id else e for e in taken if not (e.id.startswith(("kept", "open")) and e.task_id is None
                                              and e.calendar == t.category)] + _reserved_events(reserved, t.category)
 
         candidates = sorted(x for x in days if x <= last and routine_days.get(x))

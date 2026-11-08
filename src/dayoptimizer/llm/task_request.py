@@ -58,6 +58,49 @@ _ALIASES = {"śnia": ("brea",), "obia": ("dinn", "lunc"), "kola": ("supp", "dinn
             "siło": ("gym",), "tren": ("gym",), "nauk": ("stud", "lear"), "zaję": ("stud", "lect")}
 
 
+def _fold(word: str) -> str:
+    """'siłownię' -> 'silowni': Polish letters aside, people type without them."""
+    import unicodedata
+    return unicodedata.normalize("NFKD", word.replace("ł", "l")).encode("ascii", "ignore").decode()
+
+
+_FOLDED_ALIASES = {_fold(k): v for k, v in _ALIASES.items()}
+
+
+def stems(text: str) -> set[str]:
+    """4-letter stems of the words, plus the English routine names they stand for ('śniadanie' ~ Breakfast)."""
+    out = set()
+    for w in re.findall(r"\w{2,}", text.lower()):
+        s = _fold(w)[:4]
+        out |= {s, *_FOLDED_ALIASES.get(s, ())}
+    return out
+
+
+_WITHOUT = re.compile(r"\b(?:bez|without|no|skip|odpu[sś][cć]\w*|nie\s+id[eę]\s+na)\s+(\w+)")
+
+
+def skipped_routine(text: str, typical_week: dict, days: list[date], today: date) -> dict[date, list[str]]:
+    """Routine blocks the message leaves out ('bez siłowni', 'no gym'): on the day it names,
+    else on every planned day. {day: [block label]}."""
+    from dayoptimizer.llm.backend import day_words
+    low = text.lower()
+    said = set().union(*(stems(w) for w in _WITHOUT.findall(low)))
+    named = {resolve_day(d, today) for p, d in day_words() if re.search(p, low)}
+    out: dict[date, list[str]] = {}
+    for d in days:
+        if named and d not in named:
+            continue
+        for b in typical_week.get(d.weekday(), []):
+            if said & (stems(b.label) | stems(b.category)):
+                out.setdefault(d, []).append(b.label)
+    return out
+
+
+def stands_in(title: str, category: str, block) -> bool:
+    """The user's own event is that routine block this time ('śniadanie' in Food = Breakfast)."""
+    return block.category == category and bool(stems(title) & stems(block.label))
+
+
 def _after_event(low: str, events: list[tuple[str, datetime]], day: date) -> datetime | None:
     """'po pracy' / 'after the lecture' -> the end of that day's event or routine block of that name."""
     m = re.search(r"\b(?:po|after)\s+(?:the\s+)?(\w+)", low)

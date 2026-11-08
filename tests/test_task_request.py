@@ -137,3 +137,16 @@ def test_quick_fix_leaves_next_weeks_day_to_the_model():
     assert quick_fix("move it to next Friday") is None
     assert quick_fix("na przyszły piątek") is None
     assert quick_fix("friday").day == "friday"
+
+
+def test_the_message_and_the_users_own_events_leave_routine_blocks_out():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine, stands_in
+    mon, tue = date(2026, 11, 9), date(2026, 11, 10)
+    gym, breakfast = RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")
+    week = {0: [gym, breakfast], 1: [gym]}
+    text = "zaplanuj mi jutrzejszy dzien, bez silowni, 2h nauka AWS"
+    assert skipped_routine(text, week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"]}  # only the day said
+    assert skipped_routine("no gym, 2h AWS", week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"], tue: ["Gym"]}
+    assert skipped_routine("bez cukru, 2h AWS", week, [mon], date(2026, 11, 8)) == {}
+    assert stands_in("sniadanie", "Food", breakfast) and not stands_in("Kino", "Food", breakfast)
