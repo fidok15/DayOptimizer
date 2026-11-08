@@ -840,7 +840,9 @@ def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], rou
         for x in sorted(routine_days.get(d, []), key=lambda x: x[0]):
             if _guarded(x):
                 continue
-            for a, z in _minus([(max(x[0], now), x[1])], [(e.start, e.end) for e in busy]):
+            # a task block placed in an earlier session keeps its break too (sessions back to back)
+            for a, z in _minus([(max(x[0], now), x[1])], [(e.start, e.end) for e in busy]
+                               + [(s - TASK_BREAK, e + TASK_BREAK) for s, e, _ in out]):
                 for t in order:
                     lo, hi = window(t, now)
                     s, e = max(a, lo), min(z, hi) if hi else z

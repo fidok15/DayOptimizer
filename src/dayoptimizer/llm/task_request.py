@@ -80,25 +80,30 @@ _WITHOUT = re.compile(r"\b(?:bez|without|no|skip|odpu[sś][cć]\w*|nie\s+id[eę]
 
 
 def skipped_routine(text: str, typical_week: dict, days: list[date], today: date) -> dict[date, list[str]]:
-    """Routine blocks the message leaves out ('bez siłowni', 'no gym'): on the day it names,
-    else on every planned day. {day: [block label]}."""
+    """Routine blocks the message leaves out ('bez siłowni', 'no gym'): on the day its clause
+    names (or an earlier clause), else on every planned day. {day: [block label]}."""
     from dayoptimizer.llm.backend import day_words
-    low = text.lower()
-    said = set().union(*(stems(w) for w in _WITHOUT.findall(low)))
-    named = {resolve_day(d, today) for p, d in day_words() if re.search(p, low)}
     out: dict[date, list[str]] = {}
-    for d in days:
-        if named and d not in named:
-            continue
-        for b in typical_week.get(d.weekday(), []):
-            if said & (stems(b.label) | stems(b.category)):
-                out.setdefault(d, []).append(b.label)
+    cur = None
+    for clause in re.split(r"[,;.]|\s(?:i|a|oraz|and)\s", text.lower()):
+        said = {resolve_day(d, today) for p, d in day_words() if re.search(p, clause)}
+        cur = said or cur
+        words = set().union(*(stems(w) for w in _WITHOUT.findall(clause)))
+        for d in days:
+            if not words or (cur and d not in cur):
+                continue
+            for b in typical_week.get(d.weekday(), []):
+                if words & (stems(b.label) | stems(b.category)) and b.label not in out.get(d, []):
+                    out.setdefault(d, []).append(b.label)
     return out
 
 
 def stands_in(title: str, category: str, block) -> bool:
-    """The user's own event is that routine block this time ('śniadanie' in Food = Breakfast)."""
-    return block.category == category and bool(stems(title) & stems(block.label))
+    """The user's own event is that routine block this time ('śniadanie' in Food = Breakfast):
+    every word of its title names the block ('Breakfast shopping' is not breakfast)."""
+    label = stems(block.label)
+    words = re.findall(r"\w{2,}", title.lower())
+    return block.category == category and bool(words) and all(stems(w) & label for w in words)
 
 
 def _after_event(low: str, events: list[tuple[str, datetime]], day: date) -> datetime | None:

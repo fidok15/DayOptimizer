@@ -150,3 +150,13 @@ def test_the_message_and_the_users_own_events_leave_routine_blocks_out():
     assert skipped_routine("no gym, 2h AWS", week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"], tue: ["Gym"]}
     assert skipped_routine("bez cukru, 2h AWS", week, [mon], date(2026, 11, 8)) == {}
     assert stands_in("sniadanie", "Food", breakfast) and not stands_in("Kino", "Food", breakfast)
+
+
+def test_a_skip_belongs_to_its_own_clauses_day_and_an_event_must_name_the_block_whole():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine, stands_in
+    mon, tue = date(2026, 11, 9), date(2026, 11, 10)
+    gym = RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym")
+    week = {0: [gym], 1: [gym]}
+    assert skipped_routine("Monday no gym, Tuesday study", week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"]}
+    assert not stands_in("Breakfast shopping", "Food", RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast"))

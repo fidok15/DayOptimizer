@@ -304,7 +304,12 @@ def cmd_plan(args, rules, config):
         added = _read_events(args.with_events) if args.with_events else []
         days = [start_day + timedelta(days=i) for i in range(days)]
         extra = [Event(id=f"new-{i}", calendar=c, title=t, start=s, end=e) for i, (c, t, s, e) in enumerate(added)]
-        skip = {date.fromisoformat(d): n for d, n in json.loads(args.skip).items()} if getattr(args, "skip", None) else None
+        try:
+            raw = json.loads(args.skip) if getattr(args, "skip", None) else {}
+            skip = {date.fromisoformat(d): [str(x) for x in n] for d, n in raw.items() if isinstance(n, list)}
+        except (ValueError, AttributeError, TypeError):
+            console.print("Couldn't read the routine blocks to leave out; planning with all of them.", style="yellow")
+            skip = None
         _save_proposal(days, added, _llm_plan(days, calendar, storage, rules, extra=extra, dry=True, skip=skip))
         return
     result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules)

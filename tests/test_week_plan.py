@@ -1494,3 +1494,16 @@ def test_cli_plan_leaves_out_the_gym_said_away_and_the_breakfast_the_user_moved(
                                 skip={MON: ["Gym"]})
     assert [c.title for c in changes if c.kind == "create"] == []
     assert "2030-10-14: Breakfast, Gym" in pasted.prompts[0]
+
+
+def test_back_to_back_routine_sessions_still_leave_a_break_between_tasks():
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+    from dayoptimizer.llm.week_plan import into_sessions, routine_spans
+    sat = date(2030, 10, 19)
+    routine_days, _ = routine_spans({sat.weekday(): [RoutineBlock(15 * 60, 16 * 60, "Learn", "Study"),
+                                                     RoutineBlock(16 * 60, 17 * 60, "Learn", "Study")]},
+                                    {"Learn": CategoryRule(movable=True, priority=5)}, [sat])
+    tasks = [Task(id=f"t{i}", title=t, category="Learn", duration_min=60) for i, t in enumerate(("Math", "ML"))]
+    got = [(f"{s:%H:%M}", f"{e:%H:%M}") for s, e, _ in
+           into_sessions(tasks, {t.id: 60 for t in tasks}, [sat], routine_days, [], NOW)]
+    assert got[0] == ("15:00", "16:00") and all(s >= "16:15" for s, _ in got[1:])
