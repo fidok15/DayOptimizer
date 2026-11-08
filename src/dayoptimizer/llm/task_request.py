@@ -80,15 +80,21 @@ _WITHOUT = re.compile(r"\b(?:bez|without|no|skip|odpu[sś][cć]\w*|nie\s+id[eę]
 
 
 def skipped_routine(text: str, typical_week: dict, days: list[date], today: date) -> dict[date, list[str]]:
-    """Routine blocks the message leaves out ('bez siłowni', 'no gym'): on the day its clause
-    names (or an earlier clause), else on every planned day. {day: [block label]}."""
-    from dayoptimizer.llm.backend import day_words
+    """Routine blocks the message leaves out ('bez siłowni', 'no gym', 'bez siłowni i śniadania'):
+    on the day its clause names (or an earlier clause), else on every planned day. {day: [block label]}."""
+    from dayoptimizer.llm.backend import WEEKDAYS, day_words, next_week
     out: dict[date, list[str]] = {}
-    cur = None
-    for clause in re.split(r"[,;.]|\s(?:i|a|oraz|and)\s", text.lower()):
-        said = {resolve_day(d, today) for p, d in day_words() if re.search(p, clause)}
+    cur, prev = None, False
+    for clause in re.split(r"[,;.]|\s(?:i|a|oraz|and|or|ani)\s", text.lower()):
+        said = {next_week(d, today) if d in WEEKDAYS and re.search(r"\b(?:next|przysz\w*|nast[eę]pn\w*)\b", clause)
+                else resolve_day(d, today) for p, d in day_words() if re.search(p, clause)}
         cur = said or cur
-        words = set().union(*(stems(w) for w in _WITHOUT.findall(clause)))
+        found = _WITHOUT.findall(clause)
+        # 'bez siłowni i śniadania': the word after 'i' is left out too; 'i 2h nauki' is a task, not that
+        if not found and prev and not said and not re.search(r"\d", clause):
+            found = re.findall(r"\w+", clause)[:1]
+        prev = bool(found)
+        words = set().union(*(stems(w) for w in found))
         for d in days:
             if not words or (cur and d not in cur):
                 continue

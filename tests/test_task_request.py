@@ -160,3 +160,14 @@ def test_a_skip_belongs_to_its_own_clauses_day_and_an_event_must_name_the_block_
     week = {0: [gym], 1: [gym]}
     assert skipped_routine("Monday no gym, Tuesday study", week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"]}
     assert not stands_in("Breakfast shopping", "Food", RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast"))
+
+
+def test_skips_read_lists_and_next_week():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine
+    mon, nxt = date(2030, 10, 14), date(2030, 10, 21)
+    gym, bf = RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")
+    week = {0: [gym, bf]}
+    assert skipped_routine("bez siłowni i śniadania", week, [mon], mon) == {mon: ["Gym", "Breakfast"]}
+    assert skipped_routine("bez siłowni i 2h śniadania", week, [mon], mon) == {mon: ["Gym"]}
+    assert skipped_routine("next Monday no gym", week, [mon, nxt], mon) == {nxt: ["Gym"]}

@@ -879,7 +879,8 @@ def said_first(tasks: list[Task], left: dict[str, int], days: list[date], routin
                      and not overdue(t, now)
                      and t.due.date() == t.not_before.date() in days and t.due - t.not_before < SAID_WINDOW),
                     key=lambda t: t.due):
-        taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in out]
+        taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s - TASK_BREAK, end=e + TASK_BREAK)
+                        for s, e, b in out]  # with the break a task block keeps
         mine = into_sessions([t], left, days, routine_days, taken, now)
         if sum(minutes(s, e) for s, e, _ in mine) < left[t.id]:
             lo, hi = window(t, now)

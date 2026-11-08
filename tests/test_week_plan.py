@@ -1473,9 +1473,11 @@ def test_cli_plan_leaves_out_the_gym_said_away_and_the_breakfast_the_user_moved(
     from dayoptimizer import cli
     from dayoptimizer.core.rules import CategoryRule, RoutineBlock
 
+    old_gym = ev("g1", "Gym", "Gym", MON, "18:00", "19:00", managed=True)
+
     class Cal:
         def list_events(self, start, end):
-            return []
+            return [old_gym]  # an earlier plan's gym: it goes too
 
     class Rules:
         has_routine = True
@@ -1493,6 +1495,7 @@ def test_cli_plan_leaves_out_the_gym_said_away_and_the_breakfast_the_user_moved(
     changes, *_ = cli._llm_plan([MON], Cal(), cli.Storage(":memory:"), Rules(), extra=[own], dry=True,
                                 skip={MON: ["Gym"]})
     assert [c.title for c in changes if c.kind == "create"] == []
+    assert [(c.kind, c.event_id) for c in changes if c.title == "Gym"] == [("delete", "g1")]
     assert "2030-10-14: Breakfast, Gym" in pasted.prompts[0]
 
 

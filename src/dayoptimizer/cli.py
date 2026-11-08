@@ -212,8 +212,14 @@ def _llm_plan(days: list[date], calendar, storage, rules, confirm=None, extra: l
                 shared, history, {d for d in days if rules.typical_week.get(d.weekday())},
                 tasks=tasks, left=left, reserved=reserved, routine_days=routine_days,
                 buffer_minutes=getattr(rules, "buffer_minutes", 0))
-            changes = [c for c in changes if not (c.kind == "create" and not c.task_id and c.new_start
+            # what the user left out goes, also a block of it an earlier plan put in the calendar
+            changes = [c for c in changes if not (c.kind in ("create", "move") and not c.task_id and c.new_start
                                                   and c.title in skip.get(c.new_start.date(), ()))]
+            gone_ids = {c.event_id for c in changes if c.kind == "delete"}
+            changes += [PlannedChange(kind="delete", category=e.calendar, title=e.title, event_id=e.id,
+                                      reason="you left it out this time")
+                        for e in events if e.managed and not e.task_id and e.start >= now and e.id not in gone_ids
+                        and e.title in skip.get(e.start.date(), ())]
         except Exception as exc:
             console.print(f"{name} couldn't plan ({' '.join(str(exc).split())[:200]}) — trying the next option.",
                           markup=False, style="yellow")
