@@ -137,3 +137,45 @@ def test_quick_fix_leaves_next_weeks_day_to_the_model():
     assert quick_fix("move it to next Friday") is None
     assert quick_fix("na przyszły piątek") is None
     assert quick_fix("friday").day == "friday"
+
+
+def test_the_message_and_the_users_own_events_leave_routine_blocks_out():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine, stands_in
+    mon, tue = date(2026, 11, 9), date(2026, 11, 10)
+    gym, breakfast = RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")
+    week = {0: [gym, breakfast], 1: [gym]}
+    text = "zaplanuj mi jutrzejszy dzien, bez silowni, 2h nauka AWS"
+    assert skipped_routine(text, week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"]}  # only the day said
+    assert skipped_routine("no gym, 2h AWS", week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"], tue: ["Gym"]}
+    assert skipped_routine("bez cukru, 2h AWS", week, [mon], date(2026, 11, 8)) == {}
+    assert stands_in("sniadanie", "Food", breakfast) and not stands_in("Kino", "Food", breakfast)
+
+
+def test_a_skip_belongs_to_its_own_clauses_day_and_an_event_must_name_the_block_whole():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine, stands_in
+    mon, tue = date(2026, 11, 9), date(2026, 11, 10)
+    gym = RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym")
+    week = {0: [gym], 1: [gym]}
+    assert skipped_routine("Monday no gym, Tuesday study", week, [mon, tue], date(2026, 11, 8)) == {mon: ["Gym"]}
+    assert not stands_in("Breakfast shopping", "Food", RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast"))
+
+
+def test_skips_read_lists_and_next_week():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine
+    mon, nxt = date(2030, 10, 14), date(2030, 10, 21)
+    gym, bf = RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")
+    week = {0: [gym, bf]}
+    assert skipped_routine("bez siłowni i śniadania", week, [mon], mon) == {mon: ["Gym", "Breakfast"]}
+    assert skipped_routine("bez siłowni i 2h śniadania", week, [mon], mon) == {mon: ["Gym"]}
+    assert skipped_routine("next Monday no gym", week, [mon, nxt], mon) == {nxt: ["Gym"]}
+
+
+def test_a_skip_list_stops_at_the_sentence():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine
+    mon = date(2030, 10, 14)
+    week = {0: [RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")]}
+    assert skipped_routine("no gym. Breakfast should stay", week, [mon], mon) == {mon: ["Gym"]}

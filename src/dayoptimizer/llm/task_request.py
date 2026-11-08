@@ -58,6 +58,65 @@ _ALIASES = {"śnia": ("brea",), "obia": ("dinn", "lunc"), "kola": ("supp", "dinn
             "siło": ("gym",), "tren": ("gym",), "nauk": ("stud", "lear"), "zaję": ("stud", "lect")}
 
 
+def _fold(word: str) -> str:
+    """'siłownię' -> 'silowni': Polish letters aside, people type without them."""
+    import unicodedata
+    return unicodedata.normalize("NFKD", word.replace("ł", "l")).encode("ascii", "ignore").decode()
+
+
+_FOLDED_ALIASES = {_fold(k): v for k, v in _ALIASES.items()}
+
+
+def stems(text: str) -> set[str]:
+    """4-letter stems of the words, plus the English routine names they stand for ('śniadanie' ~ Breakfast)."""
+    out = set()
+    for w in re.findall(r"\w{2,}", text.lower()):
+        s = _fold(w)[:4]
+        out |= {s, *_FOLDED_ALIASES.get(s, ())}
+    return out
+
+
+_WITHOUT = re.compile(r"\b(?:bez|without|no|skip|odpu[sś][cć]\w*|nie\s+id[eę]\s+na)\s+(\w+)")
+
+
+def skipped_routine(text: str, typical_week: dict, days: list[date], today: date) -> dict[date, list[str]]:
+    """Routine blocks the message leaves out ('bez siłowni', 'no gym', 'bez siłowni i śniadania'):
+    on the day its clause names (or an earlier clause), else on every planned day. {day: [block label]}."""
+    from dayoptimizer.llm.backend import WEEKDAYS, day_words, next_week
+    out: dict[date, list[str]] = {}
+    cur, prev = None, False
+    # a list after 'bez' runs on over 'i'/'and' only, never past a comma or a sentence
+    for clause in (c for part in re.split(r"[,;.!?\n]", text.lower())
+                   for c in [None, *re.split(r"\s(?:i|a|oraz|and|or|ani)\s", part)]):
+        if clause is None:
+            prev = False
+            continue
+        said = {next_week(d, today) if d in WEEKDAYS and re.search(r"\b(?:next|przysz\w*|nast[eę]pn\w*)\b", clause)
+                else resolve_day(d, today) for p, d in day_words() if re.search(p, clause)}
+        cur = said or cur
+        found = _WITHOUT.findall(clause)
+        # 'bez siłowni i śniadania': the word after 'i' is left out too; 'i 2h nauki' is a task, not that
+        if not found and prev and not said and not re.search(r"\d", clause):
+            found = re.findall(r"\w+", clause)[:1]
+        prev = bool(found)
+        words = set().union(*(stems(w) for w in found))
+        for d in days:
+            if not words or (cur and d not in cur):
+                continue
+            for b in typical_week.get(d.weekday(), []):
+                if words & (stems(b.label) | stems(b.category)) and b.label not in out.get(d, []):
+                    out.setdefault(d, []).append(b.label)
+    return out
+
+
+def stands_in(title: str, category: str, block) -> bool:
+    """The user's own event is that routine block this time ('śniadanie' in Food = Breakfast):
+    every word of its title names the block ('Breakfast shopping' is not breakfast)."""
+    label = stems(block.label)
+    words = re.findall(r"\w{2,}", title.lower())
+    return block.category == category and bool(words) and all(stems(w) & label for w in words)
+
+
 def _after_event(low: str, events: list[tuple[str, datetime]], day: date) -> datetime | None:
     """'po pracy' / 'after the lecture' -> the end of that day's event or routine block of that name."""
     m = re.search(r"\b(?:po|after)\s+(?:the\s+)?(\w+)", low)

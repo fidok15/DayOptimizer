@@ -100,6 +100,7 @@ TASK_RULES = (
     "'in one piece': one block for all its minutes.\n"
     "- Never place more minutes than are left. Overdue tasks first, then nearer deadlines, then "
     "higher priority.\n"
+    "- Leave at least 15 minutes free between two task blocks: no study or work blocks back to back.\n"
     "- Spread a long task over days rather than one marathon: at most about 3 hours of one task a day "
     "when the deadline allows.\n"
     "- A routine block marked (open: tasks may go here) takes a task of any category.\n"
@@ -820,6 +821,7 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
 
 
 SESSION_PIECE = 30  # a task split over routine sessions: no piece shorter, unless it finishes the task
+TASK_BREAK = timedelta(minutes=15)  # rest between two task blocks: focus drops without one (no 2h of study in a row)
 
 
 def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], routine_days: dict,
@@ -838,7 +840,9 @@ def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], rou
         for x in sorted(routine_days.get(d, []), key=lambda x: x[0]):
             if _guarded(x):
                 continue
-            for a, z in _minus([(max(x[0], now), x[1])], [(e.start, e.end) for e in busy]):
+            # a task block placed in an earlier session keeps its break too (sessions back to back)
+            for a, z in _minus([(max(x[0], now), x[1])], [(e.start, e.end) for e in busy]
+                               + [(s - TASK_BREAK, e + TASK_BREAK) for s, e, _ in out]):
                 for t in order:
                     lo, hi = window(t, now)
                     s, e = max(a, lo), min(z, hi) if hi else z
@@ -850,11 +854,12 @@ def into_sessions(tasks: list[Task], left: dict[str, int], days: list[date], rou
                         continue
                     if s > a and minutes(a, s) < SESSION_PIECE:
                         continue  # ponytail: a session is filled from its start; no stub before a task
-                    a = s + timedelta(minutes=n)
-                    out.append((s, a, Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, a)]).split("-")[1],
-                                            category=t.category, title=t.title, task_id=t.id,
-                                            why=f"in your {x[3]} time")))
+                    end = s + timedelta(minutes=n)
+                    out.append((s, end, Block(day=d.isoformat(), start=f"{s:%H:%M}", end=_spans(d, [(s, end)]).split("-")[1],
+                                              category=t.category, title=t.title, task_id=t.id,
+                                              why=f"in your {x[3]} time")))
                     still[t.id] -= n
+                    a = end + TASK_BREAK
     return out
 
 
@@ -874,7 +879,8 @@ def said_first(tasks: list[Task], left: dict[str, int], days: list[date], routin
                      and not overdue(t, now)
                      and t.due.date() == t.not_before.date() in days and t.due - t.not_before < SAID_WINDOW),
                     key=lambda t: t.due):
-        taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in out]
+        taken = busy + [Event(id="said", calendar=b.category, title=b.title, start=s - TASK_BREAK, end=e + TASK_BREAK)
+                        for s, e, b in out]  # with the break a task block keeps
         mine = into_sessions([t], left, days, routine_days, taken, now)
         if sum(minutes(s, e) for s, e, _ in mine) < left[t.id]:
             lo, hi = window(t, now)
@@ -930,8 +936,8 @@ def _fill(tasks: list[Task], after: dict[str, int], days: list[date], fill_until
             need -= n
             return end
 
-        def busy():
-            return [e for e in taken if not (e.id.startswith(("kept", "open")) and e.task_id is None
+        def busy():  # a task block keeps a break around it
+            return [replace(e, start=e.start - TASK_BREAK, end=e.end + TASK_BREAK) if e.task_id else e for e in taken if not (e.id.startswith(("kept", "open")) and e.task_id is None
                                              and e.calendar == t.category)] + _reserved_events(reserved, t.category)
 
         candidates = sorted(x for x in days if x <= last and routine_days.get(x))
@@ -1169,7 +1175,8 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     for s, e, b in said:
         rest[b.task_id] -= minutes(s, e)
     sessions = said + into_sessions(list(tasks), rest, days, routine_days, user + [
-        Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in said], now)
+        Event(id="said", calendar=b.category, title=b.title, start=s - TASK_BREAK, end=e + TASK_BREAK)
+        for s, e, b in said], now)
     split = {b.task_id for _, _, b in sessions}
     tasks = [replace(t, min_chunk_min=t.min_chunk_min or SESSION_PIECE) if t.id in split else t for t in tasks]
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,

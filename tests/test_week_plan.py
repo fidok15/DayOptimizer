@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta
 from itertools import pairwise
 
 from dayoptimizer.core.constraints import parse_rules
-from dayoptimizer.core.models import Event
+from dayoptimizer.core.models import Event, Task
 from dayoptimizer.llm.week_plan import Block, PlanOver, WeekPlan, build_prompt, diff, plan_days, validate
 
 MON = date(2030, 10, 14)
@@ -171,7 +171,6 @@ def test_a_block_ending_at_midnight_may_say_00_00():
     assert problems == [] and creates[0].new_end == at(MON, "00:00") + timedelta(days=1)
 
 
-from dayoptimizer.core.models import Task
 from dayoptimizer.llm.week_plan import Unscheduled, system_prompt
 
 WCATS = CATS + ["Work"]
@@ -1392,8 +1391,8 @@ def test_a_task_said_for_a_part_of_the_day_goes_first_and_the_flexible_routine_g
                                            "", [], NOW, tasks=tasks, left={"t1": 120, "t2": 45},
                                            reserved=reserved, routine_days=routine_days)
     got = sorted((c.task_id, f"{c.new_start:%H:%M}-{c.new_end:%H:%M}") for c in changes if c.task_id)
-    # the commute takes the first time after breakfast; ML still fills the Deep work after it
-    assert got == [("t1", "08:15-08:45"), ("t1", "09:00-10:30"), ("t2", "07:30-08:15")]
+    # the commute takes the first time after breakfast; ML fills the Deep work after it and a break
+    assert got == [("t1", "09:00-10:30"), ("t1", "11:00-11:30"), ("t2", "07:30-08:15")]
     assert unscheduled == []
 
 
@@ -1456,3 +1455,58 @@ def test_blocks_keep_the_break_around_the_users_events():
     changes, *_ = plan_days(Small(tight), [MON], "# r", CATS, [LECTURE], NOTES, [], NOW, attempts=1,
                             buffer_minutes=15)
     assert not [c for c in changes if c.kind == "create" and c.new_start < at(MON, "12:15")]
+
+
+def test_two_tasks_in_one_routine_session_get_a_break_between_them():
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+    from dayoptimizer.llm.week_plan import into_sessions, routine_spans
+    sat = date(2030, 10, 19)
+    routine_days, _ = routine_spans({sat.weekday(): [RoutineBlock(15 * 60, 18 * 60, "Learn", "Study")]},
+                                    {"Learn": CategoryRule(movable=True, priority=5)}, [sat])
+    tasks = [Task(id=f"t{i}", title=t, category="Learn", duration_min=60) for i, t in enumerate(("Math", "ML"))]
+    got = [(f"{s:%H:%M}", f"{e:%H:%M}") for s, e, _ in
+           into_sessions(tasks, {t.id: 60 for t in tasks}, [sat], routine_days, [], NOW)]
+    assert got == [("15:00", "16:00"), ("16:15", "17:15")]
+
+
+def test_cli_plan_leaves_out_the_gym_said_away_and_the_breakfast_the_user_moved(monkeypatch):
+    from dayoptimizer import cli
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+
+    old_gym = ev("g1", "Gym", "Gym", MON, "18:00", "19:00", managed=True)
+
+    class Cal:
+        def list_events(self, start, end):
+            return [old_gym]  # an earlier plan's gym: it goes too
+
+    class Rules:
+        has_routine = True
+        note_rules = []
+        categories = {c: CategoryRule(movable=True, priority=5) for c in CATS}
+        typical_week = {MON.weekday(): [RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast"),
+                                        RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym")]}
+
+    # a model that pastes the routine anyway: code takes both out
+    pasted = Fake(WeekPlan(blocks=[block(MON, "07:00", "08:00", "Food", "Breakfast"),
+                                   block(MON, "18:00", "19:00", "Gym", "Gym")]))
+    monkeypatch.setattr("dayoptimizer.llm.backend.planning_backends", lambda cfg: [pasted])
+    monkeypatch.setattr(cli, "_load_config", lambda: (None, {"categories": {c: {} for c in CATS}, "llm": {}}))
+    own = ev("new-0", "Food", "sniadanie", MON, "13:00", "14:00")
+    changes, *_ = cli._llm_plan([MON], Cal(), cli.Storage(":memory:"), Rules(), extra=[own], dry=True,
+                                skip={MON: ["Gym"]})
+    assert [c.title for c in changes if c.kind == "create"] == []
+    assert [(c.kind, c.event_id) for c in changes if c.title == "Gym"] == [("delete", "g1")]
+    assert "2030-10-14: Breakfast, Gym" in pasted.prompts[0]
+
+
+def test_back_to_back_routine_sessions_still_leave_a_break_between_tasks():
+    from dayoptimizer.core.rules import CategoryRule, RoutineBlock
+    from dayoptimizer.llm.week_plan import into_sessions, routine_spans
+    sat = date(2030, 10, 19)
+    routine_days, _ = routine_spans({sat.weekday(): [RoutineBlock(15 * 60, 16 * 60, "Learn", "Study"),
+                                                     RoutineBlock(16 * 60, 17 * 60, "Learn", "Study")]},
+                                    {"Learn": CategoryRule(movable=True, priority=5)}, [sat])
+    tasks = [Task(id=f"t{i}", title=t, category="Learn", duration_min=60) for i, t in enumerate(("Math", "ML"))]
+    got = [(f"{s:%H:%M}", f"{e:%H:%M}") for s, e, _ in
+           into_sessions(tasks, {t.id: 60 for t in tasks}, [sat], routine_days, [], NOW)]
+    assert got[0] == ("15:00", "16:00") and all(s >= "16:15" for s, _ in got[1:])
