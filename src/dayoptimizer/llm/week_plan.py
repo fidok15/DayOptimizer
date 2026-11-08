@@ -1175,7 +1175,8 @@ def _plan_once(backend, days, routine, categories, events, notes, rules, now, he
     for s, e, b in said:
         rest[b.task_id] -= minutes(s, e)
     sessions = said + into_sessions(list(tasks), rest, days, routine_days, user + [
-        Event(id="said", calendar=b.category, title=b.title, start=s, end=e) for s, e, b in said], now)
+        Event(id="said", calendar=b.category, title=b.title, start=s - TASK_BREAK, end=e + TASK_BREAK)
+        for s, e, b in said], now)
     split = {b.task_id for _, _, b in sessions}
     tasks = [replace(t, min_chunk_min=t.min_chunk_min or SESSION_PIECE) if t.id in split else t for t in tasks]
     prompt = build_prompt(days, routine, categories, shown, previous, now, health, tasks, left, reserved=reserved,

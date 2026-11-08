@@ -171,3 +171,11 @@ def test_skips_read_lists_and_next_week():
     assert skipped_routine("bez siłowni i śniadania", week, [mon], mon) == {mon: ["Gym", "Breakfast"]}
     assert skipped_routine("bez siłowni i 2h śniadania", week, [mon], mon) == {mon: ["Gym"]}
     assert skipped_routine("next Monday no gym", week, [mon, nxt], mon) == {nxt: ["Gym"]}
+
+
+def test_a_skip_list_stops_at_the_sentence():
+    from dayoptimizer.core.rules import RoutineBlock
+    from dayoptimizer.llm.task_request import skipped_routine
+    mon = date(2030, 10, 14)
+    week = {0: [RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")]}
+    assert skipped_routine("no gym. Breakfast should stay", week, [mon], mon) == {mon: ["Gym"]}

@@ -1391,8 +1391,8 @@ def test_a_task_said_for_a_part_of_the_day_goes_first_and_the_flexible_routine_g
                                            "", [], NOW, tasks=tasks, left={"t1": 120, "t2": 45},
                                            reserved=reserved, routine_days=routine_days)
     got = sorted((c.task_id, f"{c.new_start:%H:%M}-{c.new_end:%H:%M}") for c in changes if c.task_id)
-    # the commute takes the first time after breakfast; ML still fills the Deep work after it
-    assert got == [("t1", "08:15-08:45"), ("t1", "09:00-10:30"), ("t2", "07:30-08:15")]
+    # the commute takes the first time after breakfast; ML fills the Deep work after it and a break
+    assert got == [("t1", "09:00-10:30"), ("t1", "11:00-11:30"), ("t2", "07:30-08:15")]
     assert unscheduled == []
 
 

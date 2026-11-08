@@ -85,7 +85,12 @@ def skipped_routine(text: str, typical_week: dict, days: list[date], today: date
     from dayoptimizer.llm.backend import WEEKDAYS, day_words, next_week
     out: dict[date, list[str]] = {}
     cur, prev = None, False
-    for clause in re.split(r"[,;.]|\s(?:i|a|oraz|and|or|ani)\s", text.lower()):
+    # a list after 'bez' runs on over 'i'/'and' only, never past a comma or a sentence
+    for clause in (c for part in re.split(r"[,;.!?\n]", text.lower())
+                   for c in [None, *re.split(r"\s(?:i|a|oraz|and|or|ani)\s", part)]):
+        if clause is None:
+            prev = False
+            continue
         said = {next_week(d, today) if d in WEEKDAYS and re.search(r"\b(?:next|przysz\w*|nast[eę]pn\w*)\b", clause)
                 else resolve_day(d, today) for p, d in day_words() if re.search(p, clause)}
         cur = said or cur

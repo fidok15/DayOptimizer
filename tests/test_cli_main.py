@@ -139,7 +139,7 @@ def test_add_creates_events_then_replans(monkeypatch, capsys):
     cli.paths.ensure_private_dir()
     monkeypatch.setattr(cli, "CalendarClient", Cal)
     monkeypatch.setattr(cli, "make_backend", lambda cfg: _LLM())
-    monkeypatch.setattr(cli, "_plan_day", lambda day, *a: planned.append(day) or ([], [], []))
+    monkeypatch.setattr(cli, "_plan_day", lambda day, *a, **k: planned.append(day) or ([], [], []))
     events = json.dumps([
         {"category": "Meeting", "title": "Spotkanie", "start": "2026-09-22T14:00:00+02:00", "end": "2026-09-22T15:00:00+02:00"},
         {"category": "Gym", "title": "Siłownia", "start": "2026-09-22T15:00:00+02:00", "end": "2026-09-22T16:30:00+02:00"},
@@ -167,7 +167,7 @@ def test_add_with_tasks_plans_their_days_once_then_later_event_days(monkeypatch)
     monkeypatch.setattr(cli, "CalendarClient", Cal)
     monkeypatch.setattr(cli, "make_backend", lambda cfg: _LLM())
     monkeypatch.setattr(cli, "cmd_plan", lambda args, *a: weeks.append(args.week))
-    monkeypatch.setattr(cli, "_plan_day", lambda day, *a: planned.append(day) or ([], [], []))
+    monkeypatch.setattr(cli, "_plan_day", lambda day, *a, **k: planned.append(day) or ([], [], []))
     now = datetime.now().astimezone().replace(hour=10)
     events = json.dumps([{"category": "Meeting", "title": "x", "start": (now + timedelta(days=k)).isoformat(),
                           "end": (now + timedelta(days=k, hours=1)).isoformat()} for k in (0, 5)])

@@ -251,8 +251,8 @@ def _suggest(backend, days: list[date], calendar, storage, rules, config, hidden
                                  rules, config.get("notes") or "", list(config["categories"]), now, hidden_since)
     return changes
 
-def _plan_day(day: date, calendar, storage, rules, confirm=None):
-    result = _llm_plan([day], calendar, storage, rules, confirm)
+def _plan_day(day: date, calendar, storage, rules, confirm=None, skip=None):
+    result = _llm_plan([day], calendar, storage, rules, confirm, skip=skip)
     if result is None:
         return _run_plan(day, calendar, storage, rules, confirm)
     return result[:3]
@@ -297,6 +297,23 @@ def _print_pending(storage):
         when = f" → {c.new_start:%Y-%m-%d %H:%M}" if c.new_start is not None else ""
         console.print(f"  #{pid} [{c.kind}] {c.category}: {c.title}{when} — {c.reason}", markup=False)
 
+def _skip_json(text: str, rules, start: date, days: int) -> str | None:
+    """The routine blocks the message leaves out on these days, for `--skip`."""
+    from dayoptimizer.llm.task_request import skipped_routine
+    skip = skipped_routine(text, rules.typical_week, [start + timedelta(days=i) for i in range(days)], date.today())
+    return json.dumps({d.isoformat(): n for d, n in skip.items()}, ensure_ascii=False) if skip else None
+
+
+def _read_skip(args) -> dict | None:
+    """`--skip` back: {day: [routine block label]}."""
+    try:
+        raw = json.loads(args.skip) if getattr(args, "skip", None) else {}
+        return {date.fromisoformat(d): [str(x) for x in n] for d, n in raw.items() if isinstance(n, list)}
+    except (ValueError, AttributeError, TypeError):
+        console.print("Couldn't read the routine blocks to leave out; planning with all of them.", style="yellow")
+        return None
+
+
 def cmd_plan(args, rules, config):
     calendar = CalendarClient()
     if not calendar.request_access():
@@ -310,15 +327,11 @@ def cmd_plan(args, rules, config):
         added = _read_events(args.with_events) if args.with_events else []
         days = [start_day + timedelta(days=i) for i in range(days)]
         extra = [Event(id=f"new-{i}", calendar=c, title=t, start=s, end=e) for i, (c, t, s, e) in enumerate(added)]
-        try:
-            raw = json.loads(args.skip) if getattr(args, "skip", None) else {}
-            skip = {date.fromisoformat(d): [str(x) for x in n] for d, n in raw.items() if isinstance(n, list)}
-        except (ValueError, AttributeError, TypeError):
-            console.print("Couldn't read the routine blocks to leave out; planning with all of them.", style="yellow")
-            skip = None
-        _save_proposal(days, added, _llm_plan(days, calendar, storage, rules, extra=extra, dry=True, skip=skip))
+        _save_proposal(days, added, _llm_plan(days, calendar, storage, rules, extra=extra, dry=True,
+                                              skip=_read_skip(args)))
         return
-    result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules)
+    result = _llm_plan([start_day + timedelta(days=i) for i in range(days)], calendar, storage, rules,
+                       skip=_read_skip(args))
     if result is not None:
         changes, applied, errors, summary, dropped, unscheduled = result
         console.print(format_changes(changes), markup=False)
@@ -653,11 +666,12 @@ def cmd_ask(args, rules, config):
         return
     payload = _events_json(to_create)
     week = ["--week", str(_task_days(tasks))] if tasks else []
+    skip = _skip_json(args.text, rules, *_task_span(tasks, [s.date() for _, _, s, _ in to_create]))
     if _in_bundle() or sys.platform != "darwin":
-        cmd_add(argparse.Namespace(events=payload, week=int(week[1]) if week else None), rules, config)
+        cmd_add(argparse.Namespace(events=payload, week=int(week[1]) if week else None, skip=skip), rules, config)
     else:
         console.print("Working on your calendar...", style="dim")
-        _calendar_run(["add", payload, *week])
+        _calendar_run(["add", payload, *week, *(["--skip", skip] if skip else [])])
 
 def _placed_days(proposal) -> dict:
     """The day the proposal put each task on (its first block)."""
@@ -765,14 +779,14 @@ def cmd_add(args, rules, config):
     days = _create_events(events, calendar, storage, rules)
     if getattr(args, "week", None):
         # tasks came with the events: one run over the tasks' days, then the event days after them
-        cmd_plan(argparse.Namespace(date=None, week=args.week), rules, config)
+        cmd_plan(argparse.Namespace(date=None, week=args.week, skip=getattr(args, "skip", None)), rules, config)
         days = {d for d in days if (d - date.today()).days >= args.week}
     try:
         summarize = make_backend(config["llm"]).summarize_changes
     except LLMUnavailable:
         summarize = format_changes
     for day in sorted(days):
-        changes, applied, errors = _plan_day(day, calendar, storage, rules)
+        changes, applied, errors = _plan_day(day, calendar, storage, rules, skip=_read_skip(args))
         if len(days) > 1:
             console.print(f"\n{day:%A %Y-%m-%d}", style="bold")
         console.print(Markdown(summarize(changes)))
@@ -814,9 +828,7 @@ def _propose(tasks, to_create, rules, config, text: str = "") -> dict | None:
     and read back where everything would go; None: no model could plan, so
     nothing can be shown ahead."""
     start, days = _task_span(tasks, [s.date() for _, _, s, _ in to_create])
-    from dayoptimizer.llm.task_request import skipped_routine
-    skip = skipped_routine(text, rules.typical_week, [start + timedelta(days=i) for i in range(days)], date.today())
-    skip = json.dumps({d.isoformat(): n for d, n in skip.items()}, ensure_ascii=False) if skip else None
+    skip = _skip_json(text, rules, start, days)
     argv = ["plan", *_span_argv(start, days), "--propose"] + (["--with", _events_json(to_create)] if to_create else []) \
         + (["--skip", skip] if skip else [])
     _proposal_file().unlink(missing_ok=True)
@@ -1441,6 +1453,7 @@ def main(argv: list[str] | None = None):
     p_add = sub.add_parser("add")
     p_add.add_argument("events")
     p_add.add_argument("--week", type=_positive, default=None)
+    p_add.add_argument("--skip", default=None, help=argparse.SUPPRESS)
     sub.add_parser("accept")
     p_clear = sub.add_parser("clear", help="delete every block DayOptimizer planned (your own events stay)")
     p_clear.add_argument("--all", action="store_true", help="past blocks too, not only from now on")
