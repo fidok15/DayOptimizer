@@ -41,3 +41,18 @@ def test_outcome_ignores_dropped_blocks_but_clean_does_not():
     fails = eval_tasks.score(s, ok, ["2030-10-14 22:00-22:30 Home: Taxes: ends after the deadline"], [])
     assert eval_tasks.outcome_ok(fails) and not eval_tasks.clean(fails)
     assert not eval_tasks.outcome_ok(eval_tasks.score(s, ok[:1], [], []))
+
+
+def test_limits_catch_a_broken_note():
+    from dayoptimizer.core.constraints import parse_rules
+    s = {"rules": parse_rules([{"type": "max_per_week", "category": "Sport", "count": 1, "source": "once"},
+                               {"type": "not_after", "category": "Sport", "time": "21:00", "source": "late"}])}
+
+    def gym(day, start, end):
+        return PlannedChange(kind="create", category="Sport", title="Gym", reason="r",
+                             new_start=datetime(2030, 10, day, *start).astimezone(),
+                             new_end=datetime(2030, 10, day, *end).astimezone())
+    assert eval_tasks.limits(s, [gym(14, (18, 0), (19, 0))]) == []
+    fails = eval_tasks.limits(s, [gym(14, (18, 0), (19, 0)), gym(15, (20, 30), (21, 30))])
+    assert len(fails) == 2 and all(f.startswith("limit:") for f in fails)
+    assert not eval_tasks.outcome_ok(fails)
