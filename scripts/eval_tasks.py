@@ -8,13 +8,16 @@ outcome); it is "clean" when, on top of that, the validator had to drop none
 of the model's blocks. Soft misses (order, block length) are printed only.
 Run it with --few-shot off and on to see what the worked examples add."""
 from __future__ import annotations
+
 import argparse
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
 import yaml
+
 from dayoptimizer.core.constraints import parse_rules, skippable
-from dayoptimizer.core.models import Event, Task
+from dayoptimizer.core.models import Event, PlannedChange, Task
 from dayoptimizer.core.rules import CategoryRule, _parse_typical_week
 from dayoptimizer.llm import week_plan
 from dayoptimizer.llm.task_rules import minutes
@@ -120,7 +123,11 @@ def score(s: dict, changes, problems: list[str], unscheduled: list[str]) -> list
 def limits(s: dict, changes) -> list[str]:
     """The notes' limits (max_per_week, min_gap_days, not_before, not_after,
     keep_free) checked on every block of the plan; each one broken is a failure."""
-    creates = [c for c in changes if c.kind == "create"]
+    gone = {c.event_id for c in changes if c.kind in ("delete", "move")}
+    creates = [c for c in changes if c.kind == "create"] + [  # earlier planner blocks the plan keeps
+        PlannedChange(kind="create", category=e.calendar, title=e.title, reason="kept", event_id=e.id,
+                      new_start=e.start, new_end=e.end)
+        for e in s.get("events", []) if e.managed and e.id not in gone and e.end > s["now"]]
     fails = []
     for r in s.get("rules", []):
         mine = [c for c in creates if r.category in (None, c.category)]
@@ -132,7 +139,7 @@ def limits(s: dict, changes) -> list[str]:
                     fails.append(f"limit: {r.category} on {n} days in the week of {week:%d.%m}, at most {r.count}")
         if r.type == "min_gap_days" and r.days:
             fails += [f"limit: {r.category} on {a:%a} and {b:%a}, less than {r.days} days apart"
-                      for a, b in zip(days, days[1:]) if (b - a).days < r.days]
+                      for a, b in zip(days, days[1:], strict=False) if (b - a).days < r.days]
         for c in mine:
             start = c.new_start.hour * 60 + c.new_start.minute
             end = start + minutes(c.new_start, c.new_end)
@@ -192,9 +199,11 @@ def main(argv=None) -> int:
     p.add_argument("--model", default=None)
     p.add_argument("--repeat", type=int, default=1, help="run each scenario N times (a local model varies)")
     a = p.parse_args(argv)
-    backend = _backend(a.backend, a.model, a.mode)
     scenarios = load_days() if a.set == "days" else [load(x) for x in sorted(SCENARIOS.glob("*.yaml"))]
     scenarios = [s for s in scenarios if a.only is None or s["name"] in a.only.split(",")]
+    if a.repeat < 1 or not scenarios:
+        p.error("nothing to run: --repeat must be 1 or more and --only must name a scenario")
+    backend = _backend(a.backend, a.model, a.mode)
     passed = tidy = runs = 0
     total: dict[str, int] = {}
     for s in scenarios:
@@ -218,6 +227,8 @@ def main(argv=None) -> int:
             m = measure(s, changes) | {"seconds": round(time.monotonic() - began), "rounds": len(rounds.errors),
                                        "errors": sum(rounds.errors), "dropped": len(problems),
                                        "prompt_tokens": getattr(backend, "prompt_tokens", None) or 0}
+            if m["violations"]:  # a block over the user's own event or a reserved routine block
+                fails.append(f"violations: {m['violations']} block(s) overlap what they may not")
             for k, v in m.items():
                 total[k] = max(total.get(k, 0), v) if k == "prompt_tokens" else total.get(k, 0) + v
             passed += outcome_ok(fails)

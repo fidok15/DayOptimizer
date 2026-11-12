@@ -22,12 +22,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from eval_tasks import _backend  # noqa: E402
+from eval_tasks import _backend
 
-from dayoptimizer import cli, routine  # noqa: E402
-from dayoptimizer.core.rules import CategoryRule, _parse_typical_week, load_rules  # noqa: E402
-from dayoptimizer.llm.backend import pin_day  # noqa: E402
-from dayoptimizer.llm.task_request import skipped_routine  # noqa: E402
+from dayoptimizer import cli, routine
+from dayoptimizer.core.rules import CategoryRule, _parse_typical_week, load_rules
+from dayoptimizer.llm.backend import pin_day
+from dayoptimizer.llm.task_request import skipped_routine
 
 CASES = ROOT / "evals" / "ask.yaml"
 DAYS = ROOT / "evals" / "days.yaml"
@@ -149,6 +149,8 @@ def main(argv=None) -> int:
     p.add_argument("--repeat", type=int, default=1)
     a = p.parse_args(argv)
     data, rules, now = setup()
+    if a.repeat < 1 or not [c for c in data["cases"] if not a.only or c["name"] in a.only.split(",")]:
+        p.error("nothing to run: --repeat must be 1 or more and --only must name a case")
     backend = _backend(a.backend, a.model)
     langs = ["pl", "en"] if a.lang == "both" else [a.lang]
     runs = passed = 0
