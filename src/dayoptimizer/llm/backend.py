@@ -402,7 +402,8 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                              else {"not_before_day": _shift(value, 1), "due_day": None} if word in ("po", "after")
                              else {"due_day": value, "not_before_day": None} if word
                              else {"due_day": value, "not_before_day": value})
-        own_words = low if len(req.tasks) + len(untimed) == 1 or not c else c  # a lone task: the whole message
+        lone = len(req.tasks) + len(untimed) == 1 and len(req.events) == len(untimed)
+        own_words = low if lone or not c else c  # a lone task and nothing else: the whole message
         if re.search(_LOW, own_words):
             t = t.model_copy(update={"priority": "low"})
         elif re.search(_HIGH, own_words):
@@ -427,8 +428,16 @@ def _dates(part: str, today: date) -> list:
         except ValueError:
             continue
         if not m.group(3) and d < today:
-            d = d.replace(year=d.year + 1)
+            try:
+                d = d.replace(year=d.year + 1)
+            except ValueError:  # 29.02 with no leap year next
+                continue
         out.append((m, d.isoformat()))
+    for m in re.finditer(r"\b(\d{4})-(\d{2})-(\d{2})\b", part):  # '2030-10-20'
+        try:
+            out.append((m, date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()))
+        except ValueError:
+            continue
     return out
 
 

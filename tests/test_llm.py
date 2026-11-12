@@ -338,3 +338,16 @@ def test_pin_day_reads_dates_deadlines_priority_and_then():
     assert got.tasks[0].due_day == "2030-10-18" and got.tasks[0].not_before_day is None
     assert got.tasks[0].priority == "high"
     assert pin_day("kiedyś przeczytaj tę książkę, 1h", task("przeczytaj tę książkę"), now).tasks[0].priority == "low"
+
+
+def test_pin_day_keeps_iso_dates_survives_leap_day_and_ties_urgency_to_its_clause():
+    from datetime import date as d
+
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, _dates, pin_day
+    now = datetime(2030, 10, 14, 12, 0)
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-20", start_time="18:00")])
+    assert pin_day("meeting on 2030-10-20 at 18", req, now).events[0].day == "2030-10-20"
+    assert _dates("29.02", d(2024, 3, 1)) == []
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="14:00")],
+                     tasks=[TaskRequest(title="laundry", category="Home", duration_minutes=60)])
+    assert pin_day("urgent meeting at 14, laundry 1h", req, now).tasks[0].priority == "normal"

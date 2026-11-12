@@ -49,9 +49,10 @@ def split_lengths(text: str) -> tuple[int | None, int | None]:
     if not piece:
         return None, None
     n, unit = (piece.group(1), piece.group(2)) if piece.group(1) else (piece.group(3), piece.group(4))
-    total = next((mins(m.group(1), m.group(2)) for m in re.finditer(_LENGTH, text, re.I)
-                  if not piece.start() <= m.start() < piece.end()), None)
-    return total, mins(n, unit)
+    totals = {mins(m.group(1), m.group(2)) for m in re.finditer(_LENGTH, text, re.I)
+              if not piece.start() <= m.start() < piece.end()
+              and not re.search(r"\b(?:za|in)\s+$", text[:m.start()], re.I)}  # 'za 3h' / 'in 3h': when, not how long
+    return (totals.pop() if len(totals) == 1 else None), mins(n, unit)
 
 
 def _hhmm(value: str | None) -> time | None:

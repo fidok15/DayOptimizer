@@ -192,3 +192,9 @@ def test_after_work_is_after_the_last_work_block_and_split_keeps_the_total():
     assert split_lengths("rozdział, 6h do czwartku, w kawałkach po 2h") == (360, 120)
     assert split_lengths("thesis chapter, 6h by Thursday, in 2h chunks") == (360, 120)
     assert split_lengths("raport 3h") == (None, None)
+
+
+def test_split_lengths_skips_a_start_offset():
+    from dayoptimizer.llm.task_request import split_lengths
+    assert split_lengths("in 3h write report 6h in 2h chunks") == (360, 120)
+    assert split_lengths("za 3h raport 6h po 2h") == (360, 120)
