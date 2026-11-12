@@ -763,6 +763,19 @@ def _times(b: Block) -> tuple[datetime, datetime] | None:
     return at(midnight, s), at(midnight, e if e else 1440)
 
 
+def _free_part(s: datetime, e: datetime, taken: list, least: timedelta = timedelta(minutes=30)):
+    """The longest free stretch of [s, e) around `taken`, if it is `least` or more; else None."""
+    parts, at = [], s
+    for x, y in sorted(t for t in taken if t[0] < e and t[1] > s):
+        if x > at:
+            parts.append((at, x))
+        at = max(at, y)
+    if at < e:
+        parts.append((at, e))
+    best = max(parts, key=lambda p: p[1] - p[0], default=None)
+    return best if best and best[1] - best[0] >= least else None
+
+
 def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Event], now: datetime,
                        rules: list[NoteRule] = (), history: dict | None = None) -> tuple[list[Block], list[str]]:
     """Routine blocks a small model left out. A fixed one (sleep, ...) goes
@@ -807,6 +820,12 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
             else:
                 if not (moving or fixed) and s >= now:  # a block whose time is over isn't moved into the evening
                     queue.append((span, True))
+                elif fixed and (part := _free_part(max(s, now), e, [(x, y) for x, y, _ in taken])):
+                    # a fixed block an event runs into keeps the rest of its time: sleep after the late party
+                    a, b = part
+                    taken.append((a, b, None))
+                    out.append(Block(day=d.isoformat(), start=f"{a:%H:%M}", end=_spans(d, [(a, b)]).split("-")[1],
+                                     category=cat, title=title))
                 elif s >= now:
                     lost.append((d, s, title, f"{d:%a} {_spans(d, [(s, e)])} {cat}: {title}: no free time near its usual time"))
                 continue

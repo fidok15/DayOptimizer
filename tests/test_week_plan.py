@@ -681,6 +681,17 @@ def test_a_meal_pushed_by_an_event_does_not_take_the_usual_time_of_the_blocks_af
     assert [x.split(": ")[1] for x in lost] == ["Free time"]
 
 
+def test_a_fixed_block_a_late_event_runs_into_keeps_the_rest_of_its_time():
+    from dayoptimizer.llm.week_plan import _forgotten_routine
+    night = {MON: [(at(MON, "22:30"), at(TUE, "00:00"), "Sleep", "Sleep", True)]}
+    party = ev("p", "Friends", "Party", MON, "20:00", "23:30")
+    back, lost = _forgotten_routine([], night, [party], NOW)
+    assert [(b.title, b.start, b.end) for b in back] == [("Sleep", "23:30", "24:00")] and lost == []
+    late = ev("p", "Friends", "Party", MON, "20:00", "23:45")  # 15 min left: too short to keep
+    back, lost = _forgotten_routine([], night, [late], NOW)
+    assert back == [] and len(lost) == 1
+
+
 def test_a_routine_block_whose_time_is_over_is_not_moved_later():
     from dayoptimizer.llm.week_plan import _forgotten_routine
     late = at(MON, "18:40")
