@@ -351,3 +351,16 @@ def test_pin_day_keeps_iso_dates_survives_leap_day_and_ties_urgency_to_its_claus
     req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="14:00")],
                      tasks=[TaskRequest(title="laundry", category="Home", duration_minutes=60)])
     assert pin_day("urgent meeting at 14, laundry 1h", req, now).tasks[0].priority == "normal"
+
+
+def test_pin_day_round_two_edges():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    now = datetime(2030, 10, 14, 9, 0)
+    req = DayRequest(tasks=[TaskRequest(title="write report", category="Work", duration_minutes=90)])
+    got = pin_day("write report 1.5h", req, now).tasks[0]
+    assert got.due_day is None and got.not_before_day is None
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-15", start_time="18:00")])
+    assert pin_day("meeting tomorrow or Friday at 18", req, now).events[0].day == "2030-10-15"
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="14:00")],
+                     tasks=[TaskRequest(title="buy tea", category="Home", duration_minutes=60)])
+    assert pin_day("urgent meeting at 14, buy tea 1h", req, now).tasks[0].priority == "normal"

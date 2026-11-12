@@ -351,7 +351,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
     untimed = [e for e in req.events if not clock(find(e.title)[0] or low)
                and not (e.start_time and then.search(find(e.title)[0] or ""))  # 'potem praca do 17'
                and (not said_time(find(e.title)[0] or low) or _offset(find(e.title)[0] or low) is not None)]
-    no_day = not any(d for c, d in clauses)
+    no_day = not any(re.search(p, low) for p, _ in day_words()) and not _dates(low, today)
     def when_of(title):  # 'za 2h', or the part of the day said in the task's own clause ('wieczorem')
         c = find(title)[0]
         if _offset(c or low):
@@ -403,7 +403,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                              else {"due_day": value, "not_before_day": None} if word
                              else {"due_day": value, "not_before_day": value})
         lone = len(req.tasks) + len(untimed) == 1 and len(req.events) == len(untimed)
-        own_words = low if lone or not c else c  # a lone task and nothing else: the whole message
+        own_words = low if lone else c or ""  # a lone task and nothing else: the whole message
         if re.search(_LOW, own_words):
             t = t.model_copy(update={"priority": "low"})
         elif re.search(_HIGH, own_words):
@@ -422,7 +422,7 @@ def _dates(part: str, today: date) -> list:
     once passed. Not a clock time: 'o 18.30' / 'at 9.15' / '18.30' with an invalid month."""
     import re
     out = []
-    for m in re.finditer(r"(?<![\d.:])(?<!\bo )(?<!\bat )(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?(?![\d:])", part):
+    for m in re.finditer(r"(?<![\d.:])(?<!\bo )(?<!\bat )(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?(?![\d:])(?!\s*(?:h\b|godz|min|hours?\b))", part):
         try:
             d = date(int(m.group(3) or today.year), int(m.group(2)), int(m.group(1)))
         except ValueError:
