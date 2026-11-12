@@ -177,7 +177,10 @@ _REQUEST_SYSTEM = (
     "then work until 17' is TWO events: dentist 10:00 (no end given) and work from when the "
     "dentist ends until 17:00.\n"
     "- category must be exactly one of the listed categories: pick the closest fit for what the "
-    "activity IS. A doctor's or dentist's visit, an errand or meeting a friend is not Work.\n"
+    "activity IS. A doctor's or dentist's visit, an errand or meeting a friend is not Work; "
+    "schoolwork (a thesis, 'praca magisterska', an exam, homework, studying) goes to a study category; "
+    "other things to write or prepare ('raport', 'prezentacja', a report) go to Work; neither is a personal "
+    "or home category.\n"
     "- day is a date (YYYY-MM-DD) copied from the listed days, never worked out yourself: 'jutro' / "
     "'tomorrow' = the one marked tomorrow, 'w piątek' = the first Friday listed, 'w przyszły piątek' / "
     "'next Friday' = the Friday marked next week, '27.10' = that date. No day said = today. A day said once "
@@ -375,7 +378,8 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
         part, m, day = said or ("", None, None)
-        own = c is None or part == c  # no clause matched: the whole message is its clause
+        # no clause matched, or the message names one day only: its words ('by', 'do') count for the task
+        own = c is None or part == c or (whole is not None and said == whole)
         model = next((v for v in (t.due_day, t.not_before_day) if day and agrees(day, v)), None)
         if said and not own and (t.due_day or t.not_before_day) and model is None:
             said, part, m, day = None, "", None, None  # its clause names no day: the model's other day stands
