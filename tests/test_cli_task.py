@@ -272,3 +272,8 @@ def test_a_lone_task_without_length_takes_the_one_said_not_a_start_offset(monkey
     run(monkeypatch, "answer emails between 12 and 14, half an hour".split(), TaskRequest(title="emails", category="Work"))
     run(monkeypatch, "za 2h zadzwoń, 15 min".split(), TaskRequest(title="call", category="Work"))
     assert [t.duration_min for t in Storage(paths.db_path()).open_tasks()] == [30, 15]
+
+
+def test_a_decimal_start_offset_is_not_the_length(monkeypatch):
+    run(monkeypatch, "call in 1.5h, 15 min".split(), TaskRequest(title="call", category="Work"))
+    assert [t.duration_min for t in Storage(paths.db_path()).open_tasks()] == [15]

@@ -531,7 +531,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
         if lone and not (r.duration_minutes and r.duration_minutes > 0):
             # the length said in the message ('half an hour'), not a start offset ('za 2h')
-            n = _minutes(re.sub(r"\b(?:za|in)\s+(?:\d+\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
+            n = _minutes(re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
                                 r"|an hour|godzin\w*)", " ", text.lower()))
             r = r.model_copy(update={"duration_minutes": n}) if n else r
         if piece and total and total > piece:  # 'w kawałkach po 2h': the model mixes up the piece and the total
