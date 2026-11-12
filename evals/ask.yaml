@@ -1,0 +1,121 @@
+# What the user types -> the events and tasks DayOptimizer understands.
+# scripts/eval_ask.py --backend ollama
+# Every case is said in Polish and in English; both must give the same result.
+# The routine and categories are those of evals/days.yaml, plus the ones below.
+# now: Monday 2030-10-14 09:00. Days: Mon 14 ... Sun 20, next week Mon 21 ...
+# Expectations:
+#   events: title (any of these stems in the title, lower case), day, start, end, category (optional;
+#           a list = any of them, where more than one fits)
+#   tasks: title, minutes, category, priority, chunk, due / not_before ("YYYY-MM-DD" = that day,
+#          "YYYY-MM-DD HH:MM" = exactly; null = none)
+#   skip: {day: [routine block labels left out that day]}
+# Anything not listed must not be there: no extra events or tasks.
+now: "2030-10-14 09:00"
+extra_categories: [Personal, Uni]
+cases:
+  - name: dentist-then-work
+    pl: "jutro dentysta o 10 na pół godziny, potem praca do 17"
+    en: "tomorrow dentist at 10 for half an hour, then work until 17"
+    events:
+      - {title: [dent], day: 2030-10-15, start: "10:00", end: "10:30", category: Personal}
+      - {title: [prac, work], day: 2030-10-15, start: "10:30", end: "17:00", category: Work}
+  - name: twelve-hour-clock
+    pl: "spotkanie z Anią o 14:30 na godzinę"
+    en: "meeting with Anna at 2:30pm for an hour"
+    events:
+      - {title: [ani, anna], day: 2030-10-14, start: "14:30", end: "15:30"}
+  - name: deadline-task
+    pl: "raport na piątek, 3h, pilne"
+    en: "report for Friday, 3 hours, urgent"
+    tasks:
+      - {title: [rap, rep], minutes: 180, due: 2030-10-18, not_before: null, category: [Work, Learn, Uni], priority: high}
+  - name: afternoon-chore
+    pl: "po południu zrób pranie, godzina"
+    en: "do the laundry this afternoon, an hour"
+    tasks:
+      - {title: [pran, laund], minutes: 60, not_before: "2030-10-14 12:00", due: "2030-10-14 18:00", category: Home}
+  - name: after-work
+    pl: "po pracy zakupy, 45 min"
+    en: "groceries after work, 45 min"
+    tasks:
+      - {title: [zakup, groc], minutes: 45, not_before: "2030-10-14 15:00", category: Home}
+  - name: event-and-evening-task
+    pl: "spotkanie z Kubą o 13 na godzinę, a wieczorem 2h nauki do kolokwium"
+    en: "meeting with Kuba at 13 for an hour, and in the evening 2h of studying for the test"
+    events:
+      - {title: [kub], day: 2030-10-14, start: "13:00", end: "14:00"}
+    tasks:
+      - {title: [nauk, kolok, stud, test], minutes: 120, not_before: "2030-10-14 18:00", due: "2030-10-14 22:00", category: Learn}
+  - name: skip-gym-for-pool
+    pl: "jutro bez siłowni, zamiast tego basen o 19"
+    en: "no gym tomorrow, swimming pool at 19 instead"
+    events:
+      - {title: [basen, pool, swim], day: 2030-10-15, start: "19:00", category: Sport}
+    skip: {2030-10-15: [Gym]}
+  - name: next-week
+    pl: "w przyszły wtorek o 9 rozmowa o pracę, półtorej godziny"
+    en: "next Tuesday at 9 job interview, an hour and a half"
+    events:
+      - {title: [rozm, interv], day: 2030-10-22, start: "09:00", end: "10:30"}
+  - name: split-thesis
+    pl: "rozdział pracy magisterskiej, 6h do czwartku, w kawałkach po 2h"
+    en: "thesis chapter, 6h by Thursday, in 2h chunks"
+    tasks:
+      - {title: [rozdz, magist, thes, chap], minutes: 360, due: 2030-10-17, chunk: 120, category: Learn}
+  - name: date-numeric
+    pl: "27.10 o 18 urodziny mamy"
+    en: "mom's birthday on 27.10 at 18:00"
+    events:
+      - {title: [urodz, birth], day: 2030-10-27, start: "18:00"}
+  - name: not-about-schedule
+    pl: "jaka jest jutro pogoda?"
+    en: "what's the weather like tomorrow?"
+  - name: in-two-hours
+    pl: "za 2h zadzwoń do hydraulika, 15 min"
+    en: "call the plumber in 2 hours, 15 min"
+    tasks:
+      - {title: [hydraul, plumb], minutes: 15, not_before: "2030-10-14 11:00", category: [Home, Personal]}
+  - name: no-polish-letters
+    pl: "jutro o 7 bieganie 40 min, pojutrze silownia o 18"
+    en: "tomorrow at 7 a run, 40 min, day after tomorrow gym at 18"
+    events:
+      - {title: [biega, run], day: 2030-10-15, start: "07:00", end: "07:40", category: Sport}
+      - {title: [silow, siłow, gym], day: 2030-10-16, start: "18:00", category: Sport}
+  - name: two-tasks-one-deadline
+    pl: "do środy: oddać książki do biblioteki (30 min) i posprzątać mieszkanie (2h)"
+    en: "by Wednesday: return the library books (30 min) and clean the flat (2h)"
+    tasks:
+      - {title: [ksi, bibl, book, libr], minutes: 30, due: 2030-10-16, category: Home}
+      - {title: [sprz, miesz, clean, flat], minutes: 120, due: 2030-10-16, category: Home}
+  - name: between-hours
+    pl: "między 12 a 14 odpisz na maile, pół godziny"
+    en: "answer emails between 12 and 14, half an hour"
+    tasks:
+      - {title: [mail, email], minutes: 30, not_before: "2030-10-14 12:00", due: "2030-10-14 14:00"}
+  - name: weekday-event
+    pl: "w sobotę o 10 trening z Kubą, 1,5h"
+    en: "on Saturday at 10 workout with Kuba, 1.5h"
+    events:
+      - {title: [tren, work, kub], day: 2030-10-19, start: "10:00", end: "11:30", category: Sport}
+  - name: someday-low
+    pl: "kiedyś przeczytaj tę książkę, 1h"
+    en: "read that book sometime, 1h"
+    tasks:
+      - {title: [ksi, czyt, book, read], minutes: 60, due: null, priority: low}
+  - name: tomorrow-task
+    pl: "jutro zrób przelew za czynsz, 15 minut"
+    en: "tomorrow pay the rent transfer, 15 minutes"
+    tasks:
+      - {title: [przel, czyn, rent], minutes: 15, not_before: 2030-10-15, due: 2030-10-15, category: Home}
+  - name: deadline-with-hour
+    pl: "prezentacja do czwartku do 12, 2 godziny"
+    en: "presentation due Thursday by 12:00, 2 hours"
+    tasks:
+      - {title: [prezent, presen], minutes: 120, due: "2030-10-17 12:00", category: [Work, Uni, Learn]}
+  - name: tonight-event-and-chore
+    pl: "dziś o 20 kino z Olą, a przed tym ogarnij kuchnię, pół godziny"
+    en: "cinema with Ola tonight at 20, and before that tidy the kitchen, half an hour"
+    events:
+      - {title: [kino, cinem], day: 2030-10-14, start: "20:00"}
+    tasks:
+      - {title: [kuch, kitch], minutes: 30, category: Home}

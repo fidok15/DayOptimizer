@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import MagicMock
 
 import anthropic
@@ -103,7 +103,8 @@ def test_one_named_day_overrides_the_model():
     wrong = DayRequest(events=[NewEvent(title="x", category="Gym", day="saturday", start_time="14:00")])
     for text, day in [("spotkanie w środę o 14", "wednesday"), ("jutro o 10", "tomorrow"),
                       ("pojutrze basen o 14", "day_after_tomorrow"), ("gym on Friday at 14", "friday")]:
-        assert pin_day(text, wrong).events[0].day == day
+        # a Monday: on a Thursday 'pojutrze' is the model's Saturday and it stands
+        assert pin_day(text, wrong, date(2030, 10, 14)).events[0].day == day
     assert pin_day("dziś o 10 i jutro o 12", wrong).events[0].day == "saturday"
     days = [("w poniedziałku", "monday"), ("w poniedzialku", "monday"), ("we wtorku", "tuesday"),
             ("do środy", "wednesday"), ("do srody", "wednesday"), ("w czwartku", "thursday"),

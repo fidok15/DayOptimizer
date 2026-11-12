@@ -154,3 +154,37 @@ scenarios:
     tasks:
       - {id: t1, title: Review PR, category: Work, duration_min: 60, not_before: "2030-10-15 00:00", due: "2030-10-15 18:00"}
     expect: {placed: [t1]}
+  # whole weeks: the routine has 7 Sport blocks a week (Gym Mon-Fri, Run Sat-Sun) but the
+  # notes allow 3; every limit of the notes is checked on the whole plan (scripts/eval_tasks.py limits)
+  - name: week-plain
+    now: "2030-10-14 06:30"
+    days: [2030-10-14, 2030-10-15, 2030-10-16, 2030-10-17, 2030-10-18, 2030-10-19, 2030-10-20]
+  - name: week-busy
+    now: "2030-10-14 06:30"
+    days: [2030-10-14, 2030-10-15, 2030-10-16, 2030-10-17, 2030-10-18, 2030-10-19, 2030-10-20]
+    events:
+      - {calendar: Uni, title: Lecture - Algebra, day: 2030-10-14, start: "08:00", end: "10:00"}
+      - {calendar: Uni, title: Lab - Fizyka, day: 2030-10-15, start: "13:00", end: "15:30"}
+      - {calendar: Job, title: Warsztaty, day: 2030-10-16, start: "09:00", end: "17:00"}
+      - {calendar: Personal, title: Dentysta, day: 2030-10-17, start: "16:30", end: "17:30"}
+      - {calendar: Friends, title: Impreza u Kuby, day: 2030-10-18, start: "20:00", end: "23:30"}
+      - {calendar: Uni, title: Lab - Chemia, day: 2030-10-19, start: "10:00", end: "12:00"}
+    tasks:
+      - {id: t1, title: Mail do promotora, category: Learn, duration_min: 15, due: "2030-10-14 12:00", priority: high}
+      - {id: t2, title: Projekt z baz danych, category: Learn, duration_min: 240, due: "2030-10-17 18:00", min_chunk_min: 60, priority: high}
+      - {id: t3, title: Zakupy, category: Home, duration_min: 45, due: "2030-10-16 20:00"}
+      - {id: t4, title: Pranie, category: Home, duration_min: 60}
+      - {id: t5, title: Nauka do egzaminu, category: Learn, duration_min: 360, due: "2030-10-20 20:00", min_chunk_min: 90}
+      - {id: t6, title: Esej z filozofii, category: Learn, duration_min: 600, due: "2030-10-14 12:00"}
+    expect: {placed: [t1, t2, t3, t4, t5], unscheduled: [t6], max_block_min: 180}
+  - name: week-from-wednesday
+    now: "2030-10-16 12:10"
+    days: [2030-10-16, 2030-10-17, 2030-10-18, 2030-10-19, 2030-10-20]
+    events:
+      - {calendar: Job, title: Client call, day: 2030-10-16, start: "14:00", end: "15:00"}
+      - {calendar: Friends, title: Dinner with Ola, day: 2030-10-17, start: "18:00", end: "20:30"}
+    tasks:
+      - {id: t1, title: Tax return, category: Home, duration_min: 120, due: "2030-10-18 20:00", min_chunk_min: 60}
+      - {id: t2, title: Read 2 papers, category: Learn, duration_min: 180, due: "2030-10-20 18:00", min_chunk_min: 60}
+      - {id: t3, title: Fix the bike, category: Home, duration_min: 90, not_before: "2030-10-19 00:00"}
+    expect: {placed: [t1, t2, t3]}

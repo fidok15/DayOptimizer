@@ -10,7 +10,7 @@ Run it with --few-shot off and on to see what the worked examples add."""
 from __future__ import annotations
 import argparse
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import yaml
 from dayoptimizer.core.constraints import parse_rules, skippable
@@ -109,10 +109,39 @@ def score(s: dict, changes, problems: list[str], unscheduled: list[str]) -> list
     for a, b in exp.get("before", []):
         if a in first and b in first and first[a] > first[b]:
             fails.append(f"soft: {a} should start before {b}")
+    fails += limits(s, changes)
     limit = exp.get("max_block_min")
     for c in changes:
         if limit and c.kind == "create" and c.task_id and minutes(c.new_start, c.new_end) > limit:
             fails.append(f"soft: {c.task_id} block {c.new_start:%a %H:%M}-{c.new_end:%H:%M} is over {limit} min")
+    return fails
+
+
+def limits(s: dict, changes) -> list[str]:
+    """The notes' limits (max_per_week, min_gap_days, not_before, not_after,
+    keep_free) checked on every block of the plan; each one broken is a failure."""
+    creates = [c for c in changes if c.kind == "create"]
+    fails = []
+    for r in s.get("rules", []):
+        mine = [c for c in creates if r.category in (None, c.category)]
+        days = sorted({c.new_start.date() for c in mine})
+        if r.type == "max_per_week" and r.count is not None:
+            for week in {d - timedelta(days=d.weekday()) for d in days}:
+                n = sum(1 for d in days if week <= d < week + timedelta(days=7))
+                if n > r.count:
+                    fails.append(f"limit: {r.category} on {n} days in the week of {week:%d.%m}, at most {r.count}")
+        if r.type == "min_gap_days" and r.days:
+            fails += [f"limit: {r.category} on {a:%a} and {b:%a}, less than {r.days} days apart"
+                      for a, b in zip(days, days[1:]) if (b - a).days < r.days]
+        for c in mine:
+            start = c.new_start.hour * 60 + c.new_start.minute
+            end = start + minutes(c.new_start, c.new_end)
+            bad = (r.type == "not_before" and r.minutes is not None and start < r.minutes) or \
+                  (r.type == "not_after" and r.minutes is not None and end > r.minutes) or \
+                  (r.type == "keep_free" and r.weekday in (None, c.new_start.weekday())
+                   and start < r.end and end > r.start)
+            if bad:
+                fails.append(f"limit: {c.category} {c.title} {c.new_start:%a %H:%M}-{c.new_end:%H:%M} breaks \"{r.source}\"")
     return fails
 
 
