@@ -64,7 +64,7 @@ def understand(backend, text: str, rules, now: datetime):
     """(events as (category, title, start, end), tasks, skipped {day: [labels]}, what was printed)."""
     req = backend.parse_request(text, today=now.date().isoformat(), now=f"{now:%A %Y-%m-%d %H:%M}",
                                 categories=list(rules.categories))
-    req = pin_day(text, req, now.date())
+    req = pin_day(text, req, now)
     timed = req.model_copy(update={"events": [e for e in req.events if e.start_time and cli._HHMM.match(e.start_time)]})
     out = io.StringIO()
     with contextlib.redirect_stdout(out):

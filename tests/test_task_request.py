@@ -179,3 +179,16 @@ def test_a_skip_list_stops_at_the_sentence():
     mon = date(2030, 10, 14)
     week = {0: [RoutineBlock(18 * 60, 19 * 60, "Gym", "Gym"), RoutineBlock(7 * 60, 8 * 60, "Food", "Breakfast")]}
     assert skipped_routine("no gym. Breakfast should stay", week, [mon], mon) == {mon: ["Gym"]}
+
+
+def test_after_work_is_after_the_last_work_block_and_split_keeps_the_total():
+    from datetime import date, datetime
+
+    from dayoptimizer.llm.task_request import _after_event, split_lengths
+    day = date(2030, 10, 14)
+    events = [("Deep work", datetime(2030, 10, 14, 10)), ("Work", datetime(2030, 10, 14, 12)),
+              ("Work", datetime(2030, 10, 14, 15))]
+    assert _after_event("po pracy zakupy", events, day) == datetime(2030, 10, 14, 15)
+    assert split_lengths("rozdział, 6h do czwartku, w kawałkach po 2h") == (360, 120)
+    assert split_lengths("thesis chapter, 6h by Thursday, in 2h chunks") == (360, 120)
+    assert split_lengths("raport 3h") == (None, None)

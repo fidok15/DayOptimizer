@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal, Protocol
 
 from pydantic import AfterValidator, BaseModel
@@ -294,13 +294,17 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
     it goes on. A task whose clause has a clock time ('o 12', 'at 10') is an event
     at that time, unless the model gave it a due time or the day is a deadline
     ('do piątku o 17': due Friday 17:00, 'przed' too). A task `when` that only names a day is dropped. No day found:
-    the model decides; so does it when its date is that day, or that weekday later on ('w przyszły piątek')."""
+    the model decides; so does it when its date is that day, or that weekday later on ('w przyszły piątek').
+    A date written as '27.10' is that day. With `today` a datetime (now), an event in a message
+    that names no day at all is today's while its time is still ahead. 'kiedyś' / 'pilne' in a
+    task's clause set its priority. An event after 'potem' / 'then' keeps the model's time."""
     import re
     import unicodedata
 
     from dayoptimizer.llm.task_request import _PARTS
     low = text.lower()
-    today = today or date.today()
+    clock_now = today.time() if isinstance(today, datetime) else None
+    today = (today.date() if isinstance(today, datetime) else today) or date.today()
 
     def agrees(word, value):  # the model's date is the day the message names
         if not value:
@@ -309,7 +313,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         return said == got or (word in WEEKDAYS and got.weekday() == said.weekday() and got > said)
 
     def day_of(part):
-        said = [(m, day) for pattern, day in day_words() if (m := re.search(pattern, part))]
+        said = [(m, day) for pattern, day in day_words() if (m := re.search(pattern, part))] + _dates(part, today)
         if len(said) != 1:
             return None
         m, day = said[0]
@@ -318,7 +322,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         return part, m, day
     whole, clauses, cur = day_of(low), [], None
     for c in re.split(r"[,;]|\s(?:i|a|oraz|and)\s", low):
-        said = [d for pattern, d in day_words() if re.search(pattern, c)]
+        said = [d for pattern, d in day_words() if re.search(pattern, c)] + _dates(c, today)
         cur = day_of(c) if said else cur  # two days in one clause: the model decides
         clauses.append((c, cur))
 
@@ -343,8 +347,11 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
             r"|\bo\s+(?:pierwszej|drugiej|trzeciej|czwartej|piątej|piatej|szóstej|szostej|siódmej|siodmej|ósmej"
             r"|osmej|dziewiątej|dziewiatej|dziesiątej|dziesiatej|jedenastej|dwunastej)\b", c)
     # no time of its own, or only 'za 2h': any time the model gave is made up, so it is a task
+    then = re.compile(r"\b(?:potem|następnie|nastepnie|później|pozniej|then|afterwards|after that)\b")
     untimed = [e for e in req.events if not clock(find(e.title)[0] or low)
+               and not (e.start_time and then.search(find(e.title)[0] or ""))  # 'potem praca do 17'
                and (not said_time(find(e.title)[0] or low) or _offset(find(e.title)[0] or low) is not None)]
+    no_day = not any(d for c, d in clauses)
     def when_of(title):  # 'za 2h', or the part of the day said in the task's own clause ('wieczorem')
         c = find(title)[0]
         if _offset(c or low):
@@ -355,6 +362,8 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
             continue
         c, said = find(e.title)
         update = {"day": said[2]} if said and not agrees(said[2], e.day) else {}
+        if no_day and clock_now and e.day != today.isoformat() and e.start_time and e.start_time > f"{clock_now:%H:%M}":
+            update["day"] = today.isoformat()  # no day said and the time is still ahead today
         if not e.start_time and clock(c):
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
@@ -371,10 +380,10 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         if said and not own and (t.due_day or t.not_before_day) and model is None:
             said, part, m, day = None, "", None, None  # its clause names no day: the model's other day stands
         value = model or day  # the model's date when it is the day said: 'przyszły piątek' stays next week's
-        word = m and own and re.search(r"\b(na|do|przed|by|until|before|po|after)\s+"
+        word = m and own and re.search(r"\b(na|do|przed|by|until|before|for|po|after)\s+"
                                     r"(?:(?:przysz\w*|nast[eę]pn\w*|next|this|the|ten|t[eę]|tym)\s+)?$", part[:m.start()])
         word = word and word.group(1)
-        deadline = word in ("na", "do", "przed", "by", "until", "before")
+        deadline = word in ("na", "do", "przed", "by", "until", "before", "for")
         if clock(c) and not deadline and not t.due_time:  # a clock time makes it an event, unless it is a deadline
             events.append(NewEvent(title=t.title, category=t.category, day=value or "today",
                                    start_time=clock(c), duration_minutes=t.duration_minutes))
@@ -393,8 +402,34 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                              else {"not_before_day": _shift(value, 1), "due_day": None} if word in ("po", "after")
                              else {"due_day": value, "not_before_day": None} if word
                              else {"due_day": value, "not_before_day": value})
+        own_words = low if len(req.tasks) + len(untimed) == 1 or not c else c  # a lone task: the whole message
+        if re.search(_LOW, own_words):
+            t = t.model_copy(update={"priority": "low"})
+        elif re.search(_HIGH, own_words):
+            t = t.model_copy(update={"priority": "high"})
         tasks.append(t)
     return req.model_copy(update={"events": events, "tasks": tasks})
+
+
+_LOW = (r"\bkiedy[sś]\b|\bw wolnej chwili|\bjak b[eę]dzie czas|\bbez po[sś]piechu|\bsometime|\bsomeday"
+        r"|\bwhen there'?s time|\bwhenever\b|\bno rush\b")
+_HIGH = r"\bpiln\w*|\bwa[zż]n\w*|\basap\b|\burgent\w*|\bimportant\b|\bna ju[zż]\b|\bnatychmiast"
+
+
+def _dates(part: str, today: date) -> list:
+    """'27.10' / '27.10.2030' in the text as (match, 'YYYY-MM-DD'); this year's, or next year's
+    once passed. Not a clock time: 'o 18.30' / 'at 9.15' / '18.30' with an invalid month."""
+    import re
+    out = []
+    for m in re.finditer(r"(?<![\d.:])(?<!\bo )(?<!\bat )(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?(?![\d:])", part):
+        try:
+            d = date(int(m.group(3) or today.year), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            continue
+        if not m.group(3) and d < today:
+            d = d.replace(year=d.year + 1)
+        out.append((m, d.isoformat()))
+    return out
 
 
 def _shift(day: str, k: int) -> str:

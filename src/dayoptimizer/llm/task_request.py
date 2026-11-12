@@ -36,6 +36,24 @@ def asks_split(text: str) -> bool:
     return bool(_SPLIT.search(text))
 
 
+_LENGTH = r"(\d+(?:[.,]\d+)?)\s*(h\b|godz\w*|hours?\b|min\w*)"
+_PIECE = re.compile(rf"\bpo\s+{_LENGTH}|{_LENGTH}\s*(?:chunks?|pieces?|blocks?|each|at a time|kawałk\w*)", re.I)
+
+
+def split_lengths(text: str) -> tuple[int | None, int | None]:
+    """(total, piece) minutes said in a message that asks to split the work:
+    '6h do czwartku, w kawałkach po 2h' -> (360, 120); 'thesis, 6h, in 2h chunks' -> (360, 120)."""
+    def mins(n, unit):
+        return round(float(n.replace(",", ".")) * (1 if unit.lower().startswith("min") else 60))
+    piece = _PIECE.search(text)
+    if not piece:
+        return None, None
+    n, unit = (piece.group(1), piece.group(2)) if piece.group(1) else (piece.group(3), piece.group(4))
+    total = next((mins(m.group(1), m.group(2)) for m in re.finditer(_LENGTH, text, re.I)
+                  if not piece.start() <= m.start() < piece.end()), None)
+    return total, mins(n, unit)
+
+
 def _hhmm(value: str | None) -> time | None:
     m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", (value or "").strip())
     return time(int(m.group(1)), int(m.group(2))) if m else None
@@ -124,8 +142,9 @@ def _after_event(low: str, events: list[tuple[str, datetime]], day: date) -> dat
         return None
     # ponytail: 4-letter stem match for Polish cases (pracy ~ Praca); a lemmatizer if it misfires
     stems = (m.group(1)[:4], *_ALIASES.get(m.group(1)[:4], ()))
-    return next((end for title, end in events
-                 if end.date() == day and any(w[:4] in stems for w in re.findall(r"\w+", title.lower()))), None)
+    # the last one that day: 'po pracy' is after the day's work, not after its first block
+    return max((end for title, end in events
+                if end.date() == day and any(w[:4] in stems for w in re.findall(r"\w+", title.lower()))), default=None)
 
 
 def task_from_request(req: TaskRequest, categories: list[str], now: datetime | date, task_id: str,
