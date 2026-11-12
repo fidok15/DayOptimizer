@@ -505,7 +505,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     planned again (its blocks may be gone from the calendar). Says why for each
     one that isn't kept. The model's time-of-day words count only when they
     are in the message; a lone task reads them from the whole message."""
-    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, task_from_request
+    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, split_lengths, task_from_request
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
                     **dict.fromkeys(("due_day", "not_before_day"),
@@ -524,9 +524,12 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     first = int(storage.next_task_id()[1:])
     out = []
     lone = len(reqs) == 1 and not to_create
+    total, piece = split_lengths(text) if lone else (None, None)
     for r in reqs:
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
         r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
+        if piece and total and total > piece:  # 'w kawałkach po 2h': the model mixes up the piece and the total
+            r = r.model_copy(update={"duration_minutes": total, "min_chunk_minutes": piece})
         task, problem = task_from_request(r, list(rules.categories), now,
                                           f"t{first + sum(1 for t, _ in out if norm(t) not in old)}", events,
                                           rules.awake)
@@ -588,7 +591,7 @@ def cmd_ask(args, rules, config):
         console.print(f"Couldn't understand that right now ({type(exc).__name__}). Try again in a moment.",
                       markup=False, style="yellow")
         return
-    req = pin_day(args.text, req, now.date())
+    req = pin_day(args.text, req, now)
     timed = req.model_copy(update={"events": [e for e in req.events if e.start_time and _HHMM.match(e.start_time)]})
     to_create, problems = events_to_create(timed, rules.categories, now.date())
     for p in problems:

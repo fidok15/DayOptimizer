@@ -317,3 +317,50 @@ def test_after_today_starts_tomorrow():
     assert (t.not_before_day, t.due_day) == ("tomorrow", None)
     t = pin_day("po dzisiaj napisz raport", DayRequest(tasks=[TaskRequest(title="napisz raport")])).tasks[0]
     assert t.not_before_day == "tomorrow"
+
+
+def test_pin_day_reads_dates_deadlines_priority_and_then():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    now = datetime(2030, 10, 14, 9, 0)  # Monday
+    ev = lambda title, day, t="18:00": DayRequest(events=[NewEvent(title=title, category="Personal", day=day, start_time=t)])
+    assert pin_day("27.10 o 18 urodziny mamy", ev("urodziny mamy", "2030-10-14"), now).events[0].day == "2030-10-27"
+    assert pin_day("o 18.30 urodziny", ev("urodziny", "2030-10-14"), now).events[0].day == "2030-10-14"
+    # no day said and the time is ahead: today, whatever the model chose
+    assert pin_day("spotkanie z Kubą o 13", ev("spotkanie z Kubą", "2030-10-15", "13:00"), now).events[0].day == "2030-10-14"
+    # 'then' keeps the model's time: an event, not a task
+    req = DayRequest(events=[NewEvent(title="dentysta", category="Personal", day="2030-10-15", start_time="10:00"),
+                             NewEvent(title="praca", category="Work", day="2030-10-15", start_time="10:30",
+                                      end_time="17:00")])
+    got = pin_day("jutro dentysta o 10, potem praca do 17", req, now)
+    assert [e.title for e in got.events] == ["dentysta", "praca"] and not got.tasks
+    task = lambda title, **kw: DayRequest(tasks=[TaskRequest(title=title, category="Work", **kw)])
+    got = pin_day("report for Friday, 3 hours, urgent", task("report", due_day="2030-10-18", not_before_day="2030-10-18"), now)
+    assert got.tasks[0].due_day == "2030-10-18" and got.tasks[0].not_before_day is None
+    assert got.tasks[0].priority == "high"
+    assert pin_day("kiedyś przeczytaj tę książkę, 1h", task("przeczytaj tę książkę"), now).tasks[0].priority == "low"
+
+
+def test_pin_day_keeps_iso_dates_survives_leap_day_and_ties_urgency_to_its_clause():
+    from datetime import date as d
+
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, _dates, pin_day
+    now = datetime(2030, 10, 14, 12, 0)
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-20", start_time="18:00")])
+    assert pin_day("meeting on 2030-10-20 at 18", req, now).events[0].day == "2030-10-20"
+    assert _dates("29.02", d(2024, 3, 1)) == []
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="14:00")],
+                     tasks=[TaskRequest(title="laundry", category="Home", duration_minutes=60)])
+    assert pin_day("urgent meeting at 14, laundry 1h", req, now).tasks[0].priority == "normal"
+
+
+def test_pin_day_round_two_edges():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    now = datetime(2030, 10, 14, 9, 0)
+    req = DayRequest(tasks=[TaskRequest(title="write report", category="Work", duration_minutes=90)])
+    got = pin_day("write report 1.5h", req, now).tasks[0]
+    assert got.due_day is None and got.not_before_day is None
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-15", start_time="18:00")])
+    assert pin_day("meeting tomorrow or Friday at 18", req, now).events[0].day == "2030-10-15"
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="14:00")],
+                     tasks=[TaskRequest(title="buy tea", category="Home", duration_minutes=60)])
+    assert pin_day("urgent meeting at 14, buy tea 1h", req, now).tasks[0].priority == "normal"
