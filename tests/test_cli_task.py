@@ -259,3 +259,21 @@ def test_a_change_said_at_the_preview_is_read_by_code():
     assert [t.id for t in tasks] == ["t18"] and events == [meet] and what == "without nauka aws"
     assert edit("audio 2h dłużej") is None  # nothing code reads: the model reads it again
     assert edit("i jeszcze pranie o 18") is None  # nothing it names
+
+
+def test_split_work_listed_piece_by_piece_is_one_task_with_its_total(monkeypatch):
+    piece = TaskRequest(title="thesis chapter", category="Learn", duration_minutes=60, min_chunk_minutes=120)
+    run(monkeypatch, "thesis chapter, 6h by Thursday, in 2h chunks".split(),
+        DayRequest(tasks=[piece, piece, piece, TaskRequest(due_day="thursday")]))
+    assert [(t.duration_min, t.min_chunk_min) for t in Storage(paths.db_path()).open_tasks()] == [(360, 120)]
+
+
+def test_a_lone_task_without_length_takes_the_one_said_not_a_start_offset(monkeypatch):
+    run(monkeypatch, "answer emails between 12 and 14, half an hour".split(), TaskRequest(title="emails", category="Work"))
+    run(monkeypatch, "za 2h zadzwoń, 15 min".split(), TaskRequest(title="call", category="Work"))
+    assert [t.duration_min for t in Storage(paths.db_path()).open_tasks()] == [30, 15]
+
+
+def test_a_decimal_start_offset_is_not_the_length(monkeypatch):
+    run(monkeypatch, "call in 1.5h, 15 min".split(), TaskRequest(title="call", category="Work"))
+    assert [t.duration_min for t in Storage(paths.db_path()).open_tasks()] == [15]

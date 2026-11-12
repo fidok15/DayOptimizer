@@ -177,7 +177,10 @@ _REQUEST_SYSTEM = (
     "then work until 17' is TWO events: dentist 10:00 (no end given) and work from when the "
     "dentist ends until 17:00.\n"
     "- category must be exactly one of the listed categories: pick the closest fit for what the "
-    "activity IS. A doctor's or dentist's visit, an errand or meeting a friend is not Work.\n"
+    "activity IS. A doctor's or dentist's visit, an errand or meeting a friend is not Work; "
+    "schoolwork (a thesis, 'praca magisterska', an exam, homework, studying) goes to a study category; "
+    "other things to write or prepare ('raport', 'prezentacja', a report) go to Work; neither is a personal "
+    "or home category.\n"
     "- day is a date (YYYY-MM-DD) copied from the listed days, never worked out yourself: 'jutro' / "
     "'tomorrow' = the one marked tomorrow, 'w piątek' = the first Friday listed, 'w przyszły piątek' / "
     "'next Friday' = the Friday marked next week, '27.10' = that date. No day said = today. A day said once "
@@ -352,6 +355,9 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                and not (e.start_time and then.search(find(e.title)[0] or ""))  # 'potem praca do 17'
                and (not said_time(find(e.title)[0] or low) or _offset(find(e.title)[0] or low) is not None)]
     no_day = not any(re.search(p, low) for p, _ in day_words()) and not _dates(low, today)
+    # one task and nothing else (a small model may list split work piece by piece, or add an empty one)
+    single = len({" ".join(t.title.casefold().split()) for t in [*req.tasks, *untimed] if t.title.strip()}) == 1 \
+        and len(req.events) == len(untimed)
     def when_of(title):  # 'za 2h', or the part of the day said in the task's own clause ('wieczorem')
         c = find(title)[0]
         if _offset(c or low):
@@ -375,7 +381,8 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
         c, said = find(t.title)
         part, m, day = said or ("", None, None)
-        own = c is None or part == c  # no clause matched: the whole message is its clause
+        # no clause matched, or the message is this one task naming one day: its words ('by', 'do') count
+        own = c is None or part == c or (single and whole is not None and said == whole)
         model = next((v for v in (t.due_day, t.not_before_day) if day and agrees(day, v)), None)
         if said and not own and (t.due_day or t.not_before_day) and model is None:
             said, part, m, day = None, "", None, None  # its clause names no day: the model's other day stands
@@ -402,8 +409,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                              else {"not_before_day": _shift(value, 1), "due_day": None} if word in ("po", "after")
                              else {"due_day": value, "not_before_day": None} if word
                              else {"due_day": value, "not_before_day": value})
-        lone = len(req.tasks) + len(untimed) == 1 and len(req.events) == len(untimed)
-        own_words = low if lone else c or ""  # a lone task and nothing else: the whole message
+        own_words = low if single else c or ""  # a lone task and nothing else: the whole message
         if re.search(_LOW, own_words):
             t = t.model_copy(update={"priority": "low"})
         elif re.search(_HIGH, own_words):

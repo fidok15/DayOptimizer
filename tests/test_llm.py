@@ -364,3 +364,10 @@ def test_pin_day_round_two_edges():
     req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="14:00")],
                      tasks=[TaskRequest(title="buy tea", category="Home", duration_minutes=60)])
     assert pin_day("urgent meeting at 14, buy tea 1h", req, now).tasks[0].priority == "normal"
+
+
+def test_another_tasks_deadline_does_not_reach_a_timed_task():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    req = DayRequest(tasks=[TaskRequest(title="call dentist", category="Work"), TaskRequest(title="report", category="Work")])
+    got = pin_day("call dentist at 10, report by Friday", req, datetime(2030, 10, 14, 9, 0))
+    assert [(e.title, e.start_time) for e in got.events] == [("call dentist", "10:00")]

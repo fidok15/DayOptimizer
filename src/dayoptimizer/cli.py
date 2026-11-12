@@ -505,7 +505,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     planned again (its blocks may be gone from the calendar). Says why for each
     one that isn't kept. The model's time-of-day words count only when they
     are in the message; a lone task reads them from the whole message."""
-    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, asks_split, split_lengths, task_from_request
+    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, _minutes, asks_split, split_lengths, task_from_request
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
                     **dict.fromkeys(("due_day", "not_before_day"),
@@ -523,11 +523,17 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     have = set()
     first = int(storage.next_task_id()[1:])
     out = []
-    lone = len(reqs) == 1 and not to_create
+    # one task, maybe given more than once (a small model may list each piece of split work)
+    lone = len({" ".join(r.title.casefold().split()) for r in reqs if r.title.strip()}) == 1 and not to_create
     total, piece = split_lengths(text) if lone else (None, None)
     for r in reqs:
         when = r.when if r.when and r.when.lower() in text.lower() else (text if lone else None)
         r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
+        if lone and not (r.duration_minutes and r.duration_minutes > 0):
+            # the length said in the message ('half an hour'), not a start offset ('za 2h')
+            n = _minutes(re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
+                                r"|an hour|godzin\w*)", " ", text.lower()))
+            r = r.model_copy(update={"duration_minutes": n}) if n else r
         if piece and total and total > piece:  # 'w kawałkach po 2h': the model mixes up the piece and the total
             r = r.model_copy(update={"duration_minutes": total, "min_chunk_minutes": piece})
         task, problem = task_from_request(r, list(rules.categories), now,
