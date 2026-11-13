@@ -210,3 +210,8 @@ def test_repeats_reads_sessions():
 def test_repeats_ignores_a_start_offset():
     from dayoptimizer.llm.task_request import repeats
     assert repeats("practise English three times for an hour in 2h") == (180, 60)
+
+
+def test_a_block_length_after_in_is_no_offset():
+    from dayoptimizer.llm.task_request import repeats
+    assert repeats("practise English three times in 30 minute blocks") == (90, 30)

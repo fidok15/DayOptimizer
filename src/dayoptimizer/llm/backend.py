@@ -333,11 +333,14 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
     def fold(w):  # 'siłownia' ~ 'silownie': people type without Polish letters
         return unicodedata.normalize("NFKD", w.replace("ł", "l")).encode("ascii", "ignore").decode()[:4]
 
-    def find(title, timed=False):
+    def find(title, timed=False, positive=False):
         stems = {fold(w) for w in re.findall(r"\w{4,}", title.lower())}
         hits = [len(stems & {fold(w) for w in re.findall(r"\w+", c)}) for c, _ in clauses]
         # the clause sharing most of the title; ties: an event's clause with a time ('bez lunchu, lunch o 13'), the first
-        best = max(range(len(hits)), key=lambda i: (hits[i], bool(timed and clock(clauses[i][0]))))
+        # or, for a task, not the clause that leaves it out ('bez lunchu, lunch o 13'; 'write report, review report' stays first)
+        best = max(range(len(hits)), key=lambda i: (hits[i], bool(timed and clock(clauses[i][0])),
+                                                   positive and not re.search(r"\b(?:bez|without|no|skip|nie)\b",
+                                                                              clauses[i][0])))
         return (clauses[best][0], clauses[best][1] or whole) if hits[best] else (None, whole)
 
     def clock(c):  # 'o 18', 'at 10:30', 'at 3:45pm', 'od 15:45', 'from 3pm', 'w południe' / 'at noon'
@@ -392,7 +395,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                                                             None if resolve_day(e.day, today) == today else e.day))
                                 for e in untimed]:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
-        c, said = find(t.title, True)  # a tie: the clause with a time, where it is an event
+        c, said = find(t.title, positive=True)
         part, m, day = said or ("", None, None)
         # no clause matched, or the message is this one task naming one day: its words ('by', 'do') count
         own = c is None or part == c or (single and whole is not None and said == whole)
@@ -429,8 +432,8 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
             # 'o 15 spotkanie, a przed nim slajdy': due when the event said just before it starts
             near = [(names.index(x), e) for e in events if (x := find(e.title, True)[0]) in names
                     and names.index(x) < names.index(c)]
-            if near:
-                ref = max(near, key=lambda ie: ie[0])[1]
+            ref = max(near, key=lambda ie: ie[0])[1] if near else events[0] if len(events) == 1 else None
+            if ref is not None:
                 t = t.model_copy(update={"due_day": ref.day, "due_time": ref.start_time, "not_before_day": None})
         if not said and re.search(_WEEK, c or low):  # 'w tym tygodniu' / 'this week': by Sunday
             t = t.model_copy(update={"due_day": (today + timedelta(days=6 - today.weekday())).isoformat(),

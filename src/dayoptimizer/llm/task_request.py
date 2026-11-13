@@ -46,7 +46,8 @@ _TIMES = {"dwa": 2, "dwie": 2, "trzy": 3, "cztery": 4, "pięć": 5, "piec": 5, "
 
 def without_offsets(text: str) -> str:
     """The text without start offsets ('za 2h', 'in 1.5 hours', 'za godzinę'): they say when, not how long."""
-    return re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
+    return re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h|godz\w*|hours?|min\w*)\b"
+                  r"(?!\s*(?:blocks?|chunks?|sessions?|pieces?|kawał\w*|blok\w*|sesj\w*))|p[oó][lł] godziny|half an hour"
                   r"|an hour|godzin\w*)", " ", text.lower())
 
 

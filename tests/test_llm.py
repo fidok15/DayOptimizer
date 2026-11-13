@@ -424,3 +424,15 @@ def test_a_task_tied_between_clauses_goes_with_the_one_with_a_time():
     req = DayRequest(tasks=[TaskRequest(title="lunch", category="Food", due_day="2030-10-16", due_time="13:00")])
     got = pin_day("w środę bez lunchu, mam lunch firmowy o 13", req, datetime(2030, 10, 14, 9, 0))
     assert [(e.title, e.start_time) for e in got.events] == [("lunch", "13:00")] and not got.tasks
+
+
+def test_review_round_two_edges():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    now = datetime(2030, 10, 14, 9, 0)
+    req = DayRequest(events=[NewEvent(title="gym", category="Sport", day="2030-10-14", start_time="15:00")],
+                     tasks=[TaskRequest(title="prepare slides", category="Work")])
+    assert pin_day("gym at 15, before it prepare slides", req, now).tasks[0].due_time == "15:00"
+    req = DayRequest(events=[NewEvent(title="review report", category="Work", day="2030-10-14", start_time="15:00")],
+                     tasks=[TaskRequest(title="report", category="Work", duration_minutes=60)])
+    got = pin_day("write report, review report at 15", req, now)
+    assert [t.title for t in got.tasks] == ["report"] and len(got.events) == 1
