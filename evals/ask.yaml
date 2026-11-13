@@ -119,3 +119,70 @@ cases:
       - {title: [kino, cinem], day: 2030-10-14, start: "20:00"}
     tasks:
       - {title: [kuch, kitch], minutes: 30, category: Home}
+  # batch 2: long messages, colloquial words, typos, 12h clock, whole-week asks
+  - name: long-day-message
+    pl: "jutro rano dentysta o 8:30 (pół h), potem do 16 praca, wieczorem o 19:30 basen godzinkę, a do piątku muszę jeszcze napisać sprawozdanie, ze 3 godziny"
+    en: "tomorrow dentist at 8:30 (half an hour), then work until 16, in the evening pool at 19:30 for an hour, and by Friday I still need to write the lab report, about 3 hours"
+    events:
+      - {title: [dent], day: 2030-10-15, start: "08:30", end: "09:00", category: Personal}
+      - {title: [prac, work], day: 2030-10-15, start: "09:00", end: "16:00", category: Work}
+      - {title: [basen, pool], day: 2030-10-15, start: "19:30", end: "20:30", category: Sport}
+    tasks:
+      - {title: [sprawozd, report], minutes: 180, due: 2030-10-18, category: [Learn, Uni, Work]}
+  - name: colloquial-beers
+    pl: "wrzuć mi na czwartek o 17 piwo z ziomkami, ze 2h"
+    en: "put beers with the guys on Thursday at 17, like 2 hours"
+    events:
+      - {title: [piw, beer], day: 2030-10-17, start: "17:00", end: "19:00", category: [Free time, Personal]}
+  - name: typos
+    pl: "jutor o 10 spotkanei z promotorem"
+    en: "tmrw at 10 meetign with supervisor"
+    events:
+      - {title: [prom, superv, spotk, meet], day: 2030-10-15, start: "10:00"}
+  - name: skip-two-blocks
+    pl: "w środę nie idę na siłownię i bez lunchu, mam lunch firmowy o 13"
+    en: "on Wednesday no gym and no lunch, I have a company lunch at 13"
+    events:
+      - {title: [lunch], day: 2030-10-16, start: "13:00"}
+    skip: {2030-10-16: [Gym, Lunch]}
+  - name: weekend-two-events
+    pl: "w sobotę o 11 brunch z Olą, a w niedzielę cały dzień wolne, tylko o 18 kolacja u rodziców"
+    en: "Saturday brunch with Ola at 11, and Sunday free all day, just dinner at my parents' at 18"
+    events:
+      - {title: [brunch], day: 2030-10-19, start: "11:00"}
+      - {title: [kolac, rodzic, dinner, parent], day: 2030-10-20, start: "18:00"}
+  - name: from-to-minutes
+    pl: "spotkanie od 15:45 do 17:15"
+    en: "meeting from 3:45pm to 5:15pm"
+    events:
+      - {title: [spotk, meet], day: 2030-10-14, start: "15:45", end: "17:15"}
+  - name: before-the-meeting
+    pl: "o 15 spotkanie z klientem, a przed nim przygotuj slajdy, godzina"
+    en: "client meeting at 15, and before it prepare the slides, an hour"
+    events:
+      - {title: [spotk, klient, meet, client], day: 2030-10-14, start: "15:00"}
+    tasks:
+      - {title: [slajd, slide], minutes: 60, due: "2030-10-14 15:00", category: Work}
+  - name: week-habit
+    pl: "w tym tygodniu angielski, 3 razy po godzinie"
+    en: "English this week, 3 times for an hour"
+    tasks:
+      - {title: [angiel, engl], minutes: 180, chunk: 60, due: 2030-10-20, category: Learn}
+  - name: thanks
+    pl: "dzięki, super plan"
+    en: "thanks, great plan"
+  - name: noon
+    pl: "w południe lunch z szefem"
+    en: "lunch with the boss at noon"
+    events:
+      - {title: [szef, boss, lunch], day: 2030-10-14, start: "12:00"}
+  - name: words-for-hours
+    pl: "o piątej po południu trening, godzina"
+    en: "training at five in the afternoon, an hour"
+    events:
+      - {title: [tren, train], day: 2030-10-14, start: "17:00", end: "18:00", category: Sport}
+  - name: day-after-tomorrow-evening
+    pl: "pojutrze wieczorem zadzwoń do babci, 20 min"
+    en: "call grandma the day after tomorrow in the evening, 20 min"
+    tasks:
+      - {title: [babc, grand], minutes: 20, not_before: "2030-10-16 18:00", due: "2030-10-16 22:00"}

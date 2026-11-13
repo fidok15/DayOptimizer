@@ -40,6 +40,29 @@ _LENGTH = r"(\d+(?:[.,]\d+)?)\s*(h\b|godz\w*|hours?\b|min\w*)"
 _PIECE = re.compile(rf"\bpo\s+{_LENGTH}|{_LENGTH}\s*(?:chunks?|pieces?|blocks?|each|at a time|kawałk\w*)", re.I)
 
 
+_TIMES = {"dwa": 2, "dwie": 2, "trzy": 3, "cztery": 4, "pięć": 5, "piec": 5, "pięc": 5,
+          "two": 2, "twice": 2, "three": 3, "four": 4, "five": 5}
+
+
+def without_offsets(text: str) -> str:
+    """The text without start offsets ('za 2h', 'in 1.5 hours', 'za godzinę'): they say when, not how long."""
+    return re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h|godz\w*|hours?|min\w*)\b"
+                  r"(?!\s*(?:blocks?|chunks?|sessions?|pieces?|kawał\w*|blok\w*|sesj\w*))|p[oó][lł] godziny|half an hour"
+                  r"|an hour|godzin\w*)", " ", text.lower())
+
+
+def repeats(text: str) -> tuple[int | None, int | None]:
+    """(total, one session) minutes for work said as sessions: '3 razy po godzinie' -> (180, 60),
+    'English 3 times for an hour' / '3x 45 min' -> (180, 60) / (135, 45)."""
+    low = without_offsets(text)
+    m = re.search(rf"\b(\d+|{'|'.join(_TIMES)})\s*(?:razy|x|times)\b|\b(twice)\b", low)
+    if not m:
+        return None, None
+    n = _TIMES.get(m.group(1) or m.group(2)) or int(m.group(1))
+    one = _minutes(low[m.end():]) or _minutes(low[:m.start()])
+    return (n * one, one) if one and 1 < n <= 14 else (None, None)
+
+
 def split_lengths(text: str) -> tuple[int | None, int | None]:
     """(total, piece) minutes said in a message that asks to split the work:
     '6h do czwartku, w kawałkach po 2h' -> (360, 120); 'thesis, 6h, in 2h chunks' -> (360, 120)."""

@@ -236,7 +236,8 @@ def request_prompt(text: str, today: str, now: str, categories: list[str]) -> st
 
 _DAY_WORDS = [  # each day word in every form people type: cases, adjectives, no Polish letters, short forms
     (r"\bpojutrz|\bday after tomorrow\b|\bovermorrow\b", "day_after_tomorrow"),
-    (r"\bjutr|\bnazajutrz|(?<!after )\btomorrow\b|\btmrw?\b|\btmorrow\b", "tomorrow"),
+    (r"\bjutr|\bnazajutrz|\bjutor\b|\bjurto\b|\bjtro\b|(?<!after )\btomorrow\b|\btmrw?\b|\btmorrow\b|(?<!after )\btom+or+ow\b",
+     "tomorrow"),
     (r"\bdziś\b|\bdzis\b|\bdzisiaj|\bdzisiejsz|\btoday\b|\btonight\b", "today"),
     (r"\bponiedzia|\bpon\b|\bpn\b|\bmonday|\bmon\b", "monday"),
     (r"\bwtor|\bwt\b|\btuesday|\btues?\b", "tuesday"),
@@ -332,15 +333,29 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
     def fold(w):  # 'siłownia' ~ 'silownie': people type without Polish letters
         return unicodedata.normalize("NFKD", w.replace("ł", "l")).encode("ascii", "ignore").decode()[:4]
 
-    def find(title):
+    def find(title, timed=False, positive=False):
         stems = {fold(w) for w in re.findall(r"\w{4,}", title.lower())}
         hits = [len(stems & {fold(w) for w in re.findall(r"\w+", c)}) for c, _ in clauses]
-        best = max(range(len(hits)), key=hits.__getitem__)  # the clause sharing most of the title; ties: the first
+        # the clause sharing most of the title; ties: an event's clause with a time ('bez lunchu, lunch o 13'), the first
+        # or, for a task, not the clause that leaves it out ('bez lunchu, lunch o 13'; 'write report, review report' stays first)
+        best = max(range(len(hits)), key=lambda i: (hits[i], bool(timed and clock(clauses[i][0])),
+                                                   positive and not re.search(r"\b(?:bez|without|no|skip|nie)\b",
+                                                                              clauses[i][0])))
         return (clauses[best][0], clauses[best][1] or whole) if hits[best] else (None, whole)
 
-    def clock(c):
-        m = c and re.search(r"\b(?:o|at)\s+(\d{1,2})(?:[:.](\d{2}))?\b(?!\s*(?:h\b|min|godz))", c)
-        return m and int(m.group(1)) < 24 and f"{int(m.group(1)):02d}:{m.group(2) or '00'}"
+    def clock(c):  # 'o 18', 'at 10:30', 'at 3:45pm', 'od 15:45', 'from 3pm', 'w południe' / 'at noon'
+        if not c:
+            return None
+        for pattern in (r"\b(?:o|at)\s+(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?\b(?!\s*(?:h\b|min|godz))",
+                        r"\b(?:od|from)\s+(\d{1,2}):(\d{2})\s*(am|pm)?\b",
+                        r"\b(?:od|from)\s+(\d{1,2})()\s*(am|pm)\b"):  # 'od 3 dni' is no time
+            m = re.search(pattern, c)
+            if m and int(m.group(1)) < 24:
+                h = int(m.group(1))
+                if m.group(3) and h <= 12:
+                    h = h % 12 + 12 * (m.group(3) == "pm")
+                return f"{h:02d}:{m.group(2) or '00'}"
+        return "12:00" if re.search(_NOON, c) else None
     events, tasks = [], []
     # an event with no clock time anywhere is work to fit in: a task, so its clause's 'do/na/po' count
     from dayoptimizer.llm.task_request import _offset
@@ -348,12 +363,13 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         return clock(c) or re.search(
             r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:południe|poludnie|północ|polnoc|noon|midnight)\b"
             r"|\bo\s+(?:pierwszej|drugiej|trzeciej|czwartej|piątej|piatej|szóstej|szostej|siódmej|siodmej|ósmej"
-            r"|osmej|dziewiątej|dziewiatej|dziesiątej|dziesiatej|jedenastej|dwunastej)\b", c)
+            r"|osmej|dziewiątej|dziewiatej|dziesiątej|dziesiatej|jedenastej|dwunastej)\b"
+            r"|\bat\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b", c)
     # no time of its own, or only 'za 2h': any time the model gave is made up, so it is a task
     then = re.compile(r"\b(?:potem|następnie|nastepnie|później|pozniej|then|afterwards|after that)\b")
-    untimed = [e for e in req.events if not clock(find(e.title)[0] or low)
-               and not (e.start_time and then.search(find(e.title)[0] or ""))  # 'potem praca do 17'
-               and (not said_time(find(e.title)[0] or low) or _offset(find(e.title)[0] or low) is not None)]
+    untimed = [e for e in req.events if not clock(find(e.title, True)[0] or low)
+               and not (e.start_time and then.search(find(e.title, True)[0] or ""))  # 'potem praca do 17'
+               and (not said_time(find(e.title, True)[0] or low) or _offset(find(e.title, True)[0] or low) is not None)]
     no_day = not any(re.search(p, low) for p, _ in day_words()) and not _dates(low, today)
     # one task and nothing else (a small model may list split work piece by piece, or add an empty one)
     single = len({" ".join(t.title.casefold().split()) for t in [*req.tasks, *untimed] if t.title.strip()}) == 1 \
@@ -366,11 +382,11 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
     for e in req.events:
         if e in untimed:
             continue
-        c, said = find(e.title)
+        c, said = find(e.title, True)
         update = {"day": said[2]} if said and not agrees(said[2], e.day) else {}
         if no_day and clock_now and e.day != today.isoformat() and e.start_time and e.start_time > f"{clock_now:%H:%M}":
             update["day"] = today.isoformat()  # no day said and the time is still ahead today
-        if not e.start_time and clock(c):
+        if clock(c) and (not e.start_time or re.search(rf"\d\s*(?:am|pm)\b|{_NOON}", c)):  # said exactly: it stands
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
     for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
@@ -379,7 +395,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                                                             None if resolve_day(e.day, today) == today else e.day))
                                 for e in untimed]:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
-        c, said = find(t.title)
+        c, said = find(t.title, positive=True)
         part, m, day = said or ("", None, None)
         # no clause matched, or the message is this one task naming one day: its words ('by', 'do') count
         own = c is None or part == c or (single and whole is not None and said == whole)
@@ -391,7 +407,9 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                                     r"(?:(?:przysz\w*|nast[eę]pn\w*|next|this|the|ten|t[eę]|tym)\s+)?$", part[:m.start()])
         word = word and word.group(1)
         deadline = word in ("na", "do", "przed", "by", "until", "before", "for")
-        if clock(c) and not deadline and not t.due_time:  # a clock time makes it an event, unless it is a deadline
+        # a clock time makes it an event, unless it is a deadline ('przed spotkaniem o 15', 'do 17')
+        if clock(c) and not deadline and (not t.due_time or t.due_time == clock(c) and not re.search(
+                r"\b(?:przed|before|by|until)\b|\bdo\s+\d", c)):
             events.append(NewEvent(title=t.title, category=t.category, day=value or "today",
                                    start_time=clock(c), duration_minutes=t.duration_minutes))
             continue
@@ -409,15 +427,38 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                              else {"not_before_day": _shift(value, 1), "due_day": None} if word in ("po", "after")
                              else {"due_day": value, "not_before_day": None} if word
                              else {"due_day": value, "not_before_day": value})
+        names = [x for x, _ in clauses]
+        if c in names and re.search(r"\bprzed\s+(?:nim|ni[aą]|tym|niego)\b|\bbefore\s+(?:it|that|then)\b", c):
+            # 'o 15 spotkanie, a przed nim slajdy': due when the event said just before it starts
+            near = [(names.index(x), e) for e in events if (x := find(e.title, True)[0]) in names
+                    and names.index(x) < names.index(c)]
+            ref = max(near, key=lambda ie: ie[0])[1] if near else events[0] if len(events) == 1 else None
+            if ref is not None:
+                t = t.model_copy(update={"due_day": ref.day, "due_time": ref.start_time, "not_before_day": None})
+        if not said and re.search(_WEEK, c or low):  # 'w tym tygodniu' / 'this week': by Sunday
+            t = t.model_copy(update={"due_day": (today + timedelta(days=6 - today.weekday())).isoformat(),
+                                     "not_before_day": None, "due_time": None})
+        if not (t.duration_minutes and t.duration_minutes > 0) and c in [x for x, _ in clauses]:
+            # 'przygotuj slajdy, godzina': a length alone right after the task's clause is its length
+            from dayoptimizer.llm.task_request import _minutes
+            nxt = [x for x, _ in clauses][[x for x, _ in clauses].index(c) + 1:][:1]
+            n = nxt and re.fullmatch(r"\s*(?:ok\.?|oko[lł]o|ze|about|around|like)?\s*[\w.,]+\s*\w*\s*", nxt[0]) \
+                and _minutes(nxt[0])
+            t = t.model_copy(update={"duration_minutes": n}) if n else t
         own_words = low if single else c or ""  # a lone task and nothing else: the whole message
         if re.search(_LOW, own_words):
             t = t.model_copy(update={"priority": "low"})
         elif re.search(_HIGH, own_words):
             t = t.model_copy(update={"priority": "high"})
+        if not re.sub(_FREE, "", t.title.lower()).strip(" ,.!-"):  # 'cały dzień wolne' / 'free all day': nothing to do
+            continue
         tasks.append(t)
     return req.model_copy(update={"events": events, "tasks": tasks})
 
 
+_FREE = r"\b(?:ca[lł]y dzie[nń]|all day|the whole day|dzie[nń])\b|\b(?:wolne|wolny|free|off|day off)\b"
+_NOON = r"\b(?:południe|poludnie|noon)\b"
+_WEEK = r"\bw tym tygodniu|\bthis week\b|\bdo ko[nń]ca tygodnia|\bby the end of the week|\bw ci[aą]gu tygodnia"
 _LOW = (r"\bkiedy[sś]\b|\bw wolnej chwili|\bjak b[eę]dzie czas|\bbez po[sś]piechu|\bsometime|\bsomeday"
         r"|\bwhen there'?s time|\bwhenever\b|\bno rush\b")
 _HIGH = r"\bpiln\w*|\bwa[zż]n\w*|\basap\b|\burgent\w*|\bimportant\b|\bna ju[zż]\b|\bnatychmiast"
