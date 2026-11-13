@@ -505,7 +505,15 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
     planned again (its blocks may be gone from the calendar). Says why for each
     one that isn't kept. The model's time-of-day words count only when they
     are in the message; a lone task reads them from the whole message."""
-    from dayoptimizer.llm.task_request import DEFAULT_MINUTES, TaskRequest, _minutes, asks_split, split_lengths, task_from_request
+    from dayoptimizer.llm.task_request import (
+        DEFAULT_MINUTES,
+        TaskRequest,
+        _minutes,
+        asks_split,
+        repeats,
+        split_lengths,
+        task_from_request,
+    )
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
                     **dict.fromkeys(("due_day", "not_before_day"),
@@ -534,7 +542,10 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
             n = _minutes(re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
                                 r"|an hour|godzin\w*)", " ", text.lower()))
             r = r.model_copy(update={"duration_minutes": n}) if n else r
-        if piece and total and total > piece:  # 'w kawałkach po 2h': the model mixes up the piece and the total
+        many, one = repeats(text) if lone else (None, None)
+        if many:  # '3 razy po godzinie': sessions of an hour, three hours in all
+            r = r.model_copy(update={"duration_minutes": many, "min_chunk_minutes": one})
+        elif piece and total and total > piece:  # 'w kawałkach po 2h': the model mixes up the piece and the total
             r = r.model_copy(update={"duration_minutes": total, "min_chunk_minutes": piece})
         task, problem = task_from_request(r, list(rules.categories), now,
                                           f"t{first + sum(1 for t, _ in out if norm(t) not in old)}", events,

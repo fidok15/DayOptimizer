@@ -371,3 +371,30 @@ def test_another_tasks_deadline_does_not_reach_a_timed_task():
     req = DayRequest(tasks=[TaskRequest(title="call dentist", category="Work"), TaskRequest(title="report", category="Work")])
     got = pin_day("call dentist at 10, report by Friday", req, datetime(2030, 10, 14, 9, 0))
     assert [(e.title, e.start_time) for e in got.events] == [("call dentist", "10:00")]
+
+
+def test_pin_day_batch_two_words():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    now = datetime(2030, 10, 14, 9, 0)
+    ev = lambda title, day="2030-10-14", t="12:30": DayRequest(events=[NewEvent(title=title, category="Food", day=day, start_time=t)])
+    assert pin_day("w południe lunch z szefem", ev("lunch z szefem"), now).events[0].start_time == "12:00"
+    assert pin_day("meeting from 3:45pm to 5:15pm", ev("meeting", t=None), now).events[0].start_time == "15:45"
+    assert pin_day("jutor o 10 spotkanei z promotorem", ev("spotkanei z promotorem", "2030-10-15", "10:00"),
+                   now).events[0].day == "2030-10-15"
+    # an hour said in words is a time: an event, not work to fit in
+    got = pin_day("training at five in the afternoon, an hour", ev("training", t="17:00"), now)
+    assert [e.start_time for e in got.events] == ["17:00"] and not got.tasks
+    # the model's due time is the clock time said, with no deadline word: an event
+    got = pin_day("w niedzielę o 18 kolacja u rodziców",
+                  DayRequest(tasks=[TaskRequest(title="kolacja u rodziców", category="Food", due_time="18:00")]), now)
+    assert [(e.day, e.start_time) for e in got.events] == [("sunday", "18:00")]
+    # 'bez lunchu, lunch firmowy o 13': the event is the lunch with a time
+    got = pin_day("w środę bez lunchu, mam lunch firmowy o 13", ev("lunch", "2030-10-16", "13:00"), now)
+    assert [(e.day, e.start_time) for e in got.events] == [("2030-10-16", "13:00")]
+    # 'przed nim' = before the event said; a length alone after the clause is the task's
+    req = DayRequest(events=[NewEvent(title="spotkanie z klientem", category="Work", day="2030-10-14", start_time="15:00")],
+                     tasks=[TaskRequest(title="przygotuj slajdy", category="Work")])
+    t = pin_day("o 15 spotkanie z klientem, a przed nim przygotuj slajdy, godzina", req, now).tasks[0]
+    assert (t.due_day, t.due_time, t.duration_minutes) == ("2030-10-14", "15:00", 60)
+    t = pin_day("w tym tygodniu angielski", DayRequest(tasks=[TaskRequest(title="angielski", category="Learn")]), now).tasks[0]
+    assert t.due_day == "2030-10-20"

@@ -198,3 +198,10 @@ def test_split_lengths_skips_a_start_offset():
     from dayoptimizer.llm.task_request import split_lengths
     assert split_lengths("in 3h write report 6h in 2h chunks") == (360, 120)
     assert split_lengths("za 3h raport 6h po 2h") == (360, 120)
+
+
+def test_repeats_reads_sessions():
+    from dayoptimizer.llm.task_request import repeats
+    assert repeats("w tym tygodniu angielski, 3 razy po godzinie") == (180, 60)
+    assert repeats("English this week, 3 times for an hour") == (180, 60)
+    assert repeats("raport 2h") == (None, None)
