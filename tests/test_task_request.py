@@ -205,3 +205,8 @@ def test_repeats_reads_sessions():
     assert repeats("w tym tygodniu angielski, 3 razy po godzinie") == (180, 60)
     assert repeats("English this week, 3 times for an hour") == (180, 60)
     assert repeats("raport 2h") == (None, None)
+
+
+def test_repeats_ignores_a_start_offset():
+    from dayoptimizer.llm.task_request import repeats
+    assert repeats("practise English three times for an hour in 2h") == (180, 60)

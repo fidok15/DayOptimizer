@@ -203,8 +203,6 @@ _REQUEST_SYSTEM = (
     "priority high for "
     "'ważne'/'pilne'/'urgent', low for 'kiedyś'/'when there's time', else normal.\n"
     "- If the message isn't about the schedule or work to do, return nothing and a short reply.\n"
-    "- 'cały dzień wolne' / 'free all day' on its own adds nothing; every activity said with it is still an "
-    "event or task.\n"
     "Example, with categories Important, Meeting, Work, Food, Gym, today being 2030-01-07:\n"
     "'tomorrow dentist at 10 for half an hour, then work until 17, coffee with Tom at 18' -> "
     '{"events":[{"title":"dentist","category":"Important","day":"2030-01-08","start_time":"10:00",'
@@ -385,7 +383,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
         update = {"day": said[2]} if said and not agrees(said[2], e.day) else {}
         if no_day and clock_now and e.day != today.isoformat() and e.start_time and e.start_time > f"{clock_now:%H:%M}":
             update["day"] = today.isoformat()  # no day said and the time is still ahead today
-        if clock(c) and (not e.start_time or re.search(rf"\b(?:am|pm)\b|{_NOON}", c)):  # said exactly: it stands
+        if clock(c) and (not e.start_time or re.search(rf"\d\s*(?:am|pm)\b|{_NOON}", c)):  # said exactly: it stands
             update["start_time"] = clock(c)
         events.append(e.model_copy(update=update))
     for t in list(req.tasks) + [TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
@@ -394,7 +392,7 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                                                             None if resolve_day(e.day, today) == today else e.day))
                                 for e in untimed]:
         t = t.model_copy(update={"when": None}) if t.when and _only_day(t.when) else t
-        c, said = find(t.title)
+        c, said = find(t.title, True)  # a tie: the clause with a time, where it is an event
         part, m, day = said or ("", None, None)
         # no clause matched, or the message is this one task naming one day: its words ('by', 'do') count
         own = c is None or part == c or (single and whole is not None and said == whole)
@@ -426,9 +424,14 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
                              else {"not_before_day": _shift(value, 1), "due_day": None} if word in ("po", "after")
                              else {"due_day": value, "not_before_day": None} if word
                              else {"due_day": value, "not_before_day": value})
-        if c and re.search(r"\bprzed\s+(?:nim|ni[aą]|tym|niego)\b|\bbefore\s+(?:it|that|then)\b", c) and events:
-            first = events[0]  # 'o 15 spotkanie, a przed nim slajdy': due when it starts
-            t = t.model_copy(update={"due_day": first.day, "due_time": first.start_time, "not_before_day": None})
+        names = [x for x, _ in clauses]
+        if c in names and re.search(r"\bprzed\s+(?:nim|ni[aą]|tym|niego)\b|\bbefore\s+(?:it|that|then)\b", c):
+            # 'o 15 spotkanie, a przed nim slajdy': due when the event said just before it starts
+            near = [(names.index(x), e) for e in events if (x := find(e.title, True)[0]) in names
+                    and names.index(x) < names.index(c)]
+            if near:
+                ref = max(near, key=lambda ie: ie[0])[1]
+                t = t.model_copy(update={"due_day": ref.day, "due_time": ref.start_time, "not_before_day": None})
         if not said and re.search(_WEEK, c or low):  # 'w tym tygodniu' / 'this week': by Sunday
             t = t.model_copy(update={"due_day": (today + timedelta(days=6 - today.weekday())).isoformat(),
                                      "not_before_day": None, "due_time": None})
@@ -444,10 +447,13 @@ def pin_day(text: str, req: DayRequest, today: date | None = None) -> DayRequest
             t = t.model_copy(update={"priority": "low"})
         elif re.search(_HIGH, own_words):
             t = t.model_copy(update={"priority": "high"})
+        if not re.sub(_FREE, "", t.title.lower()).strip(" ,.!-"):  # 'cały dzień wolne' / 'free all day': nothing to do
+            continue
         tasks.append(t)
     return req.model_copy(update={"events": events, "tasks": tasks})
 
 
+_FREE = r"\b(?:ca[lł]y dzie[nń]|all day|the whole day|dzie[nń])\b|\b(?:wolne|wolny|free|off|day off)\b"
 _NOON = r"\b(?:południe|poludnie|noon)\b"
 _WEEK = r"\bw tym tygodniu|\bthis week\b|\bdo ko[nń]ca tygodnia|\bby the end of the week|\bw ci[aą]gu tygodnia"
 _LOW = (r"\bkiedy[sś]\b|\bw wolnej chwili|\bjak b[eę]dzie czas|\bbez po[sś]piechu|\bsometime|\bsomeday"

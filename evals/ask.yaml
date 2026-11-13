@@ -180,7 +180,7 @@ cases:
     pl: "o piątej po południu trening, godzina"
     en: "training at five in the afternoon, an hour"
     events:
-      - {title: [tren], day: 2030-10-14, start: "17:00", end: "18:00", category: Sport}
+      - {title: [tren, train], day: 2030-10-14, start: "17:00", end: "18:00", category: Sport}
   - name: day-after-tomorrow-evening
     pl: "pojutrze wieczorem zadzwoń do babci, 20 min"
     en: "call grandma the day after tomorrow in the evening, 20 min"

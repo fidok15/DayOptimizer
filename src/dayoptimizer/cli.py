@@ -513,6 +513,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         repeats,
         split_lengths,
         task_from_request,
+        without_offsets,
     )
     reqs = list(req.tasks) + [
         TaskRequest(title=e.title, category=e.category, duration_minutes=e.duration_minutes,
@@ -539,8 +540,7 @@ def _new_tasks(text: str, req, rules, storage, now: datetime, to_create) -> list
         r = r.model_copy(update={"when": when, "min_chunk_minutes": r.min_chunk_minutes if asks_split(text) else None})
         if lone and not (r.duration_minutes and r.duration_minutes > 0):
             # the length said in the message ('half an hour'), not a start offset ('za 2h')
-            n = _minutes(re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
-                                r"|an hour|godzin\w*)", " ", text.lower()))
+            n = _minutes(without_offsets(text))
             r = r.model_copy(update={"duration_minutes": n}) if n else r
         many, one = repeats(text) if lone else (None, None)
         if many:  # '3 razy po godzinie': sessions of an hour, three hours in all

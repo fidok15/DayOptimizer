@@ -398,3 +398,29 @@ def test_pin_day_batch_two_words():
     assert (t.due_day, t.due_time, t.duration_minutes) == ("2030-10-14", "15:00", 60)
     t = pin_day("w tym tygodniu angielski", DayRequest(tasks=[TaskRequest(title="angielski", category="Learn")]), now).tasks[0]
     assert t.due_day == "2030-10-20"
+
+
+def test_before_it_is_the_event_just_before_and_3pm_corrects_the_model():
+    from dayoptimizer.llm.backend import DayRequest, NewEvent, TaskRequest, pin_day
+    now = datetime(2030, 10, 14, 9, 0)
+    req = DayRequest(events=[NewEvent(title="breakfast", category="Food", day="2030-10-14", start_time="10:00"),
+                             NewEvent(title="client meeting", category="Work", day="2030-10-14", start_time="15:00")],
+                     tasks=[TaskRequest(title="prepare slides", category="Work")])
+    t = pin_day("breakfast at 10, client meeting at 15, before it prepare slides", req, now).tasks[0]
+    assert t.due_time == "15:00"
+    req = DayRequest(events=[NewEvent(title="meeting", category="Work", day="2030-10-14", start_time="03:00")])
+    assert pin_day("meeting at 3pm", req, now).events[0].start_time == "15:00"
+
+
+def test_a_free_day_is_no_task():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    req = DayRequest(tasks=[TaskRequest(title="free all day", category="Free time"),
+                            TaskRequest(title="free the drawer", category="Home")])
+    assert [t.title for t in pin_day("Sunday free all day, free the drawer", req).tasks] == ["free the drawer"]
+
+
+def test_a_task_tied_between_clauses_goes_with_the_one_with_a_time():
+    from dayoptimizer.llm.backend import DayRequest, TaskRequest, pin_day
+    req = DayRequest(tasks=[TaskRequest(title="lunch", category="Food", due_day="2030-10-16", due_time="13:00")])
+    got = pin_day("w środę bez lunchu, mam lunch firmowy o 13", req, datetime(2030, 10, 14, 9, 0))
+    assert [(e.title, e.start_time) for e in got.events] == [("lunch", "13:00")] and not got.tasks

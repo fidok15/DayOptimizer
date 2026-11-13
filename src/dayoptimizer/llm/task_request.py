@@ -44,10 +44,16 @@ _TIMES = {"dwa": 2, "dwie": 2, "trzy": 3, "cztery": 4, "pięć": 5, "piec": 5, "
           "two": 2, "twice": 2, "three": 3, "four": 4, "five": 5}
 
 
+def without_offsets(text: str) -> str:
+    """The text without start offsets ('za 2h', 'in 1.5 hours', 'za godzinę'): they say when, not how long."""
+    return re.sub(r"\b(?:za|in)\s+(?:\d+(?:[.,]\d+)?\s*(?:h\b|godz\w*|hours?|min\w*)|p[oó][lł] godziny|half an hour"
+                  r"|an hour|godzin\w*)", " ", text.lower())
+
+
 def repeats(text: str) -> tuple[int | None, int | None]:
     """(total, one session) minutes for work said as sessions: '3 razy po godzinie' -> (180, 60),
     'English 3 times for an hour' / '3x 45 min' -> (180, 60) / (135, 45)."""
-    low = text.lower()
+    low = without_offsets(text)
     m = re.search(rf"\b(\d+|{'|'.join(_TIMES)})\s*(?:razy|x|times)\b|\b(twice)\b", low)
     if not m:
         return None, None
