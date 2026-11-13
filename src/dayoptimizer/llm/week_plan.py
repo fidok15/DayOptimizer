@@ -763,6 +763,11 @@ def _times(b: Block) -> tuple[datetime, datetime] | None:
     return at(midnight, s), at(midnight, e if e else 1440)
 
 
+def _whole_minute(t: datetime) -> datetime:
+    """`t` rounded up to a whole minute: a block shown as HH:MM never starts before it."""
+    return t if not (t.second or t.microsecond) else t.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+
 def _free_part(s: datetime, e: datetime, taken: list, least: timedelta = timedelta(minutes=30)):
     """The longest free stretch of [s, e) around `taken`, if it is `least` or more; else None."""
     parts, at = [], s
@@ -820,7 +825,9 @@ def _forgotten_routine(blocks: list[Block], routine_days: dict, events: list[Eve
             else:
                 if not (moving or fixed) and s >= now:  # a block whose time is over isn't moved into the evening
                     queue.append((span, True))
-                elif fixed and (part := _free_part(max(s, now), e, [(x, y) for x, y, _ in taken])):
+                elif fixed and (part := _free_part(
+                        max(s, _whole_minute(now)), e,  # tasks never shut out a block they may not take
+                        [(x, y) for x, y, task in taken if not (task and (_guarded(span) or task == cat))])):
                     # a fixed block an event runs into keeps the rest of its time: sleep after the late party
                     a, b = part
                     taken.append((a, b, None))

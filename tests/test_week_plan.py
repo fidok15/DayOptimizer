@@ -687,6 +687,13 @@ def test_a_fixed_block_a_late_event_runs_into_keeps_the_rest_of_its_time():
     party = ev("p", "Friends", "Party", MON, "20:00", "23:30")
     back, lost = _forgotten_routine([], night, [party], NOW)
     assert [(b.title, b.start, b.end) for b in back] == [("Sleep", "23:30", "24:00")] and lost == []
+    back, _ = _forgotten_routine([], night, [], at(MON, "22:40") + timedelta(seconds=30))
+    assert [(b.start, b.end) for b in back] == [("22:41", "24:00")]  # never before now
+    task = Block(day=MON.isoformat(), start="23:00", end="24:00", category="Work", title="t", task_id="t1")
+    till_23 = ev("p", "Friends", "Party", MON, "20:00", "23:00")
+    guarded = {MON: [(at(MON, "22:30"), at(TUE, "00:00"), "Sleep", "Sleep", True, True)]}  # protected
+    back, _ = _forgotten_routine([task], guarded, [till_23], NOW)
+    assert ("Sleep", "23:00") in [(b.title, b.start) for b in back]  # a task may not take protected sleep
     late = ev("p", "Friends", "Party", MON, "20:00", "23:45")  # 15 min left: too short to keep
     back, lost = _forgotten_routine([], night, [late], NOW)
     assert back == [] and len(lost) == 1
