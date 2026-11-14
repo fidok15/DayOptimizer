@@ -29,7 +29,7 @@ function DayColumn({ day, tint, canCreate, blocks, categories, draft, draftColor
 
   return (
     <div
-      className={`relative border-l border-line ${tint ? TINT[tint] : ""}`}
+      className={`relative snap-start border-l border-line ${tint ? TINT[tint] : ""}`}
       style={{ touchAction: "pan-x pan-y" }}
       onPointerDown={(e) => drag.onColumnPointerDown(e, day)}
       onPointerMove={(e) => {

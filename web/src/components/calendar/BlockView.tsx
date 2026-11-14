@@ -42,7 +42,7 @@ function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, o
       onClick={() => {
         if (!drag.takeSuppressClick()) onOpen(b.id, day);
       }}
-      className={`absolute z-[1] overflow-hidden rounded-[10px] text-left transition-[filter,box-shadow] hover:z-10 hover:brightness-110 hover:ring-2 hover:ring-ink/40 focus-visible:z-10 focus-visible:outline-offset-1 ${
+      className={`absolute z-[1] flex flex-col overflow-hidden text-left ${dur <= 15 ? "justify-center rounded-[4px]" : "justify-start rounded-[10px]"} transition-[filter,box-shadow] hover:z-10 hover:brightness-110 hover:ring-2 hover:ring-ink/40 focus-visible:z-10 focus-visible:outline-offset-1 ${
         dragging ? "z-20 cursor-grabbing shadow-lg" : "cursor-grab"
       }`}
       style={{
@@ -52,15 +52,15 @@ function BlockView({ block: b, day, color, emoji, lane, fresh, dragging, drag, o
         width: `calc(${100 / lane.lanes}% - 4px)`,
         background: `${color}d9`,
         color: ink,
-        boxShadow: "inset 3px 0 0 rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.14)",
+        boxShadow: "inset 2px 0 0 rgb(0 0 0 / 0.2), inset 0 0 0 1px rgb(255 255 255 / 0.14)",
         touchAction: "none",
       }}
     >
       <motion.span layout="position" transition={SPRING} className={`block pl-2.5 pr-1.5 ${dur <= 15 ? "py-0" : compact ? "py-[3px]" : "py-1"}`}>
         {compact ? (
-          <span className={`flex items-baseline gap-1.5 truncate leading-none ${dur <= 15 ? "text-[11px]" : dur < 30 ? "text-[12px]" : "text-[13px]"}`}>
-            <span className="truncate font-medium">{label}</span>
-            <span className="font-mono text-[11px] opacity-85">{b.start}</span>
+          <span className={`flex items-baseline gap-1.5 leading-none ${dur <= 15 ? "text-[10px]" : dur < 30 ? "text-[12px]" : "text-[13px]"}`}>
+            <span className="min-w-0 truncate font-medium">{label}</span>
+            {dur > 15 && <span className="shrink-0 font-mono text-[11px] opacity-85">{b.start}</span>}
           </span>
         ) : (
           <>
