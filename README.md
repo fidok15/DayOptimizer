@@ -1,23 +1,57 @@
+<div align="center">
+
 # DayOptimizer
 
-DayOptimizer plans and replans your day against your real Apple Calendar. A
-language model (a local Ollama model, or Claude with an API key) lays out the
-days from the routine you drew and what is already in your calendar; code
-checks every block (no overlaps, your categories, the rules from your notes)
-and sends back what breaks a rule. With no model at all, a rule engine places
-your routine. Optional Garmin data (sleep, Body Battery, HRV, stress) feeds
-the planner so recovery, not just free calendar slots, decides when workouts
-and deep-work blocks land.
+**Teach it your days, let it optimize the rest.**
 
-Fixed events (meetings, work, anything you mark non-movable) are never
-touched without your explicit approval. Flexible categories (sleep, food,
-gym, learning, free time, transport) are rescheduled automatically, with a
-notification-style summary of what moved and why.
+An LLM day planner for Apple Calendar on macOS: draw your routine once,
+and it lays out every week around what is already in your calendar.
+
+![macOS](https://img.shields.io/badge/macOS-only-black?logo=apple)
+![Python](https://img.shields.io/badge/python-3.13+-3776AB?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Ollama or Claude](https://img.shields.io/badge/LLM-Ollama%20%7C%20Claude-8A2BE2)
+
+<img src="docs/images/week.jpg" alt="The setup page: a typical week drawn with your own categories" width="900">
+
+</div>
+
+## What it does
+
+- **You draw your week, once.** On a local setup page you define your own
+  categories (Fixed or Flexible) and draw a typical day or week. Nothing is
+  assumed about your calendar.
+- **A model plans, code checks.** A local Ollama model, or Claude with an API
+  key, lays out the days from your routine, your notes and the events already
+  in Apple Calendar. Code rejects overlaps, unknown categories and broken note
+  rules and sends them back to the model. With no model, a rule engine places
+  your routine.
+- **Plain words in the terminal.** `dayoptimizer "dentist at 10, then 2h for
+  the report"` shows what it understood and writes it only on your OK.
+  Polish and English both work.
+- **Your events are safe.** Fixed events move only after you approve. A replan
+  replaces only blocks marked "Planned by DayOptimizer".
+- **Optional Garmin.** Sleep, Body Battery, HRV and stress decide when workouts
+  and deep work land. Everything works without a watch.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/day-dark.jpg" alt="Day view in dark theme"></td>
+    <td width="50%"><img src="docs/images/settings.jpg" alt="Settings: who plans, API key, health and privacy"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Day view, dark theme</sub></td>
+    <td align="center"><sub>Settings: local model or Claude, privacy</sub></td>
+  </tr>
+</table>
 
 ## Status
 
+<details>
+<summary>What has been tested live, what only by tests, known gaps</summary>
+
 What has been run by the author on a real Mac and Apple Calendar, and what so
-far only passes the automated tests (567 tests; calendar and model are faked,
+far only passes the automated tests (617 tests; calendar and model are faked,
 so they check the logic, not macOS or a real model).
 
 **Used live** (macOS, Apple Calendar through the app bundle, local Ollama
@@ -69,6 +103,8 @@ so they check the logic, not macOS or a real model).
 - The local model sometimes gives a clock time to something said without one,
   which then becomes a fixed event instead of a task.
 - The preview does not say which flexible routine blocks give way to a task.
+
+</details>
 
 ## Requirements
 
