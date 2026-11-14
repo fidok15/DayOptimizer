@@ -45,6 +45,41 @@ and it lays out every week around what is already in your calendar.
   </tr>
 </table>
 
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph once["1 · Once"]
+        S["dayoptimizer setup<br/>draw your week,<br/>categories, notes"] --> C[("config.local.yaml")]
+    end
+
+    subgraph when["2 · When to plan"]
+        T1["dayoptimizer<br/>(today)"]
+        T2["dayoptimizer #quot;dentist at 10#quot;<br/>preview, then your OK"]
+        T3["Background agent (launchd)<br/>new events, sleep, stress"]
+    end
+
+    subgraph plan["3 · Plan"]
+        IN["Routine + notes<br/>+ Apple Calendar events<br/>+ Garmin (optional)"] --> M{"Claude, else<br/>local Ollama"}
+        M -- "proposed days" --> V["Code checks:<br/>overlaps, categories,<br/>note rules"]
+        V -- "errors, max 3 rounds" --> M
+        IN -. "no model" .-> R["Rule engine<br/>places the routine"]
+    end
+
+    subgraph write["4 · Calendar"]
+        F["Flexible blocks<br/>written + notification"]
+        X["Fixed events<br/>moved only after<br/>your approval"]
+    end
+
+    C --> IN
+    T1 & T2 & T3 --> IN
+    V -- "valid plan" --> F & X
+    R --> F & X
+```
+
+A replan replaces only blocks marked "Planned by DayOptimizer". Your own
+events are never deleted.
+
 ## Status
 
 <details>
