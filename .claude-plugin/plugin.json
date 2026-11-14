@@ -6,5 +6,5 @@
     "name": "fidok"
   },
   "mcpServers": "./.mcp.json",
-  "license": "Apache-2.0"
+  "license": "MIT"
 }

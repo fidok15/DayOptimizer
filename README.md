@@ -9,7 +9,7 @@ and it lays out every week around what is already in your calendar.
 
 ![macOS](https://img.shields.io/badge/macOS-only-black?logo=apple)
 ![Python](https://img.shields.io/badge/python-3.13+-3776AB?logo=python&logoColor=white)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 ![Ollama or Claude](https://img.shields.io/badge/LLM-Ollama%20%7C%20Claude-8A2BE2)
 
 <img src="docs/images/week.jpg" alt="The setup page: a typical week drawn with your own categories" width="900">
