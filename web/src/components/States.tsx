@@ -4,8 +4,8 @@ const pulse = "rounded-[10px] bg-ink/[0.07] animate-pulse motion-reduce:animate-
 
 export function LoadingSkeleton() {
   return (
-    <div className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[18rem_1fr]" aria-busy="true" aria-label="Loading planner">
-      <div className="glass order-2 flex flex-col gap-3 rounded-2xl p-3 lg:order-none">
+    <div className="grid flex-1 grid-cols-1 gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]" aria-busy="true" aria-label="Loading planner">
+      <div className="glass order-2 flex flex-col gap-3 rounded-2xl p-3 xl:order-none">
         <div className={`${pulse} h-4 w-24`} />
         <div className={`${pulse} h-3 w-full`} />
         <div className={`${pulse} h-9`} />

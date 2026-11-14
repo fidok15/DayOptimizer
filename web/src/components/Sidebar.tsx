@@ -328,7 +328,7 @@ export default function Sidebar(props: {
   const patch = (name: string, p: Partial<Category>) => onChange((c) => (c[name] ? { ...c, [name]: { ...c[name], ...p } } : c));
 
   return (
-    <aside className="glass flex flex-col gap-4 rounded-2xl p-3 lg:sticky lg:top-5 lg:max-h-[calc(100dvh-2.5rem)]">
+    <aside className="glass flex flex-col gap-4 rounded-2xl p-3 xl:sticky xl:top-5 xl:max-h-[calc(100dvh-2.5rem)]">
       <section className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="px-1">
           <h2 className="text-[15px] font-semibold tracking-tight">Categories</h2>
@@ -386,7 +386,7 @@ export default function Sidebar(props: {
             <span className="w-[3.75rem] text-center">Mode</span>
             <span className="w-[3.625rem] text-center">Priority</span>
           </div>
-          <ul className="scroll-thin flex min-h-0 flex-col gap-0.5 lg:overflow-y-auto">
+          <ul className="scroll-thin flex min-h-0 flex-col gap-0.5 xl:overflow-y-auto">
             <AnimatePresence initial={false}>
               {rows.map(([name, cat]) => (
                 <Row

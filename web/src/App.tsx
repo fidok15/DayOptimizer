@@ -7,7 +7,7 @@ import Calendar from "./components/Calendar";
 import Notes from "./components/Notes";
 import Footer from "./components/Footer";
 import { LoadError, LoadingSkeleton } from "./components/States";
-import { RoutineChooser, RoutineSwitch } from "./components/RoutineMode";
+import { RoutineChooser, RoutineSwitch, ViewSwitch } from "./components/RoutineMode";
 import { DAY_NAME } from "./components/calendar/geometry";
 import { TEMPLATE_DAY, usePlanner } from "./lib/usePlanner";
 import { WEEKDAYS, type RoutineMode, type View, type Weekday } from "./lib/types";
@@ -43,7 +43,6 @@ export default function App() {
         <motion.div {...rise(0)} className="relative z-50">
           <Header
             view={shownView}
-            onViewChange={setView}
             oneDay={oneDay}
             saveStatus={p.saveStatus}
             saveError={p.saveError}
@@ -60,8 +59,8 @@ export default function App() {
         {p.load === "loading" && <LoadingSkeleton />}
         {p.load === "error" && <LoadError message={p.loadError} onRetry={p.reload} />}
         {p.load === "ready" && (
-          <main className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[20rem_1fr]">
-            <motion.div {...rise(1)} className="order-2 min-w-0 lg:order-none">
+          <main className="grid flex-1 grid-cols-1 gap-5 xl:grid-cols-[20rem_minmax(0,1fr)]">
+            <motion.div {...rise(1)} className="order-2 min-w-0 xl:order-none">
               <Sidebar
                 categories={p.categories}
                 week={p.week}
@@ -73,7 +72,12 @@ export default function App() {
               />
             </motion.div>
             <motion.div {...rise(2)} className="flex min-w-0 flex-col gap-5">
-              {p.routineMode && <RoutineSwitch mode={p.routineMode} onChange={switchMode} />}
+              {p.routineMode && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <RoutineSwitch mode={p.routineMode} onChange={switchMode} />
+                  {!oneDay && <ViewSwitch view={shownView} onChange={setView} />}
+                </div>
+              )}
               <Calendar
                 view={shownView}
                 single={oneDay}

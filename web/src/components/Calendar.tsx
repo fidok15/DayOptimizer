@@ -177,7 +177,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
       <motion.div
         ref={scrollRef}
         layoutScroll
-        className="scroll-thin relative h-[70dvh] min-h-[420px] select-none overflow-auto rounded-[14px] border border-line lg:h-[calc(100dvh-330px)]"
+        className="scroll-thin relative h-[70dvh] min-h-[420px] select-none overflow-auto rounded-[14px] border border-line xl:h-[calc(100dvh-300px)]"
         style={{ backgroundColor: SURFACE }}
       >
         <div data-cal-grid className={view === "week" ? "min-w-[760px]" : ""}>
