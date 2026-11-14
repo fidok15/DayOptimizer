@@ -48,7 +48,7 @@ export default function Header(props: {
   const theme = useTheme();
 
   return (
-    <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div className="relative isolate min-w-0 max-w-2xl">
         <div
           aria-hidden
@@ -76,10 +76,12 @@ export default function Header(props: {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
+        <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} oneDay={oneDay} />
         <SaveRoutine categories={categories} week={week} notes={notes} />
+        <span aria-hidden className="mx-1 h-6 w-px bg-ink/20" />
         <Settings />
         <button
           type="button"
@@ -90,6 +92,7 @@ export default function Header(props: {
         >
           {theme === "dark" ? <Sun size={18} weight="bold" aria-hidden /> : <Moon size={18} weight="bold" aria-hidden />}
         </button>
+        </div>
         {!oneDay && (
         <div role="group" aria-label="View" className="glass-btn inline-flex rounded-full p-1">
           {VIEWS.map(({ id, label, Icon }) => {
