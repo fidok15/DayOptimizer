@@ -36,11 +36,11 @@ and it lays out every week around what is already in your calendar.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/day-dark.jpg" alt="Day view in dark theme"></td>
+    <td width="50%"><img src="docs/images/day.jpg" alt="Day view"></td>
     <td width="50%"><img src="docs/images/settings.jpg" alt="Settings: who plans, API key, health and privacy"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Day view, dark theme</sub></td>
+    <td align="center"><sub>Day view: one day at a time</sub></td>
     <td align="center"><sub>Settings: local model or Claude, privacy</sub></td>
   </tr>
 </table>
