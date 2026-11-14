@@ -249,7 +249,7 @@ export default function ImportCalendar(props: {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="glass-btn inline-flex min-h-10 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-ink/20 active:scale-[0.98]"
+        className="glass-btn inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-full sm:w-auto px-3.5 py-1.5 text-sm font-medium text-ink transition hover:bg-ink/20 active:scale-[0.98]"
       >
         <CalendarPlus size={16} weight="bold" aria-hidden />
         Import

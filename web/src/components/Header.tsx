@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowClockwise, CalendarBlank, Check, CircleNotch, Columns, Moon, Sun, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, Check, CircleNotch, Moon, Sun, WarningCircle } from "@phosphor-icons/react";
 import { greeting, lineOfTheDay } from "../lib/copy";
 import { fromMin, sceneHour } from "../lib/time";
 import { setTheme, useTheme } from "../lib/theme";
@@ -10,11 +10,6 @@ import GarminConnect from "./GarminConnect";
 import Settings from "./Settings";
 import ImportCalendar from "./ImportCalendar";
 import SaveRoutine from "./SaveRoutine";
-
-const VIEWS = [
-  { id: "day" as const, label: "Day", Icon: CalendarBlank },
-  { id: "week" as const, label: "Week", Icon: Columns },
-];
 
 const fade = {
   initial: { opacity: 0 },
@@ -26,7 +21,6 @@ const pill = "glass-btn inline-flex items-center gap-1.5 rounded-full px-3 py-1.
 
 export default function Header(props: {
   view: View;
-  onViewChange: (v: View) => void;
   oneDay: boolean;
   saveStatus: SaveStatus;
   saveError: string;
@@ -38,7 +32,7 @@ export default function Header(props: {
   week: Week;
   notes: string;
 }) {
-  const { view, onViewChange, oneDay, saveStatus, saveError, onRetry, categories, onImport, onCategories, day, week, notes } = props;
+  const { view, oneDay, saveStatus, saveError, onRetry, categories, onImport, onCategories, day, week, notes } = props;
   const [hour, setHour] = useState(sceneHour);
   useEffect(() => {
     const t = setInterval(() => setHour(sceneHour()), 30_000);
@@ -48,7 +42,7 @@ export default function Header(props: {
   const theme = useTheme();
 
   return (
-    <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <header className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
       <div className="relative isolate min-w-0 max-w-2xl">
         <div
           aria-hidden
@@ -66,22 +60,23 @@ export default function Header(props: {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
-            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 text-3xl leading-[1.1] font-semibold tracking-tight text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-5xl"
+            className="mt-3 line-clamp-3 max-w-[22ch] md:line-clamp-2 text-[28px] leading-[1.1] font-semibold tracking-tight text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_2px_16px_rgb(4_6_16/0.5)] md:text-4xl"
           >
             {line}
           </motion.h1>
         </AnimatePresence>
-        <p className="mt-2 max-w-[60ch] text-[15px] leading-normal text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
+        <p className="mt-2 max-w-[60ch] text-sm leading-normal md:text-[15px] text-white [text-shadow:0_1px_1px_rgb(0_0_0/0.45),0_1px_12px_rgb(4_6_16/0.55)]">
           Draw your usual days here: work, meals, training, rest. Every week DayOptimizer turns them into a fresh plan that fits around what's already in your calendar. Done? Hit <span className="font-semibold text-white underline decoration-accent decoration-2 underline-offset-4">Save my routine</span>.
         </p>
       </div>
 
-      <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
-        <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
+      <div className="grid w-full shrink-0 grid-cols-[1fr_1fr_2.5rem_2.5rem] items-center gap-2 sm:flex sm:w-auto sm:flex-wrap xl:flex-nowrap">
         <GarminConnect />
         <ImportCalendar categories={categories} onImport={onImport} onCategories={onCategories} view={view} day={day} oneDay={oneDay} />
-        <SaveRoutine categories={categories} week={week} notes={notes} />
-        <span aria-hidden className="mx-1 h-6 w-px bg-ink/20" />
+        <div className="order-last col-span-full sm:order-none">
+          <SaveRoutine categories={categories} week={week} notes={notes} />
+        </div>
+        <span aria-hidden className="mx-1 hidden h-6 w-px bg-ink/20 sm:block" />
         <Settings />
         <button
           type="button"
@@ -92,35 +87,6 @@ export default function Header(props: {
         >
           {theme === "dark" ? <Sun size={18} weight="bold" aria-hidden /> : <Moon size={18} weight="bold" aria-hidden />}
         </button>
-        </div>
-        {!oneDay && (
-        <div role="group" aria-label="View" className="glass-btn inline-flex rounded-full p-1">
-          {VIEWS.map(({ id, label, Icon }) => {
-            const active = view === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onViewChange(id)}
-                className={`relative inline-flex items-center gap-1.5 rounded-full min-h-8 px-3.5 py-1.5 text-sm font-medium transition active:scale-[0.98] ${
-                  active ? "text-on-dusk" : "text-ink-dim hover:text-ink"
-                }`}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="view-pill"
-                    className="absolute inset-0 rounded-full bg-dusk"
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                  />
-                )}
-                <Icon size={16} weight="bold" className="relative" aria-hidden />
-                <span className="relative">{label}</span>
-              </button>
-            );
-          })}
-        </div>
-        )}
       </div>
       {createPortal(
         <div aria-live="polite" className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] justify-end text-sm [&>*]:pointer-events-auto [&>*]:shadow-lg">
