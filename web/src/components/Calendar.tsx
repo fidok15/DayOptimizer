@@ -170,19 +170,19 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
   };
 
   return (
-    <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-2xl p-4 md:p-5">
+    <section aria-label="Typical week" className="glass flex flex-col gap-4 rounded-2xl p-3 md:p-5">
       <Toolbar view={view} day={day} week={week} onDayChange={onDayChange} onChange={onChange} onAdd={hasCats ? () => addBlock(day) : undefined} single={single} />
 
       <div className="relative">
       <motion.div
         ref={scrollRef}
         layoutScroll
-        className="scroll-thin relative h-[70dvh] min-h-[420px] select-none overflow-auto rounded-[14px] border border-line xl:h-[calc(100dvh-300px)]"
+        className={`scroll-thin relative h-[70dvh] min-h-[420px] select-none overflow-auto rounded-[14px] border border-line xl:h-[calc(100dvh-300px)] ${view === "week" ? "snap-x snap-mandatory scroll-pl-12 md:snap-none" : ""}`}
         style={{ backgroundColor: SURFACE }}
       >
-        <div data-cal-grid className={view === "week" ? "min-w-[760px]" : ""}>
+        <div data-cal-grid className={view === "week" ? "min-w-[calc(350%-7.5rem)] md:min-w-[760px]" : ""}>
           {view === "week" && (
-            <div className="sticky top-0 z-40 grid grid-cols-[3.5rem_1fr] border-b border-line" style={{ backgroundColor: SURFACE }}>
+            <div className="sticky top-0 z-40 grid grid-cols-[3rem_1fr] md:grid-cols-[3.5rem_1fr] border-b border-line" style={{ backgroundColor: SURFACE }}>
               <div className="sticky left-0" style={{ backgroundColor: SURFACE }} />
               <div className="grid grid-cols-7">
                 {WEEKDAYS.map((d) => (
@@ -221,7 +221,7 @@ export default function Calendar({ view, week, categories, day, onDayChange, onC
             </div>
           )}
 
-          <div className="grid grid-cols-[3.5rem_1fr]">
+          <div className="grid grid-cols-[3rem_1fr] md:grid-cols-[3.5rem_1fr]">
             <div aria-hidden className="sticky left-0 z-30 border-r border-line" style={{ height: GRID_H, backgroundColor: SURFACE }}>
               <div className="relative h-full">
                 {HOURS.map((h) => (

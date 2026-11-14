@@ -203,7 +203,7 @@ function Row(props: {
           aria-label={`Delete ${name}`}
           title={`Delete ${name}`}
           onClick={() => (blocks ? setConfirming(true) : onRemove())}
-          className="grid h-8 w-7 shrink-0 place-items-center overflow-hidden rounded-full text-ink-dim transition-all hover:bg-ink/10 hover:text-danger active:scale-[0.98] [@media(hover:hover)]:w-0 [@media(hover:hover)]:group-focus-within:w-7 [@media(hover:hover)]:group-hover:w-7"
+          className="grid h-8 w-7 shrink-0 place-items-center rounded-full text-ink-dim transition hover:bg-ink/10 hover:text-danger active:scale-[0.98] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100"
         >
           <Trash size={16} weight="bold" aria-hidden />
         </button>
@@ -277,10 +277,12 @@ function AddCategory({ categories, onAdd }: { categories: Categories; onAdd: (na
           className="h-9 min-w-0 flex-1 rounded-[10px] border border-line bg-ink/5 px-3 text-sm outline-none transition placeholder:text-ink-dim focus:border-accent"
         />
         <EmojiPicker value={emoji} onPick={setEmoji} />
+      </div>
+      <div className="flex items-center justify-between gap-1.5">
         <MovableToggle movable={movable} onToggle={() => setMovable((m) => !m)} />
         <button
           type="submit"
-          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-dusk px-3 text-sm font-semibold text-on-dusk transition active:scale-[0.98]"
+          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-[10px] bg-dusk px-3 text-sm font-semibold text-on-dusk transition active:scale-[0.98]"
         >
           <Plus size={16} weight="bold" aria-hidden />
           Add
@@ -385,6 +387,7 @@ export default function Sidebar(props: {
             <span className="flex-1 pl-7">Name</span>
             <span className="w-[3.75rem] text-center">Mode</span>
             <span className="w-[3.625rem] text-center">Priority</span>
+            <span className="w-7" />
           </div>
           <ul className="scroll-thin flex min-h-0 flex-col gap-0.5 xl:overflow-y-auto">
             <AnimatePresence initial={false}>
